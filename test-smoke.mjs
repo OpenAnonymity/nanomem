@@ -83,7 +83,7 @@ console.log('\n--- EXTRACT ---');
 const conversation = [
     { role: 'user', content: "I'm allergic to peanuts and shellfish. I live in San Francisco and work as a software engineer at a startup called Acme." },
     { role: 'assistant', content: "Thanks for sharing! I'll keep in mind your peanut and shellfish allergies. SF is a great city for software engineers — how's the work at Acme going?" },
-    { role: 'user', content: "It's great! I'm leading the backend team. We use TypeScript and PostgreSQL. I also have a cat named Mochi." },
+    { role: 'user', content: "It's great! I'm leading the backend team. We use TypeScript and PostgreSQL. I also have a cat named Mochi. I'm currently preparing for a product launch next month." },
     { role: 'assistant', content: "That sounds like a solid tech stack! And Mochi is an adorable name for a cat. What kind of cat is Mochi?" },
 ];
 

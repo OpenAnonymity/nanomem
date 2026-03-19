@@ -10,6 +10,13 @@
  *   Call this at convenient trigger points (after extraction, on app load, etc.).
  *   There is no built-in timer — the caller decides when to invoke this.
  */
+import {
+    compactBullets,
+    inferTopicFromPath,
+    parseMemoryBullets,
+    renderCompactedMemoryDocument
+} from '../bullets/utils.js';
+
 
 const COMPACT_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
 const MAX_FILE_CHARS = 8000;
@@ -98,6 +105,18 @@ class MemoryCompactor {
     async _compactFileWithLlm(path, content) {
         const raw = String(content || '').trim();
         if (!raw) return null;
+
+        const parsed = parseMemoryBullets(raw);
+        if (parsed.length > 0) {
+            const defaultTopic = inferTopicFromPath(path);
+            const compacted = compactBullets(parsed, { defaultTopic });
+            return renderCompactedMemoryDocument(
+                compacted.working,
+                compacted.longTerm,
+                compacted.history,
+                { titleTopic: defaultTopic }
+            );
+        }
 
         const prompt = COMPACTION_PROMPT
             .replace('{TODAY}', new Date().toISOString().slice(0, 10))

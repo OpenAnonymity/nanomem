@@ -19,6 +19,13 @@ const MAX_FILES_TO_LOAD = 8;
 const MAX_TOTAL_CONTEXT_CHARS = 4000;
 const MAX_SNIPPETS = 18;
 const MAX_RECENT_CONTEXT_CHARS = 2000;
+const FAST_DOMAIN_HINTS = [
+    { dir: 'health', terms: ['allergy', 'allergies', 'health', 'medical', 'medicine', 'medication', 'symptom', 'condition'] },
+    { dir: 'pets', terms: ['pet', 'pets', 'cat', 'dog', 'animal'] },
+    { dir: 'work', terms: ['work', 'job', 'career', 'role', 'team', 'tech', 'stack', 'typescript', 'postgresql', 'backend'] },
+    { dir: 'personal', terms: ['live', 'location', 'family', 'personal', 'background'] },
+    { dir: 'preferences', terms: ['prefer', 'preference', 'style', 'favorite', 'diet'] },
+];
 
 const RETRIEVAL_TOOLS = [
     {
@@ -139,6 +146,11 @@ class MemoryRetrieval {
 
             let result;
             try {
+                const quickResult = await this._quickDomainRetrieval(query, onProgress, conversationText);
+                if (quickResult) {
+                    return quickResult;
+                }
+
                 // Try LLM-driven retrieval
                 onProgress?.({ stage: 'retrieval', message: 'Selecting relevant memory files...' });
                 result = await this._toolCallingRetrieval(query, index, onProgress, conversationText, onModelText, signal);
@@ -272,6 +284,46 @@ class MemoryRetrieval {
         }
 
         return [...allPaths].slice(0, MAX_FILES_TO_LOAD);
+    }
+
+    async _quickDomainRetrieval(query, onProgress, conversationText) {
+        const queryLower = String(query || '').toLowerCase();
+        const matchedDirs = FAST_DOMAIN_HINTS
+            .filter(({ terms }) => terms.some((term) => queryLower.includes(term)))
+            .map(({ dir }) => dir);
+
+        if (matchedDirs.length === 0) return null;
+
+        const allFiles = await this._backend.exportAll();
+        const paths = allFiles
+            .filter((file) => !file.path.endsWith('_index.md'))
+            .map((file) => file.path)
+            .filter((path) => matchedDirs.some((dir) => path === dir || path.startsWith(`${dir}/`)))
+            .slice(0, MAX_FILES_TO_LOAD);
+
+        if (paths.length === 0) return null;
+
+        onProgress?.({ stage: 'retrieval', message: 'Using fast local retrieval...', paths });
+
+        const files = [];
+        for (const path of paths) {
+            const raw = await this._backend.read(path);
+            if (!raw) continue;
+            files.push({ path, content: raw.length > 1500 ? raw.slice(0, 1500) + '...(truncated)' : raw });
+        }
+
+        if (files.length === 0) return null;
+
+        const assembledContext = await this._buildSnippetContext(paths, query, conversationText);
+        if (!assembledContext) return null;
+
+        onProgress?.({
+            stage: 'complete',
+            message: `Retrieved ${files.length} memory file${files.length === 1 ? '' : 's'} via fast path.`,
+            paths
+        });
+
+        return { files, paths, assembledContext };
     }
 
     async _buildSnippetContext(paths, query, conversationText) {
