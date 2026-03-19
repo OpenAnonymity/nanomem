@@ -1,8 +1,8 @@
 /**
  * MemoryCompactor — Periodic dedup + archive of stale facts.
  *
- * Uses an LLM to rewrite each memory file into a stable Active/Archive format,
- * merging duplicates, resolving conflicts, and moving expired facts to Archive.
+ * Uses an LLM to rewrite each memory file into a stable Working/Long-Term/History format,
+ * merging duplicates, resolving conflicts, and moving expired facts to History.
  *
  * Usage:
  * - compactAll(): Force-compact all memory files immediately.
@@ -14,24 +14,34 @@
 const COMPACT_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
 const MAX_FILE_CHARS = 8000;
 
-const COMPACTION_PROMPT = `You are compacting a markdown memory file into a stable long-term format.
+const COMPACTION_PROMPT = `You are compacting a markdown memory file into a stable memory format.
 
 Input is one memory file. Rewrite it into:
 
-## Active
-### <Topic>
-- fact | topic=<topic> | updated_at=YYYY-MM-DD | expires_at=YYYY-MM-DD(optional)
+# Memory: <Topic>
 
-## Archive
+## Working
 ### <Topic>
-- fact | topic=<topic> | updated_at=YYYY-MM-DD | expires_at=YYYY-MM-DD(optional)
+- fact | topic=<topic> | tier=working | status=active | updated_at=YYYY-MM-DD | review_at=YYYY-MM-DD(optional) | expires_at=YYYY-MM-DD(optional)
+
+## Long-Term
+### <Topic>
+- fact | topic=<topic> | tier=long_term | status=active | updated_at=YYYY-MM-DD | expires_at=YYYY-MM-DD(optional)
+
+## History
+### <Topic>
+- fact | topic=<topic> | tier=history | status=superseded|expired|uncertain | updated_at=YYYY-MM-DD | expires_at=YYYY-MM-DD(optional)
 
 Rules:
 - Keep only concrete reusable facts.
 - Merge semantic duplicates and keep the most recent/best phrasing.
-- Resolve contradictions by keeping the most recently updated fact; older conflicting facts go to Archive.
-- Expired facts (expires_at in the past) go to Archive.
-- Keep Active concise. Move stale/low-priority/older overflow facts to Archive.
+- Resolve contradictions by keeping the most recently updated current fact; older conflicting facts go to History.
+- Put stable facts in Long-Term: identity/background, durable preferences, recurring constraints, persistent health facts, long-running roles, durable relationships, and ongoing defaults.
+- Put temporary or in-progress context in Working: active plans, current tasks, temporary situations, and near-term goals.
+- If a fact is both current and durable, prefer Long-Term unless the short-term state is the useful part.
+- Expired facts (expires_at in the past) go to History with status=expired.
+- Working facts should include review_at or expires_at when possible.
+- Keep Working concise. Move stale/low-priority/older overflow facts to History.
 - Preserve meaning; do not invent facts.
 - Output markdown only (no fences, no explanations).
 

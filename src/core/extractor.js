@@ -125,7 +125,7 @@ const EXTRACTION_TOOLS = [
 
 const EXTRACTION_SYSTEM_PROMPT = `You are a memory manager. After reading a conversation, decide if any concrete, reusable facts should be saved to the user's memory files.
 
-Only save information useful in a **future** conversation — personal facts, preferences, project context, interests, constraints, recurring topics. Default to doing nothing if nothing new is worth remembering.
+Save information that is likely to help in a future conversation. Be selective, but when the user clearly states durable facts or active plans that would help later, save them.
 
 Do NOT save:
 - Information already present in existing files (use read_file to check first)
@@ -153,16 +153,20 @@ Directory structure — create topic-specific files, one per distinct subject:
 
 Instructions:
 1. Read the conversation below and decide if anything new should be saved.
-2. If so, use read_file first to check existing content (avoid duplicates).
-3. Use append_memory to add to existing files when the topic matches, or create_new_file for new topics.
-4. Format content as bullet points with metadata: "- Fact text | topic=topic-name | updated_at=YYYY-MM-DD"
-5. Time-sensitive facts must include date context (e.g. "As of 2026-03-05: ...").
-6. If nothing new is worth remembering, simply stop without calling any write tools.
+2. If a matching file already exists in the index, use read_file first to avoid duplicates.
+3. If no relevant file exists yet, create_new_file directly.
+4. Use append_memory to add to existing files when the topic matches, or create_new_file for new topics.
+5. Prefer this simple bullet format: "- Fact text | topic=topic-name | updated_at=YYYY-MM-DD"
+6. You may optionally add tier=working for clearly short-term or in-progress context. If you are unsure, omit tier and just save the fact.
+7. Facts usually worth saving when first learned include allergies, health conditions, where the user lives, job/role, ongoing tech stack, pets, family members, durable preferences, and active plans.
+8. If a fact is time-sensitive, include date context in the text. You may optionally add review_at or expires_at.
+9. If nothing new is worth remembering, simply stop without calling any write tools.
 
 Rules:
 - One file per distinct topic. Do NOT put unrelated facts in the same file.
 - Create new files freely — it is better to have many focused files than one bloated file.
 - Use update_memory only if a fact is now stale or contradicted.
+- Do not skip obvious facts just because the schema supports extra metadata.
 - Content should be raw facts only — no filler commentary.`;
 
 
@@ -246,7 +250,7 @@ class MemoryExtractor {
             ensureBulletMetadata(bullet, { defaultTopic, updatedAt: todayIsoDate() })
         );
         const compacted = compactBullets(normalized, { defaultTopic, maxActivePerTopic: 1000 });
-        return renderCompactedMemoryDocument(compacted.active, compacted.archive);
+        return renderCompactedMemoryDocument(compacted.working, compacted.longTerm, compacted.history, { titleTopic: defaultTopic });
     }
 
     _mergeWithExisting(existing, incoming, path) {
@@ -268,12 +272,12 @@ class MemoryExtractor {
 
         if (existingBullets.length === 0) {
             const compacted = compactBullets(incomingBullets, { defaultTopic, maxActivePerTopic: 1000 });
-            return renderCompactedMemoryDocument(compacted.active, compacted.archive);
+            return renderCompactedMemoryDocument(compacted.working, compacted.longTerm, compacted.history, { titleTopic: defaultTopic });
         }
 
         const merged = [...existingBullets, ...incomingBullets];
         const compacted = compactBullets(merged, { defaultTopic, maxActivePerTopic: 1000 });
-        return renderCompactedMemoryDocument(compacted.active, compacted.archive);
+        return renderCompactedMemoryDocument(compacted.working, compacted.longTerm, compacted.history, { titleTopic: defaultTopic });
     }
 }
 

@@ -1,7 +1,7 @@
 /**
  * Helpers for metadata-rich memory bullets.
  * Bullet format:
- * - Fact text | topic=foo | updated_at=YYYY-MM-DD | expires_at=YYYY-MM-DD
+ * - Fact text | topic=foo | tier=long_term | status=active | updated_at=YYYY-MM-DD
  */
 
 const BULLET_REGEX = /^\s*-\s+(.*)$/;
@@ -41,21 +41,78 @@ export function normalizeFactText(value) {
         .trim();
 }
 
+export function normalizeTier(value, fallback = 'long_term') {
+    const source = String(value || '').trim().toLowerCase();
+    if (['working', 'short_term', 'short-term'].includes(source)) return 'working';
+    if (['long_term', 'long-term', 'longterm', 'active'].includes(source)) return 'long_term';
+    if (['history', 'archive', 'archived'].includes(source)) return 'history';
+    return fallback;
+}
+
+export function normalizeStatus(value, fallback = 'active') {
+    const source = String(value || '').trim().toLowerCase();
+    if (['active', 'current'].includes(source)) return 'active';
+    if (['superseded', 'replaced', 'resolved'].includes(source)) return 'superseded';
+    if (['expired', 'stale'].includes(source)) return 'expired';
+    if (['uncertain', 'tentative'].includes(source)) return 'uncertain';
+    return fallback;
+}
+
+function inferTierFromSection(section) {
+    if (section === 'working') return 'working';
+    if (section === 'history') return 'history';
+    return 'long_term';
+}
+
+function inferStatusFromSection(section) {
+    return section === 'history' ? 'superseded' : 'active';
+}
+
+export function inferTierFromBullet(bullet, fallback = 'long_term') {
+    if (bullet?.reviewAt || bullet?.expiresAt) return 'working';
+
+    const text = String(bullet?.text || '').toLowerCase();
+    if (!text) return fallback;
+
+    const workingPatterns = [
+        /\bcurrently\b/,
+        /\bright now\b/,
+        /\bthis (week|month|quarter|year)\b/,
+        /\bnext (week|month|quarter|year)\b/,
+        /\bplanning\b/,
+        /\bevaluating\b/,
+        /\bconsidering\b/,
+        /\btrying to\b/,
+        /\bworking on\b/,
+        /\bdebugging\b/,
+        /\bpreparing\b/,
+        /\binterviewing\b/,
+        /\bin progress\b/,
+        /\btemporary\b/,
+        /\bfor now\b/,
+        /\bas of \d{4}-\d{2}-\d{2}\b/
+    ];
+
+    return workingPatterns.some((pattern) => pattern.test(text)) ? 'working' : fallback;
+}
+
 export function parseMemoryBullets(content) {
     const lines = String(content || '').split('\n');
     const bullets = [];
     let currentHeading = 'General';
-    let section = 'active';
+    let section = 'long_term';
 
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         const headingMatch = line.match(HEADING_REGEX);
         if (headingMatch) {
             currentHeading = headingMatch[1].trim() || currentHeading;
-            if (/archive/i.test(currentHeading)) {
-                section = 'archive';
-            } else if (/active/i.test(currentHeading)) {
-                section = 'active';
+            if (/^(working)$/i.test(currentHeading)) {
+                section = 'working';
+            } else if (/^(long[- ]?term|active)$/i.test(currentHeading)) {
+                section = 'long_term';
+            } else if (/^(history|archive)$/i.test(currentHeading)) {
+                section = 'history';
             }
             continue;
         }
@@ -71,6 +128,9 @@ export function parseMemoryBullets(content) {
         let topic = null;
         let updatedAt = null;
         let expiresAt = null;
+        let reviewAt = null;
+        let tier = null;
+        let status = null;
 
         for (const part of parts) {
             const kv = part.match(/^([a-z_]+)\s*=\s*(.+)$/i);
@@ -80,6 +140,9 @@ export function parseMemoryBullets(content) {
             if (key === 'topic') topic = value;
             if (key === 'updated_at') updatedAt = safeDateIso(value);
             if (key === 'expires_at') expiresAt = safeDateIso(value);
+            if (key === 'review_at') reviewAt = safeDateIso(value);
+            if (key === 'tier') tier = normalizeTier(value);
+            if (key === 'status') status = normalizeStatus(value);
         }
 
         bullets.push({
@@ -87,6 +150,11 @@ export function parseMemoryBullets(content) {
             topic: topic ? normalizeTopic(topic) : null,
             updatedAt,
             expiresAt,
+            reviewAt,
+            tier: tier || inferTierFromSection(section),
+            status: status || inferStatusFromSection(section),
+            explicitTier: Boolean(tier),
+            explicitStatus: Boolean(status),
             heading: currentHeading,
             section,
             lineIndex: i
@@ -110,7 +178,7 @@ export function extractMemoryTitles(content) {
 
         const title = headingMatch[1].trim();
         if (!title) continue;
-        if (/^(active|archive)$/i.test(title)) continue;
+        if (/^(working|long[- ]?term|history|active|archive|current context|stable facts|no longer current)$/i.test(title)) continue;
         titles.push(title);
     }
 
@@ -120,12 +188,23 @@ export function extractMemoryTitles(content) {
 export function ensureBulletMetadata(bullet, options = {}) {
     const fallbackTopic = normalizeTopic(options.defaultTopic || 'general');
     const fallbackUpdatedAt = options.updatedAt || todayIsoDate();
+    const inferredTier = inferTierFromBullet(bullet, options.defaultTier || 'long_term');
+    const preferredTier = bullet?.explicitTier ? bullet?.tier : inferredTier;
+    const fallbackTier = normalizeTier(options.defaultTier || preferredTier || bullet?.tier || 'long_term');
+    const fallbackStatus = normalizeStatus(
+        options.defaultStatus
+            || (bullet?.explicitStatus ? bullet?.status : null)
+            || inferStatusFromSection(normalizeTierToSection(fallbackTier))
+    );
     return {
         text: String(bullet?.text || '').trim(),
         topic: normalizeTopic(bullet?.topic || fallbackTopic, fallbackTopic),
         updatedAt: safeDateIso(bullet?.updatedAt) || fallbackUpdatedAt,
         expiresAt: safeDateIso(bullet?.expiresAt),
-        section: bullet?.section === 'archive' ? 'archive' : 'active'
+        reviewAt: safeDateIso(bullet?.reviewAt),
+        tier: normalizeTier(preferredTier, fallbackTier),
+        status: normalizeStatus(bullet?.status, fallbackStatus),
+        section: normalizeTierToSection(preferredTier || fallbackTier)
     };
 }
 
@@ -133,8 +212,11 @@ export function renderMemoryBullet(bullet) {
     const clean = ensureBulletMetadata(bullet);
     const metadata = [
         `topic=${clean.topic}`,
+        `tier=${clean.tier}`,
+        `status=${clean.status}`,
         `updated_at=${clean.updatedAt}`
     ];
+    if (clean.reviewAt) metadata.push(`review_at=${clean.reviewAt}`);
     if (clean.expiresAt) metadata.push(`expires_at=${clean.expiresAt}`);
     return `- ${clean.text} | ${metadata.join(' | ')}`;
 }
@@ -142,6 +224,8 @@ export function renderMemoryBullet(bullet) {
 export function scoreMemoryBullet(bullet, queryTerms = []) {
     const text = String(bullet?.text || '').toLowerCase();
     const topic = String(bullet?.topic || '').toLowerCase();
+    const tier = normalizeTier(bullet?.tier || bullet?.section || 'long_term');
+    const status = normalizeStatus(bullet?.status || inferStatusFromSection(normalizeTierToSection(tier)));
     if (!text) return 0;
 
     let score = 0;
@@ -150,6 +234,11 @@ export function scoreMemoryBullet(bullet, queryTerms = []) {
         if (text.includes(term)) score += 2;
         if (topic.includes(term)) score += 1;
     }
+    if (tier === 'working') score += 2;
+    if (tier === 'long_term') score += 1;
+    if (status === 'active') score += 2;
+    if (status === 'uncertain') score -= 1;
+    if (status === 'expired' || status === 'superseded' || tier === 'history') score -= 3;
     return score;
 }
 
@@ -164,6 +253,13 @@ export function tokenizeQuery(query) {
 export function isExpiredBullet(bullet, today = todayIsoDate()) {
     if (!bullet?.expiresAt) return false;
     return String(bullet.expiresAt) < String(today);
+}
+
+export function normalizeTierToSection(value) {
+    const tier = normalizeTier(value);
+    if (tier === 'working') return 'working';
+    if (tier === 'history') return 'history';
+    return 'long_term';
 }
 
 export function compactBullets(bullets, options = {}) {
@@ -193,18 +289,22 @@ export function compactBullets(bullets, options = {}) {
         }
     }
 
-    const active = [];
-    const archive = [];
+    const working = [];
+    const longTerm = [];
+    const history = [];
 
     const byTopic = new Map();
     for (const bullet of dedup.values()) {
-        if (bullet.section === 'archive' || isExpiredBullet(bullet, today)) {
-            archive.push(bullet);
+        const tier = normalizeTier(bullet.tier || bullet.section || 'long_term');
+        const status = normalizeStatus(bullet.status || inferStatusFromSection(normalizeTierToSection(tier)));
+
+        if (tier === 'history' || status === 'superseded' || status === 'expired' || isExpiredBullet(bullet, today)) {
+            history.push({ ...bullet, tier: 'history', status: status === 'active' ? 'superseded' : status, section: 'history' });
             continue;
         }
         const topic = bullet.topic || defaultTopic;
         const list = byTopic.get(topic) || [];
-        list.push(bullet);
+        list.push({ ...bullet, topic, tier, status, section: normalizeTierToSection(tier) });
         byTopic.set(topic, list);
     }
 
@@ -212,14 +312,29 @@ export function compactBullets(bullets, options = {}) {
         list.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
         const keep = list.slice(0, maxActivePerTopic);
         const extra = list.slice(maxActivePerTopic);
-        keep.forEach((item) => active.push({ ...item, topic }));
-        extra.forEach((item) => archive.push({ ...item, topic }));
+        keep.forEach((item) => {
+            if (item.tier === 'working') {
+                working.push({ ...item, topic, tier: 'working', status: item.status || 'active', section: 'working' });
+            } else {
+                longTerm.push({ ...item, topic, tier: 'long_term', status: item.status || 'active', section: 'long_term' });
+            }
+        });
+        extra.forEach((item) => {
+            history.push({ ...item, topic, tier: 'history', status: 'superseded', section: 'history' });
+        });
     }
 
-    archive.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
-    active.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+    history.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+    working.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+    longTerm.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
 
-    return { active, archive };
+    return {
+        working,
+        longTerm,
+        history,
+        active: [...working, ...longTerm],
+        archive: history
+    };
 }
 
 function topicHeading(topic) {
@@ -231,49 +346,38 @@ function topicHeading(topic) {
         .join(' ');
 }
 
-export function renderCompactedMemoryDocument(active, archive) {
+function inferDocumentTopic(bullets, fallback = 'general') {
+    const firstTopic = (bullets || []).find((bullet) => bullet?.topic)?.topic;
+    return firstTopic || fallback;
+}
+
+function renderSection(lines, title, subsectionTitle, bullets, forceHistory = false) {
+    lines.push(`## ${title}`);
+    lines.push(`### ${subsectionTitle}`);
+
+    if (!bullets || bullets.length === 0) {
+        lines.push('_No entries yet._');
+        return;
+    }
+
+    for (const bullet of bullets) {
+        const nextBullet = forceHistory
+            ? { ...bullet, tier: 'history', status: bullet.status === 'active' ? 'superseded' : bullet.status, section: 'history' }
+            : bullet;
+        lines.push(renderMemoryBullet(nextBullet));
+    }
+}
+
+export function renderCompactedMemoryDocument(working, longTerm, history, options = {}) {
     const lines = [];
-    lines.push('## Active');
-
-    if (!active || active.length === 0) {
-        lines.push('_No active facts yet._');
-    } else {
-        const byTopic = new Map();
-        for (const bullet of active) {
-            const topic = bullet.topic || 'general';
-            const list = byTopic.get(topic) || [];
-            list.push(bullet);
-            byTopic.set(topic, list);
-        }
-
-        for (const topic of [...byTopic.keys()].sort()) {
-            lines.push('');
-            lines.push(`### ${topicHeading(topic)}`);
-            for (const bullet of byTopic.get(topic)) {
-                lines.push(renderMemoryBullet(bullet));
-            }
-        }
-    }
-
-    if (archive && archive.length > 0) {
-        lines.push('');
-        lines.push('## Archive');
-        const byTopic = new Map();
-        for (const bullet of archive) {
-            const topic = bullet.topic || 'general';
-            const list = byTopic.get(topic) || [];
-            list.push(bullet);
-            byTopic.set(topic, list);
-        }
-
-        for (const topic of [...byTopic.keys()].sort()) {
-            lines.push('');
-            lines.push(`### ${topicHeading(topic)}`);
-            for (const bullet of byTopic.get(topic)) {
-                lines.push(renderMemoryBullet({ ...bullet, section: 'archive' }));
-            }
-        }
-    }
+    const docTopic = normalizeTopic(options.titleTopic || inferDocumentTopic([...working, ...longTerm, ...history], 'general'));
+    lines.push(`# Memory: ${topicHeading(docTopic)}`);
+    lines.push('');
+    renderSection(lines, 'Working', 'Current context', working);
+    lines.push('');
+    renderSection(lines, 'Long-Term', 'Stable facts', longTerm);
+    lines.push('');
+    renderSection(lines, 'History', 'No longer current', history, true);
 
     return lines.join('\n').trim();
 }

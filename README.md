@@ -163,19 +163,25 @@ exportAll()           → [{ path, content, updatedAt, itemCount, l0 }]
 Facts are stored as metadata-rich markdown bullets:
 
 ```
-- Fact text | topic=health | updated_at=2025-03-12 | expires_at=2025-06-12
+- Fact text | topic=health | tier=long_term | status=active | updated_at=2025-03-12 | expires_at=2025-06-12
 ```
 
-Files are organized into Active and Archive sections:
+Files are organized into Working, Long-Term, and History sections:
 
 ```markdown
-## Active
-### Health
-- Takes thyroid medication daily | topic=health | updated_at=2025-03-12
+# Memory: Health
 
-## Archive
-### Health
-- Was taking old medication | topic=health | updated_at=2024-01-15
+## Working
+### Current context
+- Adjusting thyroid dosage this month | topic=health | tier=working | status=active | updated_at=2025-03-12 | review_at=2025-04-01
+
+## Long-Term
+### Stable facts
+- Takes thyroid medication daily | topic=health | tier=long_term | status=active | updated_at=2025-03-12
+
+## History
+### No longer current
+- Was taking old medication | topic=health | tier=history | status=superseded | updated_at=2024-01-15
 ```
 
 ## Module Exports
