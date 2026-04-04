@@ -13,12 +13,21 @@ npm install -g @openanonymity/memory
 Set an API key and start using it:
 
 ```bash
+# Any one of these will work:
 export OPENAI_API_KEY=sk-...
+export ANTHROPIC_API_KEY=sk-ant-...
+export TINFOIL_API_KEY=...
 
 memory init
 memory import conversation.json
 memory retrieve "what are my hobbies?"
 memory status
+```
+
+By default, memory stores files in `~/.memory` using the filesystem backend, and auto-detects your LLM provider from the API key you set (defaulting to `gpt-4o` for OpenAI, `claude-sonnet-4-6` for Anthropic, `kimi-k2-5` for Tinfoil). Override with flags:
+
+```bash
+memory init --path ~/my-memory --provider anthropic --model claude-sonnet-4-6
 ```
 
 ### Commands
