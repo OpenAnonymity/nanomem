@@ -62,7 +62,7 @@ Storage:
 --model <model>         Model ID (env: LLM_MODEL)
 --provider <name>       Provider: openai | anthropic | tinfoil (env: LLM_PROVIDER)
 --base-url <url>        Custom API endpoint (env: LLM_BASE_URL)
---storage <type>        Storage backend: filesystem | ram (default: filesystem)
+--storage <type>        Storage backend: filesystem | ram | indexeddb (default: filesystem)
 --path <dir>            Storage directory (default: ~/.memory)
 --json                  Force JSON output
 ```
