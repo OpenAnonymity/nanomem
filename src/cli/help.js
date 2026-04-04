@@ -14,6 +14,7 @@ Commands:
     import <file|->                         Import conversations and extract facts
     retrieve <query> [--context <file>]     Retrieve relevant context for a query
     compact                                 Deduplicate and archive stale facts
+    export [--format txt|zip]               Export all memory to a txt file or a zip file
 
   Storage:
     ls [path]                               List files and directories
@@ -21,7 +22,6 @@ Commands:
     write <path> --content <text>           Write content to a file (or pipe stdin)
     delete <path>                           Delete a file
     search <query>                          Search files by keyword
-    export [--format json|zip]              Export all memory
     clear --confirm                         Delete all memory files
 
 Global flags:
@@ -31,7 +31,7 @@ Global flags:
   --base-url <url>        Custom API endpoint (env: LLM_BASE_URL)
   --storage <type>        Storage backend: filesystem | ram (default: filesystem)
   --path <dir>            Storage directory (default: ~/.memory)
-  --json                  Force JSON output
+  --json                  Print command results as JSON (for scripting)
   -h, --help              Show help
   -v, --version           Show version
 
@@ -51,7 +51,8 @@ Examples:
   memory import chatgpt-export.json
   memory retrieve "what are my hobbies?"
   memory write notes/todo.md --content "buy groceries"
-  memory export --format zip > backup.zip       # > writes output to file
+  memory export
+  memory export --format zip
 `;
 
 export const COMMAND_HELP = {
@@ -63,8 +64,8 @@ export const COMMAND_HELP = {
     write: 'Usage: memory write <path> [--content <text>]\n\nWrite content to a file. Reads from stdin if --content is not provided.',
     delete: 'Usage: memory delete <path>\n\nDelete a file from storage.',
     search: 'Usage: memory search <query>\n\nSearch files by keyword.',
-    export: 'Usage: memory export [--format json|zip]\n\nExport all memory. Defaults to JSON text format.\nZIP format writes raw bytes to stdout.',
+    export: 'Usage: memory export [--format txt|zip]\n\nExport all memory to a timestamped file in the current directory.\nDefault format is txt (line-delimited text). Use --format zip for a ZIP archive.',
     import: 'Usage: memory import <file|->\n\nImport conversations and extract facts into memory.\n\nAuto-detects format:\n  - OA Fastchat export (JSON with data.chats.sessions)\n  - JSON messages array ([{role, content}, ...])\n  - Plain text (User:/Assistant: lines)\n\nFor multi-session exports, use --session-id or --session-title to filter.\nRequires an LLM API key.',
-    clear:  'Usage: memory clear --confirm\n\nDelete all memory files. Requires --confirm to prevent accidental data loss.',
+    clear: 'Usage: memory clear --confirm\n\nDelete all memory files. Requires --confirm to prevent accidental data loss.',
     status: 'Usage: memory status\n\nShow resolved config and storage statistics.',
 };

@@ -2,7 +2,8 @@
  * CLI command implementations — thin wrappers around the library API.
  */
 
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { serialize, toZip } from '../utils/portability.js';
 import { extractSessionsFromOAFastchatExport } from '../imports/oaFastchat.js';
 
@@ -12,6 +13,12 @@ async function readStdin() {
     const chunks = [];
     for await (const chunk of process.stdin) chunks.push(chunk);
     return Buffer.concat(chunks).toString('utf-8');
+}
+
+function buildExportPath(format) {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const ext = format === 'zip' ? 'zip' : 'txt';
+    return resolve(process.cwd(), `memory-export-${stamp}.${ext}`);
 }
 
 /**
@@ -196,17 +203,20 @@ export async function search(positionals, flags, mem) {
 }
 
 export async function exportCmd(positionals, flags, mem) {
-    const format = flags.format || 'json';
+    const format = flags.format || 'txt';
     await mem.init();
     const all = await mem.storage.exportAll();
+    const files = all.filter(f => !f.path.endsWith('_index.md'));
+    const exportPath = buildExportPath(format);
 
     if (format === 'zip') {
         const zip = toZip(all);
-        process.stdout.write(zip);
-        return null; // raw bytes already written
+        await writeFile(exportPath, zip);
+    } else {
+        await writeFile(exportPath, serialize(all), 'utf-8');
     }
 
-    return serialize(all);
+    return { status: 'exported', files: files.length, format, path: exportPath };
 }
 
 

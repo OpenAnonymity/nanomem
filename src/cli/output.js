@@ -98,6 +98,12 @@ function formatAction(result) {
                 ['Sessions', result.sessions],
                 ['Files updated', result.totalWriteCalls],
             ]);
+        case 'exported':
+            return lines('\u2713 Memory exported', [
+                ['Files', result.files],
+                ['Format', result.format],
+                ['Path', result.path],
+            ]);
         case 'cleared':
             return lines('\u2713 Memory cleared', [
                 ['Files deleted', result.filesDeleted],

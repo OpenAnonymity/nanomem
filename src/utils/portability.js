@@ -105,8 +105,9 @@ export function toZip(records) {
     const localParts = [];   // raw bytes for local file entries
     const centralParts = []; // raw bytes for central directory entries
     let localOffset = 0;
+    const filtered = records.filter(r => !r.path.endsWith('_index.md'));
 
-    for (const { path, content } of records.filter(r => !r.path.endsWith('_index.md'))) {
+    for (const { path, content } of filtered) {
         const name = enc.encode(path);
         const data = enc.encode(content ?? '');
         const checksum = crc32(data);
@@ -160,8 +161,8 @@ export function toZip(records) {
         0x50, 0x4b, 0x05, 0x06, // signature
         0x00, 0x00,             // disk number
         0x00, 0x00,             // disk with central dir start
-        ...u16(records.length), // entries on this disk
-        ...u16(records.length), // total entries
+        ...u16(filtered.length), // entries on this disk
+        ...u16(filtered.length), // total entries
         ...u32(centralDir.length),
         ...u32(localOffset),    // central dir offset
         0x00, 0x00,             // comment length

@@ -51,7 +51,7 @@ Storage:
   write <path> --content <text>           Write content to a file (or pipe stdin)
   delete <path>                           Delete a file
   search <query>                          Search files by keyword
-  export [--format json|zip]              Export all memory
+  export [--format txt|zip]               Export all memory
   clear --confirm                         Delete all memory files
 ```
 
