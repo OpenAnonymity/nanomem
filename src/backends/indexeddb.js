@@ -35,10 +35,7 @@ class MemoryFileSystem extends BaseStorage {
 
             request.onsuccess = async (event) => {
                 this.db = event.target.result;
-                try {
-                    await this._bootstrap();
-                    await this._loadFacts();
-                } catch (err) {
+                try { await this._bootstrap(); } catch (err) {
                     console.warn('[MemoryFS] Init error:', err);
                 }
                 resolve(this.db);
@@ -115,6 +112,18 @@ class MemoryFileSystem extends BaseStorage {
         await this.rebuildIndex();
     }
 
+    async clear() {
+        await this.init();
+        await new Promise((resolve, reject) => {
+            const tx = this.db.transaction(STORE_NAME, 'readwrite');
+            const request = tx.objectStore(STORE_NAME).clear();
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+        this._initPromise = null;
+        await this._bootstrap();
+    }
+
     async exists(path) {
         await this.init();
         return new Promise((resolve, reject) => {
@@ -154,9 +163,7 @@ class MemoryFileSystem extends BaseStorage {
 
     async exportAll() {
         await this.init();
-        return (await this._getAll())
-            .filter(r => r.path !== '_facts.json')
-            .map(r => ({ ...r, content: this._resolveFacts(r.content) }));
+        return this._getAll();
     }
 
     // ─── Internal IndexedDB helpers ──────────────────────────────

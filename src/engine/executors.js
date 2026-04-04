@@ -74,14 +74,6 @@ export function createExtractionExecutors(backend, helpers = {}) {
             if (refreshIndex) await refreshIndex(path);
             return JSON.stringify({ success: true, path });
         },
-        create_new_folder: async ({ folder_path }) => {
-            const placeholderPath = `${folder_path}/about.md`;
-            const exists = await backend.exists(placeholderPath);
-            if (!exists) {
-                await backend.write(placeholderPath, '');
-            }
-            return JSON.stringify({ success: true, folder_path });
-        },
         append_memory: async ({ path, content }) => {
             const existing = await backend.read(path);
             const newContent = mergeWithExisting

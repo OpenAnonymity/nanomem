@@ -25,7 +25,6 @@ class InMemoryStorage extends BaseStorage {
             }
         }
 
-        await this._loadFacts();
     }
 
     async _readRaw(path) {
@@ -58,6 +57,12 @@ class InMemoryStorage extends BaseStorage {
         await this.rebuildIndex();
     }
 
+    async clear() {
+        this._files.clear();
+        this._initialized = false;
+        await this.init();
+    }
+
     async exists(path) {
         await this.init();
         return this._files.has(path);
@@ -86,9 +91,7 @@ class InMemoryStorage extends BaseStorage {
 
     async exportAll() {
         await this.init();
-        return [...this._files.values()]
-            .filter(r => r.path !== '_facts.json')
-            .map(r => ({ ...r, content: this._resolveFacts(r.content) }));
+        return [...this._files.values()];
     }
 
     async _listAllPaths() {

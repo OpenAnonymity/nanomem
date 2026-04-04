@@ -3,37 +3,25 @@
  *
  * Subclasses must implement:
  *   init()                            → void
- *   _readRaw(path)                    → string|null  (pure I/O, no fact resolution)
- *   _writeRaw(path, content, meta)    → void         (pure I/O, no fact interning)
+ *   _readRaw(path)                    → string|null
+ *   _writeRaw(path, content, meta)    → void
  *   delete(path)                      → void
  *   exists(path)                      → boolean
  *   rebuildIndex()                    → void         (regenerate _index.md)
  *   exportAll()                       → [{path, content, ...}]
  *
  * BaseStorage provides (NOT abstract — do not override):
- *   read(path)           → _readRaw + fact resolution
- *   write(path, content) → fact interning + _writeRaw + _persistFacts + rebuildIndex
+ *   read(path)           → _readRaw
+ *   write(path, content) → metadata generation + _writeRaw + rebuildIndex
  *
  * BaseStorage also provides default implementations for:
  *   search(query)   → [{path, snippet}]
  *   ls(dirPath)     → {files: string[], dirs: string[]}
  *   getIndex()      → string
- *
- * Fact store:
- *   All bullet lines written via write() are interned into _facts.json:
- *     { "0": "fact text | metadata...", "1": "...", ... }
- *   .md files on disk store references: "- {0}", "- {1}", etc.
- *   read() transparently resolves references back to full text.
- *   Deduplication: facts are keyed by their text before the first "|" pipe,
- *   so the same fact written with updated metadata reuses its existing ID.
  */
 import { parseMemoryBullets, extractMemoryTitles, countMemoryBullets } from '../bullets/index.js';
 
 export class BaseStorage {
-    constructor() {
-        this._facts = new Map();        // id (number) → factText (string)
-        this._factsByText = new Map();  // dedupeKey → id
-    }
 
     // ─── Abstract (backends must implement) ─────────────────────
 
@@ -44,16 +32,15 @@ export class BaseStorage {
     async exists(_path) { throw new Error('BaseStorage.exists() not implemented'); }
     async rebuildIndex() { throw new Error('BaseStorage.rebuildIndex() not implemented'); }
     async exportAll() { throw new Error('BaseStorage.exportAll() not implemented'); }
+    async clear() { throw new Error('BaseStorage.clear() not implemented'); }
 
-    // ─── Provided: transparent read/write ───────────────────────
+    // ─── Provided: read/write ───────────────────────────────────
 
     async read(path) {
-        const raw = await this._readRaw(path);
-        return raw == null ? null : this._resolveFacts(raw);
+        return this._readRaw(path);
     }
 
     async write(path, content) {
-        // Internal files bypass fact interning entirely.
         if (this._isInternalPath(path)) {
             await this._writeRaw(path, String(content || ''), {});
             return;
@@ -64,9 +51,7 @@ export class BaseStorage {
             itemCount: countMemoryBullets(str),
             titles: extractMemoryTitles(str),
         };
-        const rawContent = this._internFacts(str);
-        await this._writeRaw(path, rawContent, meta);
-        await this._persistFacts();
+        await this._writeRaw(path, str, meta);
         await this.rebuildIndex();
     }
 
@@ -85,13 +70,17 @@ export class BaseStorage {
         for (const rec of all) {
             if (this._isInternalPath(rec.path)) continue;
             const content = rec.content || '';
-            const idx = content.toLowerCase().indexOf(lowerQuery);
-            if (idx === -1) continue;
-            const start = Math.max(0, idx - 40);
-            const end = Math.min(content.length, idx + query.length + 40);
+            if (!content.toLowerCase().includes(lowerQuery)) continue;
+
+            // Return all lines that contain the query
+            const matchingLines = content.split('\n')
+                .filter(line => line.toLowerCase().includes(lowerQuery))
+                .map(line => line.trim())
+                .filter(Boolean);
+
             results.push({
                 path: rec.path,
-                snippet: (start > 0 ? '...' : '') + content.slice(start, end) + (end < content.length ? '...' : ''),
+                lines: matchingLines,
             });
         }
 
@@ -118,80 +107,10 @@ export class BaseStorage {
         return { files, dirs: [...dirSet] };
     }
 
-    // ─── Fact interning ─────────────────────────────────────────
-
-    /** Replace bullet lines with {id} references. Non-bullet lines pass through unchanged. */
-    _internFacts(content) {
-        return content.split('\n').map(line => {
-            const trimmed = line.trim();
-            if (!trimmed.startsWith('- ')) return line;
-            const bulletText = trimmed.slice(2);
-            if (/^\{\d+\}$/.test(bulletText)) return line; // already a reference
-            const id = this._internFact(bulletText);
-            return `- {${id}}`;
-        }).join('\n');
-    }
-
-    /** Intern one fact: return existing id (updating stored text) or assign new id. */
-    _internFact(bulletText) {
-        const key = this._dedupeKey(bulletText);
-        if (this._factsByText.has(key)) {
-            const id = this._factsByText.get(key);
-            this._facts.set(id, bulletText.trim()); // update with latest metadata
-            return id;
-        }
-        const id = this._facts.size;
-        this._facts.set(id, bulletText.trim());
-        this._factsByText.set(key, id);
-        return id;
-    }
-
-    /** Dedup key: text before first pipe, lowercased. Ignores metadata changes. */
-    _dedupeKey(bulletText) {
-        const pipeIdx = bulletText.indexOf('|');
-        const text = pipeIdx === -1 ? bulletText : bulletText.slice(0, pipeIdx);
-        return text.trim().toLowerCase();
-    }
-
-    // ─── Fact resolution ────────────────────────────────────────
-
-    /** Replace {id} references with full fact text. */
-    _resolveFacts(content) {
-        if (!content || !content.includes('{')) return content;
-        return content.replace(/\{(\d+)\}/g, (match, idStr) => {
-            const fact = this._facts.get(Number(idStr));
-            return fact ?? match;
-        });
-    }
-
-    // ─── Fact persistence ────────────────────────────────────────
-
-    async _loadFacts() {
-        try {
-            const raw = await this._readRaw('_facts.json');
-            if (!raw) return;
-            const obj = JSON.parse(raw);
-            for (const [idStr, text] of Object.entries(obj)) {
-                const id = Number(idStr);
-                this._facts.set(id, text);
-                if (text != null) this._factsByText.set(this._dedupeKey(text), id);
-            }
-        } catch { /* first run — no facts yet */ }
-    }
-
-    async _persistFacts() {
-        const obj = Object.fromEntries(this._facts);
-        await this._writeRaw('_facts.json', JSON.stringify(obj, null, 2), {
-            l0: `${this._facts.size} facts`,
-            itemCount: this._facts.size,
-            titles: [],
-        });
-    }
-
     // ─── Shared helpers ──────────────────────────────────────────
 
     _isInternalPath(path) {
-        return path === '_index.md' || path === '_facts.json';
+        return path === '_index.md';
     }
 
     /** Override for efficient path listing. Default uses exportAll(). */

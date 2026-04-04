@@ -15,7 +15,7 @@
 
 import { createMemory } from './src/index.js';
 import { readFile } from 'node:fs/promises';
-import { extractSessionsFromOAFastchatExport } from './src/utils/oaFastchat.js';
+import { extractSessionsFromOAFastchatExport } from './src/imports/oaFastchat.js';
 
 // ─── Config from env / CLI flag ──────────────────────────────
 // Usage:

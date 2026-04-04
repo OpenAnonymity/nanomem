@@ -103,6 +103,7 @@ export function createMemory(config = {}) {
             getIndex:     ()              => backend.getIndex(),
             rebuildIndex: ()              => rebuildIndex(),
             exportAll:    ()              => backend.exportAll(),
+            clear:        ()              => backend.clear(),
         },
 
         // ─── Utilities (portability) ──────────────────────────────
@@ -176,7 +177,7 @@ function _asyncBackend(loader) {
         return _loading;
     }
 
-    const methods = ['init', 'read', 'write', 'delete', 'exists', 'ls', 'search', 'getIndex', 'rebuildIndex', 'exportAll'];
+    const methods = ['init', 'read', 'write', 'delete', 'exists', 'ls', 'search', 'getIndex', 'rebuildIndex', 'exportAll', 'clear'];
     const proxy = {};
     for (const method of methods) {
         proxy[method] = async (...args) => (await resolve())[method](...args);
@@ -200,4 +201,4 @@ export {
     extractSessionsFromOAFastchatExport,
     extractConversationFromOAFastchatExport,
     listOAFastchatSessions
-} from './utils/oaFastchat.js';
+} from './imports/oaFastchat.js';

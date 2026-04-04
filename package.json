@@ -3,6 +3,9 @@
     "version": "0.1.0",
     "description": "LLM-driven personal memory with agentic retrieval, extraction, and compaction",
     "type": "module",
+    "bin": {
+        "memory": "./src/cli.js"
+    },
     "engines": {
         "node": ">=18"
     },

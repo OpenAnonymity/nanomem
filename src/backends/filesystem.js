@@ -2,9 +2,8 @@
  * FileSystemStorage — Node.js filesystem storage backend.
  *
  * Stores memory files as .md files on disk. Uses fs/promises (Node 18+).
- * _facts.json is stored alongside the .md files but excluded from indexes.
  */
-import { readdir, readFile, writeFile, unlink, mkdir, stat } from 'node:fs/promises';
+import { readdir, readFile, writeFile, unlink, mkdir, rm, stat } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { BaseStorage } from './BaseStorage.js';
 import { countMemoryBullets } from '../bullets/index.js';
@@ -32,7 +31,6 @@ class FileSystemStorage extends BaseStorage {
             }
         }
 
-        await this._loadFacts();
     }
 
     async _readRaw(path) {
@@ -62,6 +60,12 @@ class FileSystemStorage extends BaseStorage {
         await this.rebuildIndex();
     }
 
+    async clear() {
+        await rm(this._root, { recursive: true, force: true });
+        this._initialized = false;
+        await this.init();
+    }
+
     async exists(path) {
         await this.init();
         try {
@@ -79,7 +83,7 @@ class FileSystemStorage extends BaseStorage {
         const fileRecords = [];
 
         for (const filePath of files) {
-            const content = await this.read(filePath); // resolved
+            const content = await this.read(filePath);
             let updatedAt = Date.now();
             try {
                 const s = await stat(this._resolve(filePath));
@@ -102,8 +106,7 @@ class FileSystemStorage extends BaseStorage {
         const records = [];
 
         for (const filePath of allFiles) {
-            if (filePath === '_facts.json') continue;
-            const content = await this.read(filePath) || ''; // resolved
+            const content = await this.read(filePath) || '';
             let updatedAt = Date.now();
             try {
                 const s = await stat(this._resolve(filePath));
@@ -152,7 +155,7 @@ class FileSystemStorage extends BaseStorage {
             const relPath = dir ? `${dir}/${entry.name}` : entry.name;
             if (entry.isDirectory()) {
                 results.push(...await this._walkFiles(relPath));
-            } else if (entry.name.endsWith('.md') || entry.name === '_facts.json') {
+            } else if (entry.name.endsWith('.md')) {
                 results.push(relPath);
             }
         }
