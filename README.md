@@ -7,7 +7,10 @@ The system uses an LLM to decide what to save (extraction), what to recall (retr
 ## CLI
 
 ```bash
-npm install -g @openanonymity/memory
+# For local development in this repo:
+npm install -g .
+# or
+npm link
 ```
 
 Set an API key and start using it:
