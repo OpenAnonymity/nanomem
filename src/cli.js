@@ -108,6 +108,15 @@ async function main() {
         };
     }
 
+    // Wire progress for retrieve — surface fallback warnings to the user
+    if (commandName === 'retrieve' && !values.json && process.stderr.isTTY) {
+        memOpts.onProgress = ({ stage, message }) => {
+            if (stage === 'fallback') {
+                process.stderr.write(`Warning: ${message}\n`);
+            }
+        };
+    }
+
     const mem = createMemoryFromConfig(config, commandName, memOpts);
     const result = await handler(commandArgs, values, mem, config, { showProgress });
 

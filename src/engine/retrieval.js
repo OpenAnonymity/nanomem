@@ -132,34 +132,29 @@ class MemoryRetrieval {
         const onProgress = this._onProgress;
         const onModelText = this._onModelText;
 
-        try {
-            onProgress?.({ stage: 'init', message: 'Reading memory index...' });
-            await this._backend.init();
-            const index = await this._backend.getIndex();
+        onProgress?.({ stage: 'init', message: 'Reading memory index...' });
+        await this._backend.init();
+        const index = await this._backend.getIndex();
 
-            if (!index || await this._isTrivialIndex(index)) {
-                return null;
-            }
-
-            let result;
-            try {
-                onProgress?.({ stage: 'retrieval', message: 'Selecting relevant memory files...' });
-                result = await this._toolCallingRetrieval(query, index, onProgress, conversationText, onModelText);
-            } catch (err) {
-                onProgress?.({ stage: 'retrieval', message: 'LLM unavailable, using fallback text search...' });
-                result = await this._textSearchFallbackWithLoad(query, onProgress, conversationText);
-            }
-
-            // Post-filter assembled context to remove facts already in the conversation
-            if (result?.assembledContext && conversationText) {
-                result.assembledContext = this._filterRedundantContext(result.assembledContext, conversationText);
-            }
-
-            return result;
-
-        } catch (error) {
+        if (!index || await this._isTrivialIndex(index)) {
             return null;
         }
+
+        let result;
+        try {
+            onProgress?.({ stage: 'retrieval', message: 'Selecting relevant memory files...' });
+            result = await this._toolCallingRetrieval(query, index, onProgress, conversationText, onModelText);
+        } catch (err) {
+            onProgress?.({ stage: 'fallback', message: `LLM unavailable (${err.message || err}) — falling back to keyword search. Results may be less accurate.` });
+            result = await this._textSearchFallbackWithLoad(query, onProgress, conversationText);
+        }
+
+        // Post-filter assembled context to remove facts already in the conversation
+        if (result?.assembledContext && conversationText) {
+            result.assembledContext = this._filterRedundantContext(result.assembledContext, conversationText);
+        }
+
+        return result;
     }
 
     async _toolCallingRetrieval(query, index, onProgress, conversationText, onModelText) {

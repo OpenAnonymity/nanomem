@@ -7,7 +7,9 @@ This document covers the implementation details of `@openanonymity/memory`. For 
 ```text
 src/
   index.js              — entry point, public API factory
-  core/
+  cli.js                — CLI entry point
+  cli/                  — CLI: config, commands, help, output formatting
+  engine/
     retrieval.js        — read path: find relevant memories
     extractor.js        — write path: save new memories
     compactor.js        — maintenance: consolidate memories
@@ -20,18 +22,20 @@ src/
     compaction.js       — deduplication, tier assignment, strength ordering
     bulletIndex.js      — in-memory cache of parsed bullets
     index.js            — barrel re-export
-  storage/
+  backends/
     BaseStorage.js      — abstract interface + shared logic
     ram.js              — in-memory backend (testing/ephemeral)
     filesystem.js       — Node.js filesystem backend
     indexeddb.js        — browser IndexedDB backend
+    schema.js           — bootstrap and index generation
   llm/
     openai.js           — OpenAI-compatible API client
     anthropic.js        — Anthropic Messages API client
-  schema/
-    memorySchema.js     — bootstrap and index generation
   imports/
     oaFastchat.js       — conversation import from OA Fastchat exports
+    chatgpt.js          — conversation import from ChatGPT exports
+  utils/
+    portability.js      — serialize/toZip utilities
 ```
 
 Three layers:
@@ -161,9 +165,9 @@ The host application decides when to call `compact()`. The library does not sche
 ## Core Module Relationships
 
 ```text
-retrieval.js / extractor.js  — define tool schemas (what the LLM sees)
-executors.js                 — implement those tools (what runs when called)
-toolLoop.js                  — generic engine connecting the two
+engine/retrieval.js / engine/extractor.js  — define tool schemas (what the LLM sees)
+engine/executors.js                        — implement those tools (what runs when called)
+engine/toolLoop.js                         — generic engine connecting the two
 ```
 
 The executors are the bridge between the tool loop and storage. They translate tool calls like `read_file`, `append_memory` into storage operations.
@@ -232,9 +236,9 @@ Subclasses can override `_listAllPaths()` for more efficient `ls()` (e.g. filesy
 ## Recommended Reading Order
 
 1. `src/index.js` — public API and wiring
-2. `src/core/retrieval.js` — read path
-3. `src/core/extractor.js` — write path
-4. `src/core/executors.js` — tool implementations
-5. `src/core/toolLoop.js` — generic agentic loop
+2. `src/engine/retrieval.js` — read path
+3. `src/engine/extractor.js` — write path
+4. `src/engine/executors.js` — tool implementations
+5. `src/engine/toolLoop.js` — generic agentic loop
 6. `src/bullets/` — data format layer (start with `parser.js`, then `normalize.js`)
-7. `src/storage/BaseStorage.js` — storage interface
+7. `src/backends/BaseStorage.js` — storage interface
