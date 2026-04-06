@@ -33,7 +33,7 @@ export function createRetrievalExecutors(backend) {
             const allFiles = await backend.exportAll();
             const queryLower = query.toLowerCase();
             const pathMatches = allFiles
-                .filter(f => !f.path.endsWith('_index.md') && f.path.toLowerCase().includes(queryLower))
+                .filter(f => !f.path.endsWith('_tree.md') && f.path.toLowerCase().includes(queryLower))
                 .map(f => f.path);
 
             const seen = new Set();
@@ -101,7 +101,7 @@ export function createExtractionExecutors(backend, hooks = {}) {
             return JSON.stringify({ success: true, path, action: 'archived', removed: item_text });
         },
         delete_memory: async ({ path }) => {
-            if (path.endsWith('_index.md')) {
+            if (path.endsWith('_tree.md')) {
                 return JSON.stringify({ error: 'Cannot delete index files' });
             }
             await backend.delete(path);

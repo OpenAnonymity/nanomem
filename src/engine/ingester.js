@@ -178,13 +178,13 @@ class MemoryIngester {
     async ingest(messages, options = {}) {
         const updatedAt = options.updatedAt || todayIsoDate();
         const onToolCall = this._onToolCall;
-        if (!messages || messages.length < 2) return { status: 'skipped', writeCalls: 0 };
+        if (!messages || messages.length === 0) return { status: 'skipped', writeCalls: 0 };
 
         const conversationText = this._buildConversationText(messages);
         if (!conversationText) return { status: 'skipped', writeCalls: 0 };
 
         await this._backend.init();
-        const index = await this._backend.getIndex() || '';
+        const index = await this._backend.getTree() || '';
 
         const systemPrompt = EXTRACTION_SYSTEM_PROMPT
             .replace('{INDEX}', index);

@@ -7,17 +7,17 @@
  *   _writeRaw(path, content, meta)    → void
  *   delete(path)                      → void
  *   exists(path)                      → boolean
- *   rebuildIndex()                    → void         (regenerate _index.md)
+ *   rebuildTree()                    → void         (regenerate _tree.md)
  *   exportAll()                       → [{path, content, ...}]
  *
  * BaseStorage provides (NOT abstract — do not override):
  *   read(path)           → _readRaw
- *   write(path, content) → metadata generation + _writeRaw + rebuildIndex
+ *   write(path, content) → metadata generation + _writeRaw + rebuildTree
  *
  * BaseStorage also provides default implementations for:
  *   search(query)   → [{path, snippet}]
  *   ls(dirPath)     → {files: string[], dirs: string[]}
- *   getIndex()      → string
+ *   getTree()      → string
  */
 import { parseBullets, extractTitles, countBullets } from '../bullets/index.js';
 
@@ -30,7 +30,7 @@ export class BaseStorage {
     async _writeRaw(_path, _content, _meta) { throw new Error('BaseStorage._writeRaw() not implemented'); }
     async delete(_path) { throw new Error('BaseStorage.delete() not implemented'); }
     async exists(_path) { throw new Error('BaseStorage.exists() not implemented'); }
-    async rebuildIndex() { throw new Error('BaseStorage.rebuildIndex() not implemented'); }
+    async rebuildTree() { throw new Error('BaseStorage.rebuildTree() not implemented'); }
     async exportAll() { throw new Error('BaseStorage.exportAll() not implemented'); }
     async clear() { throw new Error('BaseStorage.clear() not implemented'); }
 
@@ -52,13 +52,13 @@ export class BaseStorage {
             titles: extractTitles(str),
         };
         await this._writeRaw(path, str, meta);
-        await this.rebuildIndex();
+        await this.rebuildTree();
     }
 
-    // ─── Shared: getIndex, search, ls ───────────────────────────
+    // ─── Shared: getTree, search, ls ───────────────────────────
 
-    async getIndex() {
-        return this.read('_index.md');
+    async getTree() {
+        return this.read('_tree.md');
     }
 
     async search(query) {
@@ -110,7 +110,7 @@ export class BaseStorage {
     // ─── Shared helpers ──────────────────────────────────────────
 
     _isInternalPath(path) {
-        return path === '_index.md';
+        return path === '_tree.md';
     }
 
     /** Override for efficient path listing. Default uses exportAll(). */

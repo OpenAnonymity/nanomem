@@ -7,8 +7,8 @@
  *
  *   Engine   (LLM-driven):  init, retrieve, ingest, compact
  *   Backends (storage ops): mem.storage.{ read, write, delete, exists,
- *                                           search, ls, getIndex,
- *                                           rebuildIndex, exportAll }
+ *                                           search, ls, getTree,
+ *                                           rebuildTree, exportAll }
  *   Utilities  (portability): mem.serialize(), mem.toZip()
  */
 
@@ -61,8 +61,8 @@ export function createMemoryBank(config = {}) {
         await bulletIndex.refreshPath(path);
     }
 
-    async function rebuildIndex() {
-        await backend.rebuildIndex();
+    async function rebuildTree() {
+        await backend.rebuildTree();
         await bulletIndex.rebuild();
     }
 
@@ -102,8 +102,8 @@ export function createMemoryBank(config = {}) {
             exists:       (path)          => backend.exists(path),
             search:       (query)         => backend.search(query),
             ls:           (dirPath)       => backend.ls(dirPath),
-            getIndex:     ()              => backend.getIndex(),
-            rebuildIndex: ()              => rebuildIndex(),
+            getTree:     ()              => backend.getTree(),
+            rebuildTree: ()              => rebuildTree(),
             exportAll:    ()              => backend.exportAll(),
             clear:        ()              => backend.clear(),
         },
@@ -179,7 +179,7 @@ function _asyncBackend(loader) {
         return _loading;
     }
 
-    const methods = ['init', 'read', 'write', 'delete', 'exists', 'ls', 'search', 'getIndex', 'rebuildIndex', 'exportAll', 'clear'];
+    const methods = ['init', 'read', 'write', 'delete', 'exists', 'ls', 'search', 'getTree', 'rebuildTree', 'exportAll', 'clear'];
     const proxy = {};
     for (const method of methods) {
         proxy[method] = async (...args) => (await resolve())[method](...args);

@@ -134,7 +134,7 @@ class MemoryRetriever {
 
         onProgress?.({ stage: 'init', message: 'Reading memory index...' });
         await this._backend.init();
-        const index = await this._backend.getIndex();
+        const index = await this._backend.getTree();
 
         if (!index || await this._isMemoryEmpty(index)) {
             return null;
@@ -407,7 +407,7 @@ class MemoryRetriever {
 
     async _isMemoryEmpty(index) {
         const all = await this._backend.exportAll();
-        const realFiles = all.filter(f => !f.path.endsWith('_index.md'));
+        const realFiles = all.filter(f => !f.path.endsWith('_tree.md'));
         if (realFiles.length === 0) return true;
         return !realFiles.some(f => (f.itemCount || 0) > 0);
     }

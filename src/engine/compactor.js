@@ -71,7 +71,7 @@ class MemoryCompactor {
         try {
             await this._backend.init();
             const allFiles = await this._backend.exportAll();
-            const realFiles = allFiles.filter((file) => !file.path.endsWith('_index.md'));
+            const realFiles = allFiles.filter((file) => !file.path.endsWith('_tree.md'));
 
             for (const file of realFiles) {
                 const compacted = await this._compactFile(file.path, file.content || '');

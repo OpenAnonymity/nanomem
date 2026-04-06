@@ -5,7 +5,7 @@
  */
 import { BaseStorage } from './BaseStorage.js';
 import { countBullets, extractTitles } from '../bullets/index.js';
-import { buildMemoryIndex, createBootstrapRecords } from './schema.js';
+import { buildTree, createBootstrapRecords } from './schema.js';
 
 const DB_NAME = 'oa-memory-fs';
 const DB_VERSION = 1;
@@ -109,7 +109,7 @@ class IndexedDBStorage extends BaseStorage {
             request.onsuccess = () => resolve();
             request.onerror = () => reject(request.error);
         });
-        await this.rebuildIndex();
+        await this.rebuildTree();
     }
 
     async clear() {
@@ -134,20 +134,20 @@ class IndexedDBStorage extends BaseStorage {
         });
     }
 
-    async rebuildIndex() {
+    async rebuildTree() {
         await this.init();
         const all = await this._getAll();
         const files = all
             .filter(r => !this._isInternalPath(r.path))
             .sort((a, b) => a.path.localeCompare(b.path));
-        const indexContent = buildMemoryIndex(files);
-        const existing = await this._get('_index.md');
+        const indexContent = buildTree(files);
+        const existing = await this._get('_tree.md');
         const now = Date.now();
 
         await new Promise((resolve, reject) => {
             const tx = this.db.transaction(STORE_NAME, 'readwrite');
             tx.objectStore(STORE_NAME).put({
-                path: '_index.md',
+                path: '_tree.md',
                 content: indexContent,
                 oneLiner: 'Root index of memory filesystem',
                 itemCount: 0,

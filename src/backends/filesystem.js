@@ -7,7 +7,7 @@ import { readdir, readFile, writeFile, unlink, mkdir, rm, stat } from 'node:fs/p
 import { join, dirname } from 'node:path';
 import { BaseStorage } from './BaseStorage.js';
 import { countBullets } from '../bullets/index.js';
-import { buildMemoryIndex, createBootstrapRecords } from './schema.js';
+import { buildTree, createBootstrapRecords } from './schema.js';
 
 class FileSystemStorage extends BaseStorage {
     constructor(rootDir) {
@@ -57,7 +57,7 @@ class FileSystemStorage extends BaseStorage {
         } catch (err) {
             if (err.code !== 'ENOENT') throw err;
         }
-        await this.rebuildIndex();
+        await this.rebuildTree();
     }
 
     async clear() {
@@ -76,7 +76,7 @@ class FileSystemStorage extends BaseStorage {
         }
     }
 
-    async rebuildIndex() {
+    async rebuildTree() {
         await this.init();
         const allFiles = await this._walkFiles();
         const files = allFiles.filter(f => !this._isInternalPath(f)).sort();
@@ -97,7 +97,7 @@ class FileSystemStorage extends BaseStorage {
             });
         }
 
-        await this._writeRaw('_index.md', buildMemoryIndex(fileRecords));
+        await this._writeRaw('_tree.md', buildTree(fileRecords));
     }
 
     async exportAll() {

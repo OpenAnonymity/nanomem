@@ -27,7 +27,7 @@ const FILE_PREFIX = '--- FILE: ';
  */
 export function serialize(records) {
     return records
-        .filter(({ path }) => !path.endsWith('_index.md'))
+        .filter(({ path }) => !path.endsWith('_tree.md'))
         .map(({ path, content }) => `${FILE_PREFIX}${path}\n${content ?? ''}`)
         .join('\n');
 }
@@ -105,7 +105,7 @@ export function toZip(records) {
     const localParts = [];   // raw bytes for local file entries
     const centralParts = []; // raw bytes for central directory entries
     let localOffset = 0;
-    const filtered = records.filter(r => !r.path.endsWith('_index.md'));
+    const filtered = records.filter(r => !r.path.endsWith('_tree.md'));
 
     for (const { path, content } of filtered) {
         const name = enc.encode(path);

@@ -132,8 +132,8 @@ await memory.storage.delete('temporary/old.md');
 await memory.storage.exists('health/allergies.md');
 await memory.storage.search('peanut');
 await memory.storage.ls('health');
-await memory.storage.getIndex();
-await memory.storage.rebuildIndex();
+await memory.storage.getTree();
+await memory.storage.rebuildTree();
 await memory.storage.exportAll();
 await memory.storage.clear();
 ```
@@ -230,12 +230,12 @@ class MyStorage extends BaseStorage {
     async _writeRaw(path, content, meta) { } // meta: { oneLiner, itemCount, titles }
     async delete(path) { }
     async exists(path) { }               // → boolean
-    async rebuildIndex() { }
+    async rebuildTree() { }
     async exportAll() { }                // → [{ path, content, updatedAt, itemCount, oneLiner }]
     async clear() { }                    // remove all data, re-init to ready state
 }
 
-// BaseStorage provides: read(), write(), search(), ls(), getIndex()
+// BaseStorage provides: read(), write(), search(), ls(), getTree()
 ```
 
 ## How Memory is Stored

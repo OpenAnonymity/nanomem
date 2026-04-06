@@ -30,7 +30,7 @@ class MemoryBulletIndex {
         this._pathToUpdatedAt.clear();
 
         for (const file of all) {
-            if (file.path.endsWith('_index.md')) continue;
+            if (file.path.endsWith('_tree.md')) continue;
             const bullets = this._parseForIndex(file.path, file.content || '');
             this._pathToBullets.set(file.path, bullets);
             this._pathToUpdatedAt.set(file.path, file.updatedAt || Date.now());
@@ -65,7 +65,7 @@ class MemoryBulletIndex {
 
     async refreshPath(path) {
         await this.init();
-        if (!path || path.endsWith('_index.md')) return;
+        if (!path || path.endsWith('_tree.md')) return;
 
         const content = await this._backend.read(path);
         if (content === null) {

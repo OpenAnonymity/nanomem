@@ -5,7 +5,7 @@
  */
 import { BaseStorage } from './BaseStorage.js';
 import { countBullets, extractTitles } from '../bullets/index.js';
-import { buildMemoryIndex, createBootstrapRecords } from './schema.js';
+import { buildTree, createBootstrapRecords } from './schema.js';
 
 class InMemoryStorage extends BaseStorage {
     constructor() {
@@ -54,7 +54,7 @@ class InMemoryStorage extends BaseStorage {
         if (this._isInternalPath(path)) return;
         await this.init();
         this._files.delete(path);
-        await this.rebuildIndex();
+        await this.rebuildTree();
     }
 
     async clear() {
@@ -68,17 +68,17 @@ class InMemoryStorage extends BaseStorage {
         return this._files.has(path);
     }
 
-    async rebuildIndex() {
+    async rebuildTree() {
         await this.init();
         const files = [...this._files.values()]
             .filter(r => !this._isInternalPath(r.path))
             .sort((a, b) => a.path.localeCompare(b.path));
-        const indexContent = buildMemoryIndex(files);
-        const existing = this._files.get('_index.md');
+        const indexContent = buildTree(files);
+        const existing = this._files.get('_tree.md');
         const now = Date.now();
 
-        this._files.set('_index.md', {
-            path: '_index.md',
+        this._files.set('_tree.md', {
+            path: '_tree.md',
             content: indexContent,
             oneLiner: 'Root index of memory filesystem',
             itemCount: 0,

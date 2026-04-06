@@ -9,7 +9,7 @@ export function buildBootstrapIndex() {
 export function createBootstrapRecords(now = Date.now()) {
     return [
         {
-            path: '_index.md',
+            path: '_tree.md',
             content: buildBootstrapIndex(),
             oneLiner: 'Root index of memory filesystem',
             parentPath: '',
@@ -19,7 +19,7 @@ export function createBootstrapRecords(now = Date.now()) {
     ];
 }
 
-export function buildMemoryIndex(files) {
+export function buildTree(files) {
     const lines = ['# Memory Index', ''];
 
     if (files.length > 0) {

@@ -17,10 +17,10 @@ test('round-trips multiple files', () => {
     assert.deepEqual(deserialize(serialize(records)), records);
 });
 
-test('_index.md is excluded from serialized output', () => {
+test('_tree.md is excluded from serialized output', () => {
     const records = [
         { path: 'profile.md', content: 'some facts' },
-        { path: '_index.md', content: '# Memory Index\n...' },
+        { path: '_tree.md', content: '# Memory Index\n...' },
     ];
     const result = deserialize(serialize(records));
     assert.equal(result.length, 1);

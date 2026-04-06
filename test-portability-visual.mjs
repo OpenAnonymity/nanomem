@@ -58,7 +58,7 @@ for (const { path, content } of records) {
 
 console.log('=== ROUND-TRIP CHECK ===\n');
 const original = await memory.storage.exportAll();
-const originalPaths = original.map(r => r.path).filter(p => !p.endsWith('_index.md')).sort();
+const originalPaths = original.map(r => r.path).filter(p => !p.endsWith('_tree.md')).sort();
 const deserializedPaths = records.map(r => r.path).sort();
 
 let allMatch = true;

@@ -215,7 +215,7 @@ export async function exportCmd(positionals, flags, mem) {
     const format = flags.format || 'txt';
     await mem.init();
     const all = await mem.storage.exportAll();
-    const files = all.filter(f => !f.path.endsWith('_index.md'));
+    const files = all.filter(f => !f.path.endsWith('_tree.md'));
     const exportPath = buildExportPath(format);
 
     if (format === 'zip') {
@@ -233,7 +233,7 @@ export async function exportCmd(positionals, flags, mem) {
 export async function clear(positionals, flags, mem, config) {
     await mem.init();
     const all = await mem.storage.exportAll();
-    const files = all.filter(f => !f.path.endsWith('_index.md'));
+    const files = all.filter(f => !f.path.endsWith('_tree.md'));
 
     if (!flags.confirm) {
         throw new Error(`This will delete ${files.length} file${files.length === 1 ? '' : 's'} in ${config.storagePath}. Run with --confirm to proceed.`);
@@ -246,7 +246,7 @@ export async function clear(positionals, flags, mem, config) {
 export async function status(positionals, flags, mem, config) {
     await mem.init();
     const all = await mem.storage.exportAll();
-    const files = all.filter(f => !f.path.endsWith('_index.md'));
+    const files = all.filter(f => !f.path.endsWith('_tree.md'));
 
     const dirs = new Set();
     for (const f of files) {
