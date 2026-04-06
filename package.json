@@ -9,19 +9,49 @@
     "engines": {
         "node": ">=18"
     },
-    "exports": {
-        ".": "./src/index.js",
-        "./bullets": "./src/bullets/index.js",
-        "./backends": "./src/backends/BaseStorage.js",
-        "./utils": "./src/utils/portability.js",
-        "./imports": "./src/imports/index.js",
-        "./llm": "./src/llm/openai.js",
-        "./llm/openai": "./src/llm/openai.js",
-        "./llm/anthropic": "./src/llm/anthropic.js"
+    "scripts": {
+        "build:types": "tsc",
+        "prepack": "tsc"
     },
+    "exports": {
+        ".": {
+            "types": "./types/index.d.ts",
+            "default": "./src/index.js"
+        },
+        "./bullets": {
+            "types": "./types/bullets/index.d.ts",
+            "default": "./src/bullets/index.js"
+        },
+        "./backends": {
+            "types": "./types/backends/BaseStorage.d.ts",
+            "default": "./src/backends/BaseStorage.js"
+        },
+        "./utils": {
+            "types": "./types/utils/portability.d.ts",
+            "default": "./src/utils/portability.js"
+        },
+        "./imports": {
+            "types": "./types/imports/index.d.ts",
+            "default": "./src/imports/index.js"
+        },
+        "./llm": {
+            "types": "./types/llm/openai.d.ts",
+            "default": "./src/llm/openai.js"
+        },
+        "./llm/openai": {
+            "types": "./types/llm/openai.d.ts",
+            "default": "./src/llm/openai.js"
+        },
+        "./llm/anthropic": {
+            "types": "./types/llm/anthropic.d.ts",
+            "default": "./src/llm/anthropic.js"
+        }
+    },
+    "types": "./types/index.d.ts",
     "main": "./src/index.js",
     "files": [
-        "src/"
+        "src/",
+        "types/"
     ],
     "keywords": [
         "memory",
@@ -31,5 +61,9 @@
         "retrieval",
         "extraction"
     ],
-    "license": "MIT"
+    "license": "MIT",
+    "devDependencies": {
+        "@types/node": "^25.5.2",
+        "typescript": "^6.0.2"
+    }
 }

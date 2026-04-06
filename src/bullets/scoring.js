@@ -1,6 +1,7 @@
 /**
  * Relevance scoring for memory bullet retrieval.
  */
+/** @import { Bullet } from '../types.js' */
 import {
     normalizeTier,
     normalizeStatus,
@@ -9,6 +10,11 @@ import {
     inferStatusFromSection,
 } from './normalize.js';
 
+/**
+ * @param {Partial<Bullet>} bullet
+ * @param {string[]} [queryTerms]
+ * @returns {number}
+ */
 export function scoreBullet(bullet, queryTerms = []) {
     const text = String(bullet?.text || '').toLowerCase();
     const topic = String(bullet?.topic || '').toLowerCase();
@@ -34,6 +40,10 @@ export function scoreBullet(bullet, queryTerms = []) {
     return score;
 }
 
+/**
+ * @param {string} query
+ * @returns {string[]}
+ */
 export function tokenizeQuery(query) {
     return String(query || '')
         .toLowerCase()

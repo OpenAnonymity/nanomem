@@ -6,14 +6,13 @@
  *
  * Uses `fetch` (built into Node 18+ and browsers).
  */
+/** @import { ChatCompletionParams, ChatCompletionResponse, LLMClient, LLMClientOptions, ToolCall } from '../types.js' */
 
 /**
- * @param {object} options
- * @param {string} options.apiKey
- * @param {string} [options.baseUrl='https://api.openai.com/v1']
- * @param {object} [options.headers] — extra headers merged into every request
+ * @param {LLMClientOptions} [options]
+ * @returns {LLMClient}
  */
-export function createOpenAIClient({ apiKey, baseUrl = 'https://api.openai.com/v1', headers = {} } = {}) {
+export function createOpenAIClient({ apiKey, baseUrl = 'https://api.openai.com/v1', headers = {} } = /** @type {LLMClientOptions} */ ({ apiKey: '' })) {
     // Normalize: strip trailing slash
     const base = baseUrl.replace(/\/+$/, '');
 
@@ -46,7 +45,7 @@ export function createOpenAIClient({ apiKey, baseUrl = 'https://api.openai.com/v
 
         return {
             content: choice.content || '',
-            tool_calls: (choice.tool_calls || []).map(tc => ({
+            tool_calls: (choice.tool_calls || []).map((tc) => ({
                 id: tc.id,
                 type: 'function',
                 function: {
@@ -76,7 +75,7 @@ export function createOpenAIClient({ apiKey, baseUrl = 'https://api.openai.com/v
 
         // Accumulate the full response from SSE deltas
         let content = '';
-        const toolCallAccumulator = new Map(); // index → { id, function: { name, arguments } }
+        const toolCallAccumulator = new Map();
 
         await readSSE(response, (chunk) => {
             const delta = chunk.choices?.[0]?.delta;
@@ -105,6 +104,7 @@ export function createOpenAIClient({ apiKey, baseUrl = 'https://api.openai.com/v
                         });
                     }
                     const acc = toolCallAccumulator.get(idx);
+                    if (!acc) continue;
                     if (tc.id) acc.id = tc.id;
                     if (tc.function?.name) acc.function.name += tc.function.name;
                     if (tc.function?.arguments) acc.function.arguments += tc.function.arguments;

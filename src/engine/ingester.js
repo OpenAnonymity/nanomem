@@ -4,6 +4,7 @@
  * Takes a conversation (array of messages) and uses tool-calling via the
  * agentic loop to decide whether to create/append/update memory files.
  */
+/** @import { IngestOptions, IngestResult, LLMClient, Message, StorageBackend, ToolDefinition } from '../types.js' */
 import { runAgenticToolLoop } from './toolLoop.js';
 import { createExtractionExecutors } from './executors.js';
 import {
@@ -17,6 +18,7 @@ import {
 
 const MAX_CONVERSATION_CHARS = 128000;
 
+/** @type {ToolDefinition[]} */
 const EXTRACTION_TOOLS = [
     {
         type: 'function',
@@ -155,10 +157,6 @@ Rules:
 
 
 class MemoryIngester {
-    /**
-     * @param {object} deps
-     * @param {Function} [deps.onToolCall] — callback(name, args, result)
-     */
     constructor({ backend, bulletIndex, llmClient, model, onToolCall }) {
         this._backend = backend;
         this._bulletIndex = bulletIndex;
@@ -170,10 +168,9 @@ class MemoryIngester {
     /**
      * Ingest memory from a conversation.
      *
-     * @param {Array<{role: string, content: string}>} messages
-     * @param {object} [options]
-     * @param {string} [options.updatedAt] — ISO date for bullet timestamps (defaults to today)
-     * @returns {Promise<{status: 'processed'|'skipped'|'error', writeCalls: number, error?: string}>}
+     * @param {Message[]} messages
+     * @param {IngestOptions} [options]
+     * @returns {Promise<IngestResult>}
      */
     async ingest(messages, options = {}) {
         const updatedAt = options.updatedAt || todayIsoDate();
@@ -214,7 +211,8 @@ class MemoryIngester {
             });
             toolCallLog = result.toolCallLog;
         } catch (error) {
-            return { status: 'error', writeCalls: 0, error: error.message };
+            const message = error instanceof Error ? error.message : String(error);
+            return { status: 'error', writeCalls: 0, error: message };
         }
 
         const writeTools = ['create_new_file', 'append_memory', 'update_memory', 'archive_memory', 'delete_memory'];

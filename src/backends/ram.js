@@ -3,6 +3,7 @@
  *
  * Data is lost when the process exits.
  */
+/** @import { ExportRecord, StorageMetadata } from '../types.js' */
 import { BaseStorage } from './BaseStorage.js';
 import { countBullets, extractTitles } from '../bullets/index.js';
 import { buildTree, createBootstrapRecords } from './schema.js';
@@ -50,6 +51,10 @@ class InMemoryStorage extends BaseStorage {
         });
     }
 
+    /**
+     * @param {string} path
+     * @returns {Promise<void>}
+     */
     async delete(path) {
         if (this._isInternalPath(path)) return;
         await this.init();
@@ -63,6 +68,10 @@ class InMemoryStorage extends BaseStorage {
         await this.init();
     }
 
+    /**
+     * @param {string} path
+     * @returns {Promise<boolean>}
+     */
     async exists(path) {
         await this.init();
         return this._files.has(path);
@@ -89,6 +98,7 @@ class InMemoryStorage extends BaseStorage {
         });
     }
 
+    /** @returns {Promise<ExportRecord[]>} */
     async exportAll() {
         await this.init();
         return [...this._files.values()];

@@ -6,6 +6,7 @@
  *
  * Based on the OA Fastchat chatgptImporter.
  */
+/** @import { ChatGptSession } from '../types.js' */
 import { safeDateIso } from '../bullets/normalize.js';
 
 const SKIP_CONTENT_TYPES = new Set([
@@ -17,6 +18,8 @@ const SKIP_CONTENT_TYPES = new Set([
 /**
  * Detect whether parsed JSON is a ChatGPT export.
  * ChatGPT exports are arrays of objects with `mapping` and `current_node`.
+ * @param {unknown} parsed
+ * @returns {boolean}
  */
 export function isChatGptExport(parsed) {
     if (!Array.isArray(parsed)) return false;
@@ -27,8 +30,8 @@ export function isChatGptExport(parsed) {
 
 /**
  * Parse a ChatGPT export into normalized sessions.
- * @param {Array} conversations — the parsed JSON array
- * @returns {Array<{ title: string, messages: Array<{ role: string, content: string }> }>}
+ * @param {unknown[]} conversations — the parsed JSON array
+ * @returns {ChatGptSession[]}
  */
 export function parseChatGptExport(conversations) {
     if (!Array.isArray(conversations)) {
@@ -54,6 +57,7 @@ function normalizeChatGptConversation(conversation) {
         const contentType = message?.content?.content_type || '';
         if (SKIP_CONTENT_TYPES.has(contentType)) continue;
 
+        /** @type {'assistant' | 'user'} */
         const role = authorRole === 'assistant' ? 'assistant' : 'user';
         const text = extractText(message?.content);
 
@@ -64,15 +68,11 @@ function normalizeChatGptConversation(conversation) {
 
     const title = (conversation?.title || '').trim() || null;
     const updatedAt = conversation?.update_time
-        ? safeDateIso(conversation.update_time * 1000)
+        ? safeDateIso(String(conversation.update_time * 1000))
         : null;
     return { title, messages, updatedAt };
 }
 
-/**
- * Walk the conversation tree from current_node to root to get the active message path.
- * Falls back to sorting all messages by create_time if current_node is missing.
- */
 function getConversationPathMessages(conversation) {
     const mapping = conversation?.mapping || {};
     const currentNode = conversation?.current_node;
@@ -100,10 +100,6 @@ function getConversationPathMessages(conversation) {
     return ordered.reverse();
 }
 
-/**
- * Detect ChatGPT internal tool invocations disguised as code blocks
- * (search queries, open refs, response_length payloads, etc.)
- */
 function isInternalToolCodeBlock(content) {
     if (!content || typeof content !== 'object') return false;
     const contentType = content.content_type || '';
@@ -131,10 +127,6 @@ function isInternalToolCodeBlock(content) {
     return false;
 }
 
-/**
- * Extract text content from a ChatGPT message content object.
- * Handles content.parts (strings), content.text, and code blocks.
- */
 function extractText(content) {
     if (!content || typeof content !== 'object') return '';
 

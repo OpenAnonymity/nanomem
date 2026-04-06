@@ -6,6 +6,7 @@
  *   high > medium > low
  *   newer > older
  */
+/** @import { Bullet, CompactionResult, CompactBulletsOptions, Confidence, Source } from '../types.js' */
 import {
     ensureBulletMetadata,
     normalizeFactText,
@@ -23,10 +24,13 @@ import {
 
 /**
  * Compact a list of bullets: deduplicate, assign tiers, enforce limits.
+ * @param {Bullet[]} bullets
+ * @param {CompactBulletsOptions} [options]
+ * @returns {CompactionResult}
  */
 export function compactBullets(bullets, options = {}) {
     const today = options.today || todayIsoDate();
-    const maxActivePerTopic = Number.isFinite(options.maxActivePerTopic)
+    const maxActivePerTopic = typeof options.maxActivePerTopic === 'number' && Number.isFinite(options.maxActivePerTopic)
         ? Math.max(1, options.maxActivePerTopic)
         : 24;
     const defaultTopic = normalizeTopic(options.defaultTopic || 'general');

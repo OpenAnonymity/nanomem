@@ -6,14 +6,13 @@
  *
  * Uses `fetch` (built into Node 18+ and browsers).
  */
+/** @import { ChatCompletionParams, ChatCompletionResponse, LLMClient, LLMClientOptions, LLMMessage, ToolCall, ToolDefinition } from '../types.js' */
 
 /**
- * @param {object} options
- * @param {string} options.apiKey
- * @param {string} [options.baseUrl='https://api.anthropic.com']
- * @param {object} [options.headers] — extra headers merged into every request
+ * @param {LLMClientOptions} [options]
+ * @returns {LLMClient}
  */
-export function createAnthropicClient({ apiKey, baseUrl = 'https://api.anthropic.com', headers = {} } = {}) {
+export function createAnthropicClient({ apiKey, baseUrl = 'https://api.anthropic.com', headers = {} } = /** @type {LLMClientOptions} */ ({ apiKey: '' })) {
     const base = baseUrl.replace(/\/+$/, '');
 
     function buildHeaders() {
@@ -25,10 +24,6 @@ export function createAnthropicClient({ apiKey, baseUrl = 'https://api.anthropic
         };
     }
 
-    /**
-     * Convert OpenAI-format messages to Anthropic format.
-     * Extracts system message and converts tool-related messages.
-     */
     function convertMessages(messages) {
         let system = '';
         const converted = [];
@@ -52,7 +47,7 @@ export function createAnthropicClient({ apiKey, baseUrl = 'https://api.anthropic
                 continue;
             }
 
-            if (msg.role === 'assistant' && msg.tool_calls?.length > 0) {
+            if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
                 // Build content blocks: text (if any) + tool_use blocks
                 const content = [];
                 if (msg.content) {
@@ -88,15 +83,12 @@ export function createAnthropicClient({ apiKey, baseUrl = 'https://api.anthropic
         return { system, messages: converted };
     }
 
-    /**
-     * Convert OpenAI-format tool definitions to Anthropic format.
-     */
     function convertTools(tools) {
         if (!tools || tools.length === 0) return undefined;
         return tools.map(t => ({
-            name: t.function?.name || t.name || '',
-            description: t.function?.description || t.description || '',
-            input_schema: t.function?.parameters || t.parameters || { type: 'object', properties: {} },
+            name: t.function?.name || '',
+            description: t.function?.description || '',
+            input_schema: t.function?.parameters || { type: 'object', properties: {} },
         }));
     }
 
@@ -152,7 +144,7 @@ export function createAnthropicClient({ apiKey, baseUrl = 'https://api.anthropic
         }
 
         let content = '';
-        const toolCalls = []; // { id, function: { name, arguments } }
+        const toolCalls = [];
         let currentToolIndex = -1;
 
         await readSSE(response, (event) => {
@@ -164,6 +156,7 @@ export function createAnthropicClient({ apiKey, baseUrl = 'https://api.anthropic
                     currentToolIndex++;
                     toolCalls.push({
                         id: block.id || '',
+                        type: 'function',
                         function: { name: block.name || '', arguments: '' },
                     });
                 }
@@ -205,13 +198,14 @@ function parseAnthropicResponse(data) {
             content += block.text;
         }
         if (block.type === 'tool_use') {
-            toolCalls.push({
+            toolCalls.push(/** @type {ToolCall} */ ({
                 id: block.id,
+                type: 'function',
                 function: {
                     name: block.name,
                     arguments: JSON.stringify(block.input || {}),
                 },
-            });
+            }));
         }
     }
 

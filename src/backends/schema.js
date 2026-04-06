@@ -1,6 +1,7 @@
 /**
  * Memory index generation and bootstrap.
  */
+/** @import { ExportRecord } from '../types.js' */
 
 export function buildBootstrapIndex() {
     return `# Memory Index\n\n_No memories yet._\n`;

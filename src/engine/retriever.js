@@ -5,6 +5,7 @@
  * and assemble relevant memory context. Falls back to brute-force text
  * search if the LLM call fails.
  */
+/** @import { LLMClient, Message, ProgressEvent, RetrievalResult, StorageBackend, ToolDefinition } from '../types.js' */
 import { runAgenticToolLoop } from './toolLoop.js';
 import { createRetrievalExecutors } from './executors.js';
 import {
@@ -20,6 +21,7 @@ const MAX_TOTAL_CONTEXT_CHARS = 4000;
 const MAX_SNIPPETS = 18;
 const MAX_RECENT_CONTEXT_CHARS = 2000;
 
+/** @type {ToolDefinition[]} */
 const RETRIEVAL_TOOLS = [
     {
         type: 'function',
@@ -105,11 +107,6 @@ Only include content that genuinely helps answer this specific query. Do not inc
 
 
 class MemoryRetriever {
-    /**
-     * @param {object} deps
-     * @param {Function} [deps.onProgress] — callback({ stage, message, tool?, args?, paths? })
-     * @param {Function} [deps.onModelText] — callback for intermediate model text
-     */
     constructor({ backend, bulletIndex, llmClient, model, onProgress, onModelText }) {
         this._backend = backend;
         this._bulletIndex = bulletIndex;
@@ -122,9 +119,9 @@ class MemoryRetriever {
     /**
      * Retrieve relevant memory context for a user query.
      *
-     * @param {string} query — the user's message text
-     * @param {string} [conversationText] — current session text for reference resolution
-     * @returns {Promise<{files: {path, content}[], paths: string[], assembledContext: string|null}|null>}
+     * @param {string} query the user's message text
+     * @param {string} [conversationText] current session text for reference resolution
+     * @returns {Promise<RetrievalResult | null>}
      */
     async retrieveForQuery(query, conversationText) {
         if (!query || !query.trim()) return null;
@@ -145,7 +142,8 @@ class MemoryRetriever {
             onProgress?.({ stage: 'retrieval', message: 'Selecting relevant memory files...' });
             result = await this._toolCallingRetrieval(query, index, onProgress, conversationText, onModelText);
         } catch (err) {
-            onProgress?.({ stage: 'fallback', message: `LLM unavailable (${err.message || err}) — falling back to keyword search. Results may be less accurate.` });
+            const message = err instanceof Error ? err.message : String(err);
+            onProgress?.({ stage: 'fallback', message: `LLM unavailable (${message}) — falling back to keyword search. Results may be less accurate.` });
             result = await this._textSearchFallbackWithLoad(query, onProgress, conversationText);
         }
 

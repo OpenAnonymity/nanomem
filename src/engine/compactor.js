@@ -7,6 +7,7 @@
  * - compactAll(): Force-compact all memory files immediately.
  * - maybeCompact(): Only runs if >=6 hours have passed since last run.
  */
+/** @import { LLMClient, StorageBackend } from '../types.js' */
 import {
     compactBullets,
     inferTopicFromPath,

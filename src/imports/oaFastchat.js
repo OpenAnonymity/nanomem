@@ -1,3 +1,5 @@
+/** @import { Message, SessionSummary, SessionWithConversation } from '../types.js' */
+
 function toArray(value) {
     return Array.isArray(value) ? value : [];
 }
@@ -8,7 +10,7 @@ function normalizeContent(content) {
     return String(content);
 }
 
-function matchesSession(session, { sessionId, sessionTitle }) {
+function matchesSession(session, { sessionId, sessionTitle } = /** @type {{ sessionId?: string, sessionTitle?: string }} */ ({})) {
     if (sessionId) return session?.id === sessionId;
     if (sessionTitle) return session?.title === sessionTitle;
     return true;
@@ -34,18 +36,27 @@ function toConversationMessages(messages, sessionOrder) {
             if (timeDiff !== 0) return timeDiff;
             return String(a?.id || '').localeCompare(String(b?.id || ''));
         })
-        .map((message) => ({
+        .map((message) => /** @type {Message} */ ({
             role: message?.role === 'assistant' ? 'assistant' : 'user',
             content: normalizeContent(message?.content)
         }))
         .filter((message) => message.content.trim());
 }
 
+/**
+ * @param {any} exportJson
+ * @returns {SessionSummary[]}
+ */
 export function listOAFastchatSessions(exportJson) {
     const sessions = toArray(exportJson?.data?.chats?.sessions);
     return sessions.map((session) => toSessionSummary(session));
 }
 
+/**
+ * @param {any} exportJson
+ * @param {{ sessionId?: string, sessionTitle?: string }} [options]
+ * @returns {SessionWithConversation[]}
+ */
 export function extractSessionsFromOAFastchatExport(exportJson, options = {}) {
     const sessions = toArray(exportJson?.data?.chats?.sessions);
     const messages = toArray(exportJson?.data?.chats?.messages);
@@ -84,6 +95,11 @@ export function extractSessionsFromOAFastchatExport(exportJson, options = {}) {
     return sessionsWithConversation;
 }
 
+/**
+ * @param {any} exportJson
+ * @param {{ sessionId?: string, sessionTitle?: string }} [options]
+ * @returns {{ session: SessionSummary | null, sessions: SessionSummary[], conversation: Message[] }}
+ */
 export function extractConversationFromOAFastchatExport(exportJson, options = {}) {
     const sessionsWithConversation = extractSessionsFromOAFastchatExport(exportJson, options);
     const sessionOrder = new Map(sessionsWithConversation.map((entry, index) => [entry.session.id, index]));

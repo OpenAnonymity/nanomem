@@ -1,6 +1,7 @@
 /**
  * Parsing and rendering for memory bullets.
  */
+/** @import { Bullet } from '../types.js' */
 import {
     safeDateIso,
     normalizeTier,
@@ -17,6 +18,10 @@ import {
 const BULLET_REGEX = /^\s*-\s+(.*)$/;
 const HEADING_REGEX = /^\s{0,3}#{1,6}\s+(.*)$/;
 
+/**
+ * @param {string} content
+ * @returns {Bullet[]}
+ */
 export function parseBullets(content) {
     const lines = String(content || '').split('\n');
     const bullets = [];
@@ -93,10 +98,18 @@ export function parseBullets(content) {
     return bullets;
 }
 
+/**
+ * @param {string} content
+ * @returns {number}
+ */
 export function countBullets(content) {
     return parseBullets(content).length;
 }
 
+/**
+ * @param {string} content
+ * @returns {string[]}
+ */
 export function extractTitles(content) {
     const lines = String(content || '').split('\n');
     const titles = [];
@@ -114,6 +127,10 @@ export function extractTitles(content) {
     return titles;
 }
 
+/**
+ * @param {Partial<Bullet>} bullet
+ * @returns {string}
+ */
 export function renderBullet(bullet) {
     const clean = ensureBulletMetadata(bullet);
     const metadata = [
@@ -160,6 +177,13 @@ function renderSection(lines, title, subsectionTitle, bullets, forceHistory = fa
     }
 }
 
+/**
+ * @param {Bullet[]} working
+ * @param {Bullet[]} longTerm
+ * @param {Bullet[]} history
+ * @param {{ titleTopic?: string }} [options]
+ * @returns {string}
+ */
 export function renderCompactedDocument(working, longTerm, history, options = {}) {
     const lines = [];
     const docTopic = normalizeTopic(options.titleTopic || inferDocumentTopic([...working, ...longTerm, ...history], 'general'));

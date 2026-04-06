@@ -3,6 +3,7 @@
  *
  * Stores memory files as .md files on disk. Uses fs/promises (Node 18+).
  */
+/** @import { ExportRecord, StorageMetadata } from '../types.js' */
 import { readdir, readFile, writeFile, unlink, mkdir, rm, stat } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { BaseStorage } from './BaseStorage.js';
@@ -27,7 +28,7 @@ class FileSystemStorage extends BaseStorage {
         if (entries.length === 0) {
             const seeds = createBootstrapRecords(Date.now());
             for (const seed of seeds) {
-                await this._writeRaw(seed.path, seed.content);
+                await this._writeRaw(seed.path, seed.content || '');
             }
         }
 
@@ -38,7 +39,7 @@ class FileSystemStorage extends BaseStorage {
         try {
             return await readFile(this._resolve(path), 'utf-8');
         } catch (err) {
-            if (err.code === 'ENOENT') return null;
+            if (err && typeof err === 'object' && 'code' in err && err.code === 'ENOENT') return null;
             throw err;
         }
     }
@@ -49,13 +50,17 @@ class FileSystemStorage extends BaseStorage {
         await writeFile(fullPath, String(content || ''), 'utf-8');
     }
 
+    /**
+     * @param {string} path
+     * @returns {Promise<void>}
+     */
     async delete(path) {
         if (this._isInternalPath(path)) return;
         await this.init();
         try {
             await unlink(this._resolve(path));
         } catch (err) {
-            if (err.code !== 'ENOENT') throw err;
+            if (!(err && typeof err === 'object' && 'code' in err && err.code === 'ENOENT')) throw err;
         }
         await this.rebuildTree();
     }
@@ -66,6 +71,10 @@ class FileSystemStorage extends BaseStorage {
         await this.init();
     }
 
+    /**
+     * @param {string} path
+     * @returns {Promise<boolean>}
+     */
     async exists(path) {
         await this.init();
         try {
@@ -79,7 +88,7 @@ class FileSystemStorage extends BaseStorage {
     async rebuildTree() {
         await this.init();
         const allFiles = await this._walkFiles();
-        const files = allFiles.filter(f => !this._isInternalPath(f)).sort();
+        const files = allFiles.filter((f) => !this._isInternalPath(f)).sort();
         const fileRecords = [];
 
         for (const filePath of files) {
@@ -100,6 +109,7 @@ class FileSystemStorage extends BaseStorage {
         await this._writeRaw('_tree.md', buildTree(fileRecords));
     }
 
+    /** @returns {Promise<ExportRecord[]>} */
     async exportAll() {
         await this.init();
         const allFiles = await this._walkFiles();
@@ -126,7 +136,7 @@ class FileSystemStorage extends BaseStorage {
 
     async _listAllPaths() {
         await this.init();
-        return (await this._walkFiles()).filter(p => !this._isInternalPath(p));
+        return (await this._walkFiles()).filter((p) => !this._isInternalPath(p));
     }
 
     // ─── Internal helpers ────────────────────────────────────────

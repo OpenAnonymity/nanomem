@@ -7,6 +7,7 @@
  * uses streaming to surface reasoning tokens in real time; otherwise
  * uses non-streaming requests for reliable tool call parsing.
  */
+/** @import { ToolLoopOptions, ToolLoopResult, ChatCompletionResponse, ToolCall, LLMMessage } from '../types.js' */
 
 const DEFAULT_MAX_ITERATIONS = 10;
 const DEFAULT_MAX_OUTPUT_TOKENS = 500;
@@ -15,22 +16,8 @@ const DEFAULT_TEMPERATURE = 0;
 /**
  * Run an agentic tool-calling loop.
  *
- * @param {object} options
- * @param {object} options.llmClient — { createChatCompletion, streamChatCompletion }
- * @param {string} options.model — model ID
- * @param {Array} options.tools — OpenAI-format tool definitions
- * @param {object} options.toolExecutors — { name: async (args) => resultString }
- * @param {Array} options.messages — initial messages (system + user)
- * @param {string} [options.terminalTool] — tool name that ends the loop, returning its args
- * @param {number} [options.maxIterations] — max loop iterations (default 10)
- * @param {number} [options.maxOutputTokens] — per-call token limit (default 500)
- * @param {number} [options.temperature] — sampling temperature (default 0)
- * @param {function} [options.onToolCall] — callback(name, args, result) for progress
- * @param {function} [options.onModelText] — callback(text, iteration) for intermediate text
- * @param {function} [options.onReasoning] — callback(chunk, iteration) for streaming reasoning tokens
- * @param {AbortSignal} [options.signal] — cancellation signal
- *
- * @returns {Promise<{textResponse: string, terminalToolResult: object|null, messages: Array, iterations: number, toolCallLog: Array}>}
+ * @param {ToolLoopOptions} options
+ * @returns {Promise<ToolLoopResult>}
  */
 export async function runAgenticToolLoop(options) {
     const {
@@ -113,7 +100,7 @@ export async function runAgenticToolLoop(options) {
         // Execute each tool call
         let hitTerminal = false;
         for (const tc of responseToolCalls) {
-            const toolName = tc.function?.name || tc.name || '';
+            const toolName = tc.function?.name || '';
             let args;
             try {
                 args = typeof tc.function?.arguments === 'string'
@@ -150,7 +137,8 @@ export async function runAgenticToolLoop(options) {
                 try {
                     result = await executor(args);
                 } catch (err) {
-                    result = JSON.stringify({ error: `Tool error: ${err.message}` });
+                    const message = err instanceof Error ? err.message : String(err);
+                    result = JSON.stringify({ error: `Tool error: ${message}` });
                 }
             }
 

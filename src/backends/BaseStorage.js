@@ -19,27 +19,37 @@
  *   ls(dirPath)     → {files: string[], dirs: string[]}
  *   getTree()      → string
  */
+/** @import { ExportRecord, ListResult, SearchResult, StorageMetadata } from '../types.js' */
 import { parseBullets, extractTitles, countBullets } from '../bullets/index.js';
 
 export class BaseStorage {
 
     // ─── Abstract (backends must implement) ─────────────────────
 
-    async init() { throw new Error('BaseStorage.init() not implemented'); }
-    async _readRaw(_path) { throw new Error('BaseStorage._readRaw() not implemented'); }
+    /** @returns {Promise<void>} */ async init() { throw new Error('BaseStorage.init() not implemented'); }
+    /** @returns {Promise<string | null>} */ async _readRaw(_path) { throw new Error('BaseStorage._readRaw() not implemented'); }
     async _writeRaw(_path, _content, _meta) { throw new Error('BaseStorage._writeRaw() not implemented'); }
-    async delete(_path) { throw new Error('BaseStorage.delete() not implemented'); }
-    async exists(_path) { throw new Error('BaseStorage.exists() not implemented'); }
-    async rebuildTree() { throw new Error('BaseStorage.rebuildTree() not implemented'); }
-    async exportAll() { throw new Error('BaseStorage.exportAll() not implemented'); }
-    async clear() { throw new Error('BaseStorage.clear() not implemented'); }
+    /** @param {string} _path @returns {Promise<void>} */ async delete(_path) { throw new Error('BaseStorage.delete() not implemented'); }
+    /** @param {string} _path @returns {Promise<boolean>} */ async exists(_path) { throw new Error('BaseStorage.exists() not implemented'); }
+    /** @returns {Promise<void>} */ async rebuildTree() { throw new Error('BaseStorage.rebuildTree() not implemented'); }
+    /** @returns {Promise<ExportRecord[]>} */ async exportAll() { throw new Error('BaseStorage.exportAll() not implemented'); }
+    /** @returns {Promise<void>} */ async clear() { throw new Error('BaseStorage.clear() not implemented'); }
 
     // ─── Provided: read/write ───────────────────────────────────
 
+    /**
+     * @param {string} path
+     * @returns {Promise<string | null>}
+     */
     async read(path) {
         return this._readRaw(path);
     }
 
+    /**
+     * @param {string} path
+     * @param {string} content
+     * @returns {Promise<void>}
+     */
     async write(path, content) {
         if (this._isInternalPath(path)) {
             await this._writeRaw(path, String(content || ''), {});
@@ -57,10 +67,15 @@ export class BaseStorage {
 
     // ─── Shared: getTree, search, ls ───────────────────────────
 
+    /** @returns {Promise<string | null>} */
     async getTree() {
         return this.read('_tree.md');
     }
 
+    /**
+     * @param {string} query
+     * @returns {Promise<SearchResult[]>}
+     */
     async search(query) {
         if (!query?.trim()) return [];
         const lowerQuery = query.toLowerCase();
@@ -87,6 +102,10 @@ export class BaseStorage {
         return results;
     }
 
+    /**
+     * @param {string} [dirPath]
+     * @returns {Promise<ListResult>}
+     */
     async ls(dirPath) {
         const allPaths = await this._listAllPaths();
         const prefix = dirPath ? dirPath + '/' : '';

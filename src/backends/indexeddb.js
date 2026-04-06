@@ -3,6 +3,7 @@
  *
  * Browser-only. Stores memory files in a separate 'oa-memory-fs' database.
  */
+/** @import { ExportRecord, StorageMetadata } from '../types.js' */
 import { BaseStorage } from './BaseStorage.js';
 import { countBullets, extractTitles } from '../bullets/index.js';
 import { buildTree, createBootstrapRecords } from './schema.js';
@@ -14,19 +15,25 @@ const STORE_NAME = 'memoryFiles';
 class IndexedDBStorage extends BaseStorage {
     constructor() {
         super();
+        /** @type {IDBDatabase | null} */
         this.db = null;
+        /** @type {Promise<IDBDatabase> | null} */
         this._initPromise = null;
     }
 
+    /** @returns {Promise<void>} */
     async init() {
-        if (this.db) return this.db;
-        if (this._initPromise) return this._initPromise;
+        if (this.db) return;
+        if (this._initPromise) {
+            await this._initPromise;
+            return;
+        }
 
-        this._initPromise = new Promise((resolve, reject) => {
+        this._initPromise = /** @type {Promise<IDBDatabase>} */ (new Promise((resolve, reject) => {
             const request = indexedDB.open(DB_NAME, DB_VERSION);
 
             request.onupgradeneeded = (event) => {
-                const db = event.target.result;
+                const db = /** @type {IDBOpenDBRequest} */ (event.target).result;
                 if (!db.objectStoreNames.contains(STORE_NAME)) {
                     const store = db.createObjectStore(STORE_NAME, { keyPath: 'path' });
                     store.createIndex('parentPath', 'parentPath', { unique: false });
@@ -34,20 +41,20 @@ class IndexedDBStorage extends BaseStorage {
             };
 
             request.onsuccess = async (event) => {
-                this.db = event.target.result;
+                this.db = /** @type {IDBOpenDBRequest} */ (event.target).result;
                 try { await this._bootstrap(); } catch (err) {
                     console.warn('[IndexedDBStorage] Init error:', err);
                 }
-                resolve(this.db);
+                resolve(/** @type {IDBDatabase} */ (this.db));
             };
 
             request.onerror = () => {
                 this._initPromise = null;
                 reject(request.error);
             };
-        });
+        }));
 
-        return this._initPromise;
+        await this._initPromise;
     }
 
     async _bootstrap() {
@@ -55,19 +62,19 @@ class IndexedDBStorage extends BaseStorage {
         if (all.length > 0) return;
 
         const seeds = createBootstrapRecords(Date.now());
-        return new Promise((resolve, reject) => {
-            const tx = this.db.transaction(STORE_NAME, 'readwrite');
+        return /** @type {Promise<void>} */ (new Promise((resolve, reject) => {
+            const tx = /** @type {IDBDatabase} */ (this.db).transaction(STORE_NAME, 'readwrite');
             const store = tx.objectStore(STORE_NAME);
             for (const seed of seeds) store.put(seed);
             tx.oncomplete = () => resolve();
             tx.onerror = () => reject(tx.error);
-        });
+        }));
     }
 
     async _readRaw(path) {
         await this.init();
         return new Promise((resolve, reject) => {
-            const tx = this.db.transaction(STORE_NAME, 'readonly');
+            const tx = /** @type {IDBDatabase} */ (this.db).transaction(STORE_NAME, 'readonly');
             const request = tx.objectStore(STORE_NAME).get(path);
             request.onsuccess = () => resolve(request.result?.content ?? null);
             request.onerror = () => reject(request.error);
@@ -91,61 +98,71 @@ class IndexedDBStorage extends BaseStorage {
             updatedAt: now,
         };
 
-        await new Promise((resolve, reject) => {
-            const tx = this.db.transaction(STORE_NAME, 'readwrite');
+        await /** @type {Promise<void>} */ (new Promise((resolve, reject) => {
+            const tx = /** @type {IDBDatabase} */ (this.db).transaction(STORE_NAME, 'readwrite');
             const request = tx.objectStore(STORE_NAME).put(record);
             request.onsuccess = () => resolve();
             request.onerror = () => reject(request.error);
-        });
+        }));
     }
 
+    /**
+     * @param {string} path
+     * @returns {Promise<void>}
+     */
     async delete(path) {
         if (this._isInternalPath(path)) return;
         await this.init();
 
-        await new Promise((resolve, reject) => {
-            const tx = this.db.transaction(STORE_NAME, 'readwrite');
+        await /** @type {Promise<void>} */ (new Promise((resolve, reject) => {
+            const tx = /** @type {IDBDatabase} */ (this.db).transaction(STORE_NAME, 'readwrite');
             const request = tx.objectStore(STORE_NAME).delete(path);
             request.onsuccess = () => resolve();
             request.onerror = () => reject(request.error);
-        });
+        }));
         await this.rebuildTree();
     }
 
+    /** @returns {Promise<void>} */
     async clear() {
         await this.init();
-        await new Promise((resolve, reject) => {
-            const tx = this.db.transaction(STORE_NAME, 'readwrite');
+        await /** @type {Promise<void>} */ (new Promise((resolve, reject) => {
+            const tx = /** @type {IDBDatabase} */ (this.db).transaction(STORE_NAME, 'readwrite');
             const request = tx.objectStore(STORE_NAME).clear();
             request.onsuccess = () => resolve();
             request.onerror = () => reject(request.error);
-        });
+        }));
         this._initPromise = null;
         await this._bootstrap();
     }
 
+    /**
+     * @param {string} path
+     * @returns {Promise<boolean>}
+     */
     async exists(path) {
         await this.init();
         return new Promise((resolve, reject) => {
-            const tx = this.db.transaction(STORE_NAME, 'readonly');
+            const tx = /** @type {IDBDatabase} */ (this.db).transaction(STORE_NAME, 'readonly');
             const request = tx.objectStore(STORE_NAME).getKey(path);
             request.onsuccess = () => resolve(request.result !== undefined);
             request.onerror = () => reject(request.error);
         });
     }
 
+    /** @returns {Promise<void>} */
     async rebuildTree() {
         await this.init();
         const all = await this._getAll();
         const files = all
-            .filter(r => !this._isInternalPath(r.path))
+            .filter((r) => !this._isInternalPath(r.path))
             .sort((a, b) => a.path.localeCompare(b.path));
         const indexContent = buildTree(files);
         const existing = await this._get('_tree.md');
         const now = Date.now();
 
-        await new Promise((resolve, reject) => {
-            const tx = this.db.transaction(STORE_NAME, 'readwrite');
+        await /** @type {Promise<void>} */ (new Promise((resolve, reject) => {
+            const tx = /** @type {IDBDatabase} */ (this.db).transaction(STORE_NAME, 'readwrite');
             tx.objectStore(STORE_NAME).put({
                 path: '_tree.md',
                 content: indexContent,
@@ -158,9 +175,10 @@ class IndexedDBStorage extends BaseStorage {
             });
             tx.oncomplete = () => resolve();
             tx.onerror = () => reject(tx.error);
-        });
+        }));
     }
 
+    /** @returns {Promise<ExportRecord[]>} */
     async exportAll() {
         await this.init();
         return this._getAll();
@@ -170,7 +188,7 @@ class IndexedDBStorage extends BaseStorage {
 
     async _get(path) {
         return new Promise((resolve, reject) => {
-            const tx = this.db.transaction(STORE_NAME, 'readonly');
+            const tx = /** @type {IDBDatabase} */ (this.db).transaction(STORE_NAME, 'readonly');
             const request = tx.objectStore(STORE_NAME).get(path);
             request.onsuccess = () => resolve(request.result ?? null);
             request.onerror = () => reject(request.error);
@@ -179,7 +197,7 @@ class IndexedDBStorage extends BaseStorage {
 
     async _getAll() {
         return new Promise((resolve, reject) => {
-            const tx = this.db.transaction(STORE_NAME, 'readonly');
+            const tx = /** @type {IDBDatabase} */ (this.db).transaction(STORE_NAME, 'readonly');
             const request = tx.objectStore(STORE_NAME).getAll();
             request.onsuccess = () => resolve(request.result || []);
             request.onerror = () => reject(request.error);

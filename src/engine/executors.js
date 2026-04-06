@@ -9,6 +9,7 @@
  * Each factory takes a storage backend and returns an object mapping
  * tool names to async functions: { tool_name: async (args) => resultString }
  */
+/** @import { ExtractionExecutorHooks, StorageBackend } from '../types.js' */
 import {
     compactBullets,
     inferTopicFromPath,
@@ -19,6 +20,7 @@ import {
 
 /**
  * Build tool executors for the retrieval (read) flow.
+ * @param {StorageBackend} backend
  */
 export function createRetrievalExecutors(backend) {
     return {
@@ -54,8 +56,8 @@ export function createRetrievalExecutors(backend) {
 
 /**
  * Build tool executors for the extraction (write) flow.
- * @param {object} backend — storage backend
- * @param {object} [hooks] — { normalizeContent, mergeWithExisting, refreshIndex }
+ * @param {StorageBackend} backend
+ * @param {ExtractionExecutorHooks} [hooks]
  */
 export function createExtractionExecutors(backend, hooks = {}) {
     const { normalizeContent, mergeWithExisting, refreshIndex } = hooks;

@@ -1,0 +1,20 @@
+{
+    "compilerOptions": {
+        "allowJs": true,
+        "checkJs": true,
+        "declaration": true,
+        "emitDeclarationOnly": true,
+        "declarationDir": "types",
+        "strict": false,
+        "noImplicitAny": false,
+        "strictNullChecks": true,
+        "target": "ES2022",
+        "module": "Node16",
+        "moduleResolution": "Node16",
+        "rootDir": "src",
+        "types": ["node"],
+        "skipLibCheck": true
+    },
+    "include": ["src/**/*.js"],
+    "exclude": ["src/cli.js", "src/cli/**"]
+}

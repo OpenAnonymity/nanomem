@@ -11,6 +11,7 @@
  *                                           rebuildTree, exportAll }
  *   Utilities  (portability): mem.serialize(), mem.toZip()
  */
+/** @import { LLMClient, MemoryBank, MemoryBankConfig, MemoryBankLLMConfig, Message, IngestOptions, RetrievalResult, StorageBackend } from './types.js' */
 
 import { createOpenAIClient } from './llm/openai.js';
 import { createAnthropicClient } from './llm/anthropic.js';
@@ -24,18 +25,11 @@ import { serialize, toZip } from './utils/portability.js';
 /**
  * Create a memory instance.
  *
- * @param {object} config
- * @param {object} [config.llm] — { apiKey, baseUrl, model, provider?, headers? }
- * @param {object} [config.llmClient] — custom LLM client (overrides config.llm)
- * @param {string} [config.model] — model ID (can also be set in config.llm.model)
- * @param {string|object} [config.storage='ram'] — 'ram' | 'filesystem' | 'indexeddb' | custom backend
- * @param {string} [config.storagePath] — root directory for filesystem backend
- * @param {Function} [config.onProgress] — retrieval progress callback({ stage, message, ... })
- * @param {Function} [config.onToolCall] — extraction tool call callback(name, args, result)
- * @param {Function} [config.onModelText] — intermediate model text callback(text)
+ * @param {MemoryBankConfig} [config]
+ * @returns {MemoryBank}
  */
 export function createMemoryBank(config = {}) {
-    const llmClient = config.llmClient || _createLlmClient(config.llm || {});
+    const llmClient = config.llmClient || _createLlmClient(config.llm);
     const model = config.model || config.llm?.model || 'gpt-4o';
     const backend = _createBackend(config.storage, config.storagePath);
     const bulletIndex = new MemoryBulletIndex(backend);
@@ -76,17 +70,15 @@ export function createMemoryBank(config = {}) {
         /**
          * Retrieve relevant memory context for a query.
          * @param {string} query
-         * @param {string} [conversationText] — current session text for reference resolution
-         * @returns {Promise<{files, paths, assembledContext}|null>}
+         * @param {string} [conversationText] current session text for reference resolution
+         * @returns {Promise<RetrievalResult | null>}
          */
         retrieve: (query, conversationText) => retrieval.retrieveForQuery(query, conversationText),
 
         /**
          * Ingest facts from a conversation into memory.
-         * @param {Array<{role: string, content: string}>} messages
-         * @param {object} [options]
-         * @param {string} [options.updatedAt] — ISO date to use for bullet timestamps (defaults to today)
-         * @returns {Promise<{status: string, writeCalls: number}>}
+         * @param {Message[]} messages
+         * @param {IngestOptions} [options]
          */
         ingest: (messages, options) => ingester.ingest(messages, options),
 
@@ -124,7 +116,7 @@ export function createMemoryBank(config = {}) {
 
 // ─── Internal Helpers ────────────────────────────────────────────
 
-function _createLlmClient(llmConfig) {
+function _createLlmClient(llmConfig = /** @type {MemoryBankLLMConfig} */ ({ apiKey: '' })) {
     const { apiKey, baseUrl, headers, provider } = llmConfig;
     if (!apiKey) {
         throw new Error('createMemoryBank: config.llm.apiKey is required (or provide config.llmClient)');
@@ -158,17 +150,13 @@ function _createBackend(storage, storagePath) {
         case 'indexeddb':
             return _asyncBackend(() => import('./backends/indexeddb.js').then(m => new m.IndexedDBStorage()));
         case 'filesystem':
-            return _asyncBackend(() => import('./backends/filesystem.js').then(m => new m.FileSystemStorage(storagePath)));
+            return _asyncBackend(() => import('./backends/filesystem.js').then(m => new m.FileSystemStorage(storagePath || '.memory')));
         case 'ram':
         default:
             return new InMemoryStorage();
     }
 }
 
-/**
- * Wraps an async backend loader into a synchronous proxy.
- * Defers dynamic import() to the first method call.
- */
 function _asyncBackend(loader) {
     let _backend = null;
     let _loading = null;
@@ -182,13 +170,18 @@ function _asyncBackend(loader) {
     const methods = ['init', 'read', 'write', 'delete', 'exists', 'ls', 'search', 'getTree', 'rebuildTree', 'exportAll', 'clear'];
     const proxy = {};
     for (const method of methods) {
-        proxy[method] = async (...args) => (await resolve())[method](...args);
+        proxy[method] = async (...args) => {
+            const backend = await resolve();
+            return backend[method](...args);
+        };
     }
-    return proxy;
+    return /** @type {StorageBackend} */ (proxy);
 }
 
 // ─── Re-exports ──────────────────────────────────────────────────
 
+/** Re-export all shared type definitions for consumers. */
+export * from './types.js';
 export { createOpenAIClient } from './llm/openai.js';
 export { createAnthropicClient } from './llm/anthropic.js';
 export { InMemoryStorage } from './backends/ram.js';

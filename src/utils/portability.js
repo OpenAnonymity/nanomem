@@ -8,6 +8,7 @@
  * `records` is the shape returned by backend.exportAll():
  *   [{ path: string, content: string }, ...]
  */
+/** @import { ExportRecord } from '../types.js' */
 
 // ─── Text serialization ───────────────────────────────────────────────────────
 
@@ -24,6 +25,8 @@ const FILE_PREFIX = '--- FILE: ';
  *
  * Note: file content must not contain a line that starts with "--- FILE: ".
  * This is extremely unlikely for memory markdown but worth being aware of.
+ * @param {ExportRecord[]} records
+ * @returns {string}
  */
 export function serialize(records) {
     return records
@@ -34,6 +37,7 @@ export function serialize(records) {
 
 /**
  * Reconstruct records from a serialized string produced by serialize().
+ * @param {string} str
  * @returns {{ path: string, content: string }[]}
  */
 export function deserialize(str) {
@@ -80,9 +84,7 @@ function crc32(data) {
     return (crc ^ 0xffffffff) >>> 0;
 }
 
-/** Little-endian 16-bit bytes */
 function u16(n) { return [(n & 0xff), (n >> 8) & 0xff]; }
-/** Little-endian 32-bit bytes */
 function u32(n) { return [(n & 0xff), (n >> 8) & 0xff, (n >> 16) & 0xff, (n >> 24) & 0xff]; }
 
 function concatU8(arrays) {
@@ -97,7 +99,7 @@ function concatU8(arrays) {
  * Produce a valid ZIP archive (STORE, no compression) from an array of records.
  * Works in Node.js ≥ 18 and modern browsers (uses TextEncoder + Uint8Array only).
  *
- * @param {{ path: string, content: string }[]} records
+ * @param {ExportRecord[]} records
  * @returns {Uint8Array}
  */
 export function toZip(records) {

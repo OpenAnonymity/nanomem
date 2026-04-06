@@ -1,6 +1,10 @@
+/** @import { Bullet, BulletItem, StorageBackend } from '../types.js' */
 import { parseBullets, todayIsoDate } from './index.js';
 
 class MemoryBulletIndex {
+    /**
+     * @param {StorageBackend} backend
+     */
     constructor(backend) {
         this._backend = backend;
         this._initialized = false;
@@ -9,6 +13,7 @@ class MemoryBulletIndex {
         this._pathToUpdatedAt = new Map();
     }
 
+    /** @returns {Promise<void>} */
     async init() {
         if (this._initialized) return;
         if (this._initPromise) return this._initPromise;
@@ -17,6 +22,7 @@ class MemoryBulletIndex {
         await this._initPromise;
     }
 
+    /** @returns {Promise<void>} */
     async rebuild() {
         this._initialized = false;
         this._initPromise = this._rebuild();
@@ -59,10 +65,25 @@ class MemoryBulletIndex {
             topic: path.split('/')[0] || 'general',
             updatedAt: today,
             expiresAt: null,
-            section: 'active'
+            reviewAt: null,
+            tier: 'long_term',
+            status: 'active',
+            source: null,
+            confidence: null,
+            explicitTier: false,
+            explicitStatus: false,
+            explicitSource: false,
+            explicitConfidence: false,
+            heading: 'General',
+            section: 'long_term',
+            lineIndex: 0
         }));
     }
 
+    /**
+     * @param {string} path
+     * @returns {Promise<void>}
+     */
     async refreshPath(path) {
         await this.init();
         if (!path || path.endsWith('_tree.md')) return;
@@ -79,6 +100,10 @@ class MemoryBulletIndex {
         this._pathToUpdatedAt.set(path, Date.now());
     }
 
+    /**
+     * @param {string[]} paths
+     * @returns {BulletItem[]}
+     */
     getBulletsForPaths(paths) {
         if (!this._initialized) return [];
         const items = [];
