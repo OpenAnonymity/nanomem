@@ -10,7 +10,7 @@ import { extractSessionsFromOAFastchatExport } from '../imports/oaFastchat.js';
 import { isChatGptExport, parseChatGptExport } from '../imports/chatgpt.js';
 import { parseMarkdownFiles } from '../imports/markdown.js';
 import { loginInteractive } from './auth.js';
-import { writeConfigFile, CONFIG_FILE_PATH } from './config.js';
+import { writeConfigFile, CONFIG_PATH } from './config.js';
 
 // ─── Helpers ─────────────────────────────────────────────────────
 
@@ -283,7 +283,7 @@ export async function status(positionals, flags, mem, config) {
         baseUrl: config.baseUrl,
         storage: config.storage,
         storagePath: config.storagePath,
-        configFile: CONFIG_FILE_PATH,
+        configFile: CONFIG_PATH,
         files: files.length,
         directories: [...dirs].sort(),
     };
@@ -292,12 +292,16 @@ export async function status(positionals, flags, mem, config) {
 export async function login(positionals, flags, mem, config) {
     // Non-interactive mode: --api-key provided as a flag
     if (flags['api-key']) {
-        const toSave = { provider: flags.provider || config.provider, apiKey: flags['api-key'] };
+        const toSave = {
+            provider: flags.provider || config.provider,
+            apiKey: flags['api-key'],
+            storage: flags.storage || config.storage || 'filesystem',
+        };
         if (flags.model) toSave.model = flags.model;
-        if (flags.path)  toSave.path  = flags.path;
+        if (flags.path)  toSave.storagePath = flags.path;
         await writeConfigFile(toSave);
-        return { status: 'logged_in', provider: toSave.provider, configFile: CONFIG_FILE_PATH };
+        return { status: 'logged_in', provider: toSave.provider, configFile: CONFIG_PATH };
     }
 
-    return loginInteractive(flags);
+    return loginInteractive();
 }

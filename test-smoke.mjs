@@ -26,9 +26,9 @@ import { extractSessionsFromOAFastchatExport } from './src/imports/oaFastchat.js
 //   node test-smoke.mjs --provider anthropic
 
 const PRESETS = {
-    tinfoil:   { envKey: 'TINFOIL_API_KEY',   baseUrl: 'https://inference.tinfoil.sh/v1', model: 'kimi-k2-5' },
-    openai:    { envKey: 'OPENAI_API_KEY',     baseUrl: 'https://api.openai.com/v1',       model: 'gpt-4o' },
-    anthropic: { envKey: 'ANTHROPIC_API_KEY',  baseUrl: 'https://api.anthropic.com',       model: 'claude-sonnet-4-6', provider: 'anthropic' },
+    tinfoil: { envKey: 'TINFOIL_API_KEY', baseUrl: 'https://inference.tinfoil.sh/v1', model: 'kimi-k2-5' },
+    openai: { envKey: 'OPENAI_API_KEY', baseUrl: 'https://api.openai.com/v1', model: 'gpt-5.4-mini' },
+    anthropic: { envKey: 'ANTHROPIC_API_KEY', baseUrl: 'https://api.anthropic.com', model: 'claude-sonnet-4-6', provider: 'anthropic' },
 };
 
 // CLI flags:
@@ -44,7 +44,7 @@ function getFlag(name) {
 }
 
 const flagValue = getFlag('provider');
-const storageFlag = getFlag('storage') || 'memory';
+const storageFlag = getFlag('storage') || 'ram';
 const storagePath = getFlag('path') || '/tmp/memory-smoke-test';
 const conversationJsonPath = getFlag('conversation-json');
 const sessionId = getFlag('session-id');
@@ -67,10 +67,10 @@ if (!selected) {
     process.exit(1);
 }
 
-const apiKey   = process.env.LLM_API_KEY || process.env[selected.envKey];
-const baseUrl  = process.env.LLM_BASE_URL  || selected.baseUrl;
-const model    = process.env.LLM_MODEL     || selected.model;
-const provider = process.env.LLM_PROVIDER  || selected.provider || undefined;
+const apiKey = process.env.LLM_API_KEY || process.env[selected.envKey];
+const baseUrl = process.env.LLM_BASE_URL || selected.baseUrl;
+const model = process.env.LLM_MODEL || selected.model;
+const provider = process.env.LLM_PROVIDER || selected.provider || undefined;
 
 if (!apiKey) {
     console.error(`No API key found. Set ${selected.envKey} or LLM_API_KEY`);

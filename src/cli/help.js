@@ -6,18 +6,15 @@ export const GLOBAL_HELP = `Usage: memory <command> [args] [flags]
 
 Commands:
 
-  Auth:
-    login                                   Save credentials to ~/.memory/config.json
+  Setup:
+    login                                   Configure provider, model, API key, and storage path
+    status                                  Show current config and storage stats
 
-  Info:
-    status                                  Show config and storage stats
-
-  Engine:
-    init                                    Initialize storage (seeds default files)
-    import <file|dir|->                     Import conversations and extract facts
+  Memory:
+    import <file|dir|->                     Import conversations or notes and extract facts
     retrieve <query> [--context <file>]     Retrieve relevant context for a query
     compact                                 Deduplicate and archive stale facts
-    export [--format txt|zip]               Export all memory to a txt file or a zip file
+    export [--format txt|zip]               Export all memory to a file
 
   Storage:
     ls [path]                               List files and directories
@@ -27,40 +24,27 @@ Commands:
     search <query>                          Search files by keyword
     clear --confirm                         Delete all memory files
 
-Global flags:
-  --api-key <key>         LLM API key (env: OPENAI_API_KEY, etc.)
-  --model <model>         Model ID (env: LLM_MODEL)
-  --provider <name>       Provider: openai | anthropic | tinfoil (env: LLM_PROVIDER)
-  --base-url <url>        Custom API endpoint (env: LLM_BASE_URL)
-  --storage <type>        Storage backend: filesystem | ram | indexeddb (default: filesystem)
+Flags:
+  --api-key <key>         LLM API key
+  --model <model>         Model ID
+  --provider <name>       Provider: openai | anthropic | tinfoil | custom
+  --base-url <url>        Custom API endpoint
   --path <dir>            Storage directory (default: ~/.memory)
-  --json                  Print command results as JSON (for scripting)
+  --json                  Force JSON output
   -h, --help              Show help
   -v, --version           Show version
 
-Environment variables:
-  OPENAI_API_KEY          OpenAI API key
-  ANTHROPIC_API_KEY       Anthropic API key
-  TINFOIL_API_KEY         Tinfoil API key
-  LLM_API_KEY             Override API key for any provider
-  LLM_BASE_URL            Override base URL
-  LLM_MODEL               Override model
-  LLM_PROVIDER            Override provider detection
-
 Examples:
-  memory init
-  memory import conversation.json
-  echo '[{"role":"user","content":"I like cats"}]' | memory import -
-  memory import chatgpt-export.json
+  memory login
+  memory import conversations.json
   memory import my-notes.md
+  memory import ./notes/
   memory retrieve "what are my hobbies?"
-  memory write notes/todo.md --content "buy groceries"
-  memory export
+  memory status
   memory export --format zip
 `;
 
 export const COMMAND_HELP = {
-    init: 'Usage: memory init\n\nInitialize the storage backend. Creates seed files if empty.',
     retrieve: 'Usage: memory retrieve <query> [--context <file>]\n\nRetrieve relevant memory context for a query.\nRequires an LLM API key.',
     compact: 'Usage: memory compact\n\nDeduplicate and archive stale facts across all memory files.\nRequires an LLM API key.',
     ls: 'Usage: memory ls [path]\n\nList files and directories in storage.',
@@ -69,20 +53,28 @@ export const COMMAND_HELP = {
     delete: 'Usage: memory delete <path>\n\nDelete a file from storage.',
     search: 'Usage: memory search <query>\n\nSearch files by keyword.',
     export: 'Usage: memory export [--format txt|zip]\n\nExport all memory to a timestamped file in the current directory.\nDefault format is txt (line-delimited text). Use --format zip for a ZIP archive.',
-    import: 'Usage: memory import <file|dir|->\n\nImport conversations and extract facts into memory.\n\nAuto-detects format:\n  - ChatGPT export (conversations.json from "Export data")\n  - OA Fastchat export (JSON with data.chats.sessions)\n  - JSON messages array ([{role, content}, ...])\n  - Plain text (User:/Assistant: lines)\n  - Markdown notes (any other text — splits by top-level headings)\n\nPass a directory to import all .md files from it recursively.\n\nFor multi-session exports, use --session-id or --session-title to filter.\nRequires an LLM API key.',
+    import: `Usage: memory import <file|dir|->
+
+Import conversations or notes and extract facts into memory.
+
+Auto-detects format:
+  - ChatGPT export (conversations.json from "Export data")
+  - OA Fastchat export (JSON with data.chats.sessions)
+  - JSON messages array ([{role, content}, ...])
+  - Plain text (User:/Assistant: lines)
+  - Markdown notes (splits by top-level headings)
+  - Directory (imports all .md files recursively)
+
+For multi-session exports, use --session-id or --session-title to filter.
+Requires an LLM API key.`,
     clear: 'Usage: memory clear --confirm\n\nDelete all memory files. Requires --confirm to prevent accidental data loss.',
     status: 'Usage: memory status\n\nShow resolved config and storage statistics.',
-    login: `Usage: memory login [--provider <name>] [--api-key <key>] [--model <model>] [--path <dir>]
+    login: `Usage: memory login
 
-Save credentials and preferences to ~/.memory/config.json.
+Walks you through provider, model, API key, and storage path.
+Config is saved to ~/.nanomem/config.json.
 
-Interactive mode (default):
-  Prompts for provider and API key. Works for OpenAI, Anthropic, and Tinfoil.
-  Pass --model or --path to also save those preferences:
-    memory login --model gpt-4o-mini
-    memory login --path ~/work/memory
-
-Non-interactive mode (for scripts):
-  memory login --provider openai --api-key sk-... --model gpt-4o-mini
-  memory login --provider anthropic --api-key sk-ant-...`,
+Non-interactive (for agents/scripts):
+  memory login --provider openai --api-key sk-... --model gpt-5.4-mini
+  memory login --provider anthropic --api-key sk-ant-... --path ~/project/memory`,
 };

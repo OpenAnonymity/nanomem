@@ -303,7 +303,7 @@
  * @property {string} apiKey
  * @property {string} [baseUrl]
  * @property {string} [model]
- * @property {'openai' | 'anthropic'} [provider]
+ * @property {'openai' | 'anthropic' | 'tinfoil' | 'custom' | string} [provider]
  * @property {Record<string, string>} [headers]
  */
 

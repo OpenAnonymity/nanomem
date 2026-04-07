@@ -4,36 +4,135 @@
  * All providers: API key paste
  */
 
-import { writeConfigFile, CONFIG_FILE_PATH } from './config.js';
+import { writeConfigFile, CONFIG_PATH, DEFAULT_STORAGE_PATH } from './config.js';
 
-// ─── Main entry point ─────────────────────────────────────────────
+// ─── ANSI helpers ────────────────────────────────────────────────
 
-export async function loginInteractive(flags = {}) {
-    const provider = await promptChoice('Provider', ['openai', 'anthropic', 'tinfoil']);
+const c = {
+    reset: '\x1b[0m',
+    bold: '\x1b[1m',
+    dim: '\x1b[2m',
+    cyan: '\x1b[36m',
+    green: '\x1b[32m',
+    yellow: '\x1b[33m',
+    white: '\x1b[37m',
+    gray: '\x1b[90m',
+};
 
-    const labels = { openai: 'OpenAI', anthropic: 'Anthropic', tinfoil: 'Tinfoil' };
-    const apiKey = await promptSecret(`Paste your ${labels[provider]} API key`);
+// ─── Provider / model definitions ────────────────────────────────
 
-    const toSave = { provider, apiKey };
-    if (flags.model) toSave.model = flags.model;
-    if (flags.path)  toSave.path  = flags.path;
+const PROVIDERS = [
+    { value: 'openai', label: 'OpenAI', desc: 'GPT-5.4 and variants' },
+    { value: 'anthropic', label: 'Anthropic', desc: 'Claude Sonnet & Opus' },
+    { value: 'tinfoil', label: 'Tinfoil', desc: 'Kimi, GPT-OSS, DeepSeek and more' },
+    { value: 'custom', label: 'Custom endpoint', desc: 'Any OpenAI-compatible API' },
+];
+
+const MODELS = {
+    openai: [
+        { value: 'gpt-5.4-nano', label: 'gpt-5.4-nano', desc: 'Fastest, lowest cost' },
+        { value: 'gpt-5.4-mini', label: 'gpt-5.4-mini', desc: 'Fast & affordable' },
+        { value: 'gpt-5.4', label: 'gpt-5.4', desc: 'Most capable' },
+    ],
+    anthropic: [
+        { value: 'claude-sonnet-4-6', label: 'claude-sonnet-4-6', desc: 'Balanced speed & quality' },
+        { value: 'claude-opus-4-6', label: 'claude-opus-4-6', desc: 'Most capable' },
+    ],
+    tinfoil: [
+        { value: 'kimi-k2-5', label: 'kimi-k2-5', desc: 'Kimi K2.5' },
+        { value: 'gpt-oss-120b', label: 'gpt-oss-120b', desc: 'Open-source GPT 120B' },
+        { value: 'deepseek-r1-0528', label: 'deepseek-r1-0528', desc: 'DeepSeek R1' },
+    ],
+};
+
+// ─── Main entry point ────────────────────────────────────────────
+
+export async function loginInteractive() {
+    // Header
+    process.stderr.write('\n');
+    process.stderr.write(`  ${c.bold}${c.cyan}Login${c.reset}\n`);
+    process.stderr.write('\n');
+    process.stderr.write(`  ${c.white}simple-memory uses an LLM provider for extraction and retrieval.${c.reset}\n`);
+    process.stderr.write(`  ${c.white}Select your provider, model, and paste your API key to get started.${c.reset}\n`);
+    process.stderr.write('\n');
+
+    // Step 1: Provider
+    process.stderr.write(`  ${c.dim}Select provider:${c.reset}\n`);
+    process.stderr.write('\n');
+    const provider = await promptSelect(PROVIDERS);
+
+    // Step 2: Base URL (custom endpoint only)
+    let baseUrl;
+    if (provider === 'custom') {
+        baseUrl = await promptText('Base URL (OpenAI-compatible)');
+    }
+
+    // Step 3: Model
+    let model;
+    if (provider === 'custom') {
+        model = await promptText('Model name');
+    } else {
+        const modelChoices = [
+            ...MODELS[provider],
+            { value: '__custom__', label: 'Custom', desc: 'Enter a model name manually' },
+        ];
+        process.stderr.write('\n');
+        process.stderr.write(`  ${c.dim}Select model:${c.reset}\n`);
+        process.stderr.write('\n');
+        const modelSelection = await promptSelect(modelChoices);
+        if (modelSelection === '__custom__') {
+            model = await promptText('Model name');
+        } else {
+            model = modelSelection;
+        }
+    }
+
+    // Step 4: API key
+    const labels = { openai: 'OpenAI', anthropic: 'Anthropic', tinfoil: 'Tinfoil', custom: 'API' };
+    const apiKey = await promptSecret(`${labels[provider]} key`);
+
+    // Step 5: Storage path
+    const defaultPath = DEFAULT_STORAGE_PATH;
+    const pathChoices = [
+        { value: defaultPath, label: defaultPath, desc: 'Default' },
+        { value: '__custom__', label: 'Custom', desc: 'Enter a path' },
+    ];
+    process.stderr.write('\n');
+    process.stderr.write(`  ${c.dim}Memory storage path:${c.reset}\n`);
+    process.stderr.write('\n');
+    let storagePath;
+    const pathSelection = await promptSelect(pathChoices);
+    if (pathSelection === '__custom__') {
+        storagePath = await promptText('Storage path');
+    } else {
+        storagePath = pathSelection;
+    }
+
+    const toSave = { provider, apiKey, model, storage: 'filesystem', storagePath };
+    if (baseUrl) toSave.baseUrl = baseUrl;
 
     await writeConfigFile(toSave);
-    return { status: 'logged_in', provider, configFile: CONFIG_FILE_PATH };
+
+    const displayProvider = provider === 'custom' ? baseUrl : labels[provider];
+    process.stderr.write('\n');
+    process.stderr.write(`  ${c.green}✔${c.reset} ${c.bold}Logged in${c.reset} ${c.dim}·${c.reset} ${displayProvider} ${c.dim}·${c.reset} ${model}\n`);
+    process.stderr.write(`  ${c.dim}Config saved to ${CONFIG_PATH}${c.reset}\n`);
+    process.stderr.write('\n');
+
+    return { status: 'logged_in_interactive', provider, model };
 }
 
-// ─── Arrow-key choice selector ────────────────────────────────────
+// ─── Numbered select with arrow keys ─────────────────────────────
 
-function promptChoice(label, choices) {
+function promptSelect(options) {
     if (!process.stdin.isTTY) {
-        throw new Error(`${label} selection requires an interactive terminal.`);
+        throw new Error('Selection requires an interactive terminal.');
     }
 
     return new Promise(resolve => {
         let idx = 0;
 
-        process.stderr.write(`\n? ${label}\n`);
-        drawChoices(choices, idx);
+        drawOptions(options, idx);
 
         const { stdin } = process;
         const wasRaw = stdin.isRaw;
@@ -54,23 +153,28 @@ function promptChoice(label, choices) {
                     process.stderr.write('\n');
                     process.exit(1);
                     break;
-                case '\x1b[A': // Up arrow
-                    idx = (idx - 1 + choices.length) % choices.length;
-                    redrawChoices(choices, idx);
+                case '\x1b[A': case 'k': // Up
+                    idx = (idx - 1 + options.length) % options.length;
+                    redrawOptions(options, idx);
                     break;
-                case '\x1b[B': // Down arrow
-                    idx = (idx + 1) % choices.length;
-                    redrawChoices(choices, idx);
+                case '\x1b[B': case 'j': // Down
+                    idx = (idx + 1) % options.length;
+                    redrawOptions(options, idx);
                     break;
-                case '\r': case '\n': { // Enter — collapse to single line
+                case '\r': case '\n': { // Enter
                     cleanup();
-                    // Move back to first choice line and show only the selected item
-                    process.stderr.write(`\x1b[${choices.length}A`);
-                    process.stderr.write(`\r\x1b[2K  \x1b[36m❯\x1b[0m ${choices[idx]}\n`);
-                    for (let i = 1; i < choices.length; i++) {
-                        process.stderr.write('\r\x1b[2K\n');
+                    const opt = options[idx];
+                    // Collapse to single selected line
+                    process.stderr.write(`\x1b[${options.length}A`);
+                    process.stderr.write(`\r\x1b[2K  ${c.green}❯${c.reset} ${c.bold}${opt.label}${c.reset} ${c.dim}· ${opt.desc}${c.reset}\n`);
+                    for (let i = 1; i < options.length; i++) {
+                        process.stderr.write('\x1b[2K\n');
                     }
-                    resolve(choices[idx]);
+                    // Move cursor back up to remove blank lines
+                    if (options.length > 1) {
+                        process.stderr.write(`\x1b[${options.length - 1}A`);
+                    }
+                    resolve(opt.value);
                     break;
                 }
             }
@@ -80,21 +184,79 @@ function promptChoice(label, choices) {
     });
 }
 
-function drawChoices(choices, selected) {
-    for (let i = 0; i < choices.length; i++) {
+function drawOptions(options, selected) {
+    for (let i = 0; i < options.length; i++) {
         const isSelected = i === selected;
-        const cursor = isSelected ? '\x1b[36m❯\x1b[0m' : ' ';
-        const text   = isSelected ? `\x1b[36m${choices[i]}\x1b[0m` : choices[i];
-        process.stderr.write(`  ${cursor} ${text}\n`);
+        const num = `${i + 1}.`;
+        if (isSelected) {
+            process.stderr.write(`  ${c.cyan}❯ ${num}${c.reset} ${c.white}${c.bold}${options[i].label}${c.reset} ${c.dim}· ${options[i].desc}${c.reset}\n`);
+        } else {
+            process.stderr.write(`    ${c.dim}${num}${c.reset} ${c.gray}${options[i].label} ${c.dim}· ${options[i].desc}${c.reset}\n`);
+        }
     }
 }
 
-function redrawChoices(choices, selected) {
-    process.stderr.write(`\x1b[${choices.length}A`);
-    drawChoices(choices, selected);
+function redrawOptions(options, selected) {
+    process.stderr.write(`\x1b[${options.length}A`);
+    drawOptions(options, selected);
 }
 
-// ─── Masked secret input ──────────────────────────────────────────
+// ─── Text input ──────────────────────────────────────────────────
+
+function promptText(label) {
+    if (!process.stdin.isTTY) {
+        throw new Error(`${label} input requires an interactive terminal.`);
+    }
+
+    return new Promise((resolve, reject) => {
+        process.stderr.write(`\n  ${c.cyan}?${c.reset} ${label}: `);
+
+        const { stdin } = process;
+        const wasRaw = stdin.isRaw;
+        stdin.setRawMode(true);
+        stdin.resume();
+        stdin.setEncoding('utf-8');
+
+        let value = '';
+
+        function cleanup() {
+            stdin.setRawMode(wasRaw);
+            stdin.pause();
+            stdin.removeListener('data', onData);
+        }
+
+        function onData(char) {
+            switch (char) {
+                case '\r': case '\n':
+                    cleanup();
+                    process.stderr.write('\n');
+                    if (!value) reject(new Error(`No ${label.toLowerCase()} entered.`));
+                    else resolve(value);
+                    break;
+                case '\u0003':
+                    cleanup();
+                    process.stderr.write('\n');
+                    process.exit(1);
+                    break;
+                case '\u007f': case '\b':
+                    if (value.length > 0) {
+                        value = value.slice(0, -1);
+                        process.stderr.write('\b \b');
+                    }
+                    break;
+                default:
+                    if (char >= ' ') {
+                        value += char;
+                        process.stderr.write(char);
+                    }
+            }
+        }
+
+        stdin.on('data', onData);
+    });
+}
+
+// ─── Masked secret input ─────────────────────────────────────────
 
 function promptSecret(label) {
     if (!process.stdin.isTTY) {
@@ -102,7 +264,7 @@ function promptSecret(label) {
     }
 
     return new Promise((resolve, reject) => {
-        process.stderr.write(`\n? ${label}: `);
+        process.stderr.write(`\n  ${c.cyan}?${c.reset} ${label}: `);
 
         const { stdin } = process;
         if (!stdin.isTTY) return reject(new Error('Not a TTY'));
@@ -128,21 +290,21 @@ function promptSecret(label) {
                     if (!value) reject(new Error('No key entered.'));
                     else resolve(value);
                     break;
-                case '\u0003': // Ctrl-C
+                case '\u0003':
                     cleanup();
                     process.stderr.write('\n');
                     process.exit(1);
                     break;
-                case '\u007f': case '\b': // Backspace
+                case '\u007f': case '\b':
                     if (value.length > 0) {
                         value = value.slice(0, -1);
-                        process.stderr.write('\b \b'); // erase last visible character
+                        process.stderr.write('\b \b');
                     }
                     break;
                 default:
                     if (char >= ' ') {
                         value += char;
-                        process.stderr.write(char);
+                        process.stderr.write('*');
                     }
             }
         }

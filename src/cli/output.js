@@ -115,6 +115,8 @@ function formatAction(result) {
                 ['Provider', result.provider],
                 ['Config',   result.configFile],
             ]);
+        case 'logged_in_interactive':
+            return null; // already printed by the interactive prompt
         case 'error':
             return `\u2717 Extraction failed: ${result.error || 'unknown error'}`;
         default:

@@ -1,66 +1,76 @@
-# @openanonymity/memory
+# @openanonymity/nanomem
 
-LLM-driven memory for agentic systems. Plug it into any agent to give it persistent, structured memory backed by markdown files.
+Personal memory you own.
 
-The system uses an LLM to decide what to save (extraction), what to recall (retrieval), and how to consolidate (compaction). Memory is stored as human-readable markdown — not hidden vector state.
+Import your ChatGPT history, notes, or conversation logs into a markdown memory folder that you can inspect, version, back up, and use from any agent.
 
-## Installation
+`nanomem` uses an LLM to decide what to save, what to retrieve, and how to consolidate updates over time, but the result stays in human-readable files instead of hidden vector state.
+
+## Why `nanomem`
+
+- Import existing history from tools like ChatGPT and OA exports
+- Keep memory in plain markdown files you can read and edit yourself
+- Use it as a personal memory folder or plug it into agents and scripts
+- Avoid lock-in: your memory is portable, local-first, and easy to export
+
+## Getting Started
 
 ```bash
 npm install -g @openanonymity/memory
 ```
 
-Then log in:
+### Set up once
 
 ```bash
 memory login
 ```
 
-Prompts for provider (openai / anthropic / tinfoil) and API key. Credentials are saved to `~/.memory/config.json`.
+This walks you through your provider, model, API key, and where to store your memory folder.
 
-Save a model preference or custom storage path alongside your key:
-```bash
-memory login --model gpt-4o-mini
-memory login --path ~/work/memory
-```
+Supports OpenAI, Anthropic, Tinfoil, and OpenAI-compatible endpoints. Your config is saved to `~/.nanomem/config.json`, and your memory lives in `~/.memory/` by default as plain markdown files.
 
-`--model` is optional. Defaults: `gpt-4o` (OpenAI), `claude-sonnet-4-6` (Anthropic), `kimi-k2-5` (Tinfoil).
-
-Non-interactive / CI:
-```bash
-memory login --provider openai --api-key sk-... --model gpt-4o-mini
-# or use environment variables — they always take precedence over the config file
-export OPENAI_API_KEY=sk-...
-```
-
-**Local development:**
-```bash
-npm install -g .   # or: npm link
-```
-
-## CLI
+Once you're set up, import the history or notes you want `nanomem` to organize:
 
 ```bash
-memory import conversation.json
+memory import conversations.json
 memory import my-notes.md
 memory import ./notes/
-memory retrieve "what are my hobbies?"
-memory status
 ```
 
-By default, memory stores files in `~/.memory` using the filesystem backend, and auto-detects your LLM provider from the API key you set (defaulting to `gpt-4o` for OpenAI, `claude-sonnet-4-6` for Anthropic, `kimi-k2-5` for Tinfoil). Override with flags or save permanently via `memory login`:
+`nanomem` turns those inputs into a persistent folder of human-readable memory that you can inspect, version, back up, and plug into your agents.
+
+Ask questions against that memory at any time:
 
 ```bash
-memory import file.json --path ~/my-memory --provider anthropic --model claude-haiku-4-5-20251001
-# or save once:
-memory login --path ~/my-memory --provider anthropic --model claude-haiku-4-5-20251001
+memory retrieve "what are my hobbies?"
+```
+
+### Scripted setup
+
+```bash
+memory login --provider openai --api-key sk-... --model gpt-5.4-mini
+memory login --provider anthropic --api-key sk-ant-... --model claude-sonnet-4-6 --path ~/project/memory
+```
+
+Use flags when you're wiring `nanomem` into agents, CI, or local scripts.
+
+## Common Commands
+
+```bash
+memory import conversation.json    # import a conversation export
+memory import my-notes.md          # import markdown notes
+memory import ./notes/             # import a whole notes folder
+memory retrieve "what are my hobbies?"
+memory compact                     # deduplicate and archive stale facts
+memory status                      # show config + storage stats
 ```
 
 ### Commands
 
 ```
-Auth:
-  login                                   Save credentials to ~/.memory/config.json
+Setup:
+  login                                   Configure provider, model, API key, and storage path
+  status                                  Show current config and storage stats
 
 Info:
   status                                  Show config and storage stats
@@ -81,18 +91,6 @@ Storage:
   clear --confirm                         Delete all memory files
 ```
 
-### Global Flags
-
-```
---api-key <key>         LLM API key (env: OPENAI_API_KEY, etc.)
---model <model>         Model ID (env: LLM_MODEL)
---provider <name>       Provider: openai | anthropic | tinfoil (env: LLM_PROVIDER)
---base-url <url>        Custom API endpoint (env: LLM_BASE_URL)
---storage <type>        Storage backend: filesystem | ram | indexeddb (default: filesystem)
---path <dir>            Storage directory (default: ~/.memory)
---json                  Force JSON output
-```
-
 ### Import Formats
 
 `memory import` auto-detects the input format:
@@ -105,21 +103,25 @@ Storage:
 - **Directory** — pass a folder to import all `.md` files recursively
 - Pipe from stdin: `echo '[{"role":"user","content":"I like cats"}]' | memory import -`
 
-### Environment Variables
+### Flags and Overrides
+
+Most users only need `memory login`. These flags are mainly for one-off overrides, agents, and scripts:
 
 ```
-OPENAI_API_KEY          OpenAI API key
-ANTHROPIC_API_KEY       Anthropic API key
-TINFOIL_API_KEY         Tinfoil API key
-LLM_API_KEY             Override API key for any provider
-LLM_BASE_URL            Override base URL
-LLM_MODEL               Override model
-LLM_PROVIDER            Override provider detection
+--api-key <key>         LLM API key
+--model <model>         Model ID
+--provider <name>       Provider: openai | anthropic | tinfoil | custom
+--base-url <url>        Custom API endpoint
+--storage <type>        Storage backend: filesystem | ram | indexeddb (default: filesystem)
+--path <dir>            Storage directory (default: ~/.memory)
+--json                  Force JSON output
 ```
 
-Priority order (highest wins): CLI flags → `LLM_*` env vars → provider env vars → `~/.memory/config.json` → defaults
+Environment variables (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `TINFOIL_API_KEY`) work as fallbacks if you haven't run `memory login`. The generic `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL`, and `LLM_PROVIDER` also work as fallbacks.
 
-## Library API
+Resolution order (highest wins): **CLI flags > config file > env vars > defaults**
+
+## Using It In Code
 
 ### Quick Start
 
@@ -127,13 +129,13 @@ Priority order (highest wins): CLI flags → `LLM_*` env vars → provider env v
 import { createMemoryBank } from '@openanonymity/memory';
 
 const memory = createMemoryBank({
-    llm: { apiKey: 'sk-...', model: 'gpt-4o' },
+    llm: { apiKey: 'sk-...', model: 'gpt-5.4' },
 });
 
 await memory.init();
 ```
 
-### High-level (LLM-driven)
+### High-level API
 
 ```js
 // Save facts from a conversation
@@ -153,7 +155,7 @@ const result = await memory.retrieve('Tell me more about that', conversationText
 await memory.compact();
 ```
 
-### Low-level (direct storage)
+### Storage API
 
 ```js
 await memory.storage.read('health/allergies.md');
@@ -168,7 +170,7 @@ await memory.storage.exportAll();
 await memory.storage.clear();
 ```
 
-### Utilities (portability)
+### Portability Utilities
 
 ```js
 const str = await memory.serialize();  // single string, all files
@@ -194,7 +196,7 @@ const memory = createMemoryBank({
     llm: { apiKey, baseUrl, model, provider, headers },
     // or bring your own client:
     llmClient: { createChatCompletion, streamChatCompletion },
-    model: 'gpt-4o',
+    model: 'gpt-5.4',
 
     // Storage backend (default: 'ram')
     storage: 'ram',              // 'ram' | 'filesystem' | 'indexeddb' | custom backend object
@@ -207,27 +209,20 @@ const memory = createMemoryBank({
 });
 ```
 
-## LLM Providers
-
-### OpenAI / Tinfoil / OpenRouter
+### LLM Providers
 
 ```js
+// OpenAI / Tinfoil / OpenRouter
 createMemoryBank({
-    llm: { apiKey: 'sk-...', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o' },
+    llm: { apiKey: 'sk-...', baseUrl: 'https://api.openai.com/v1', model: 'gpt-5.4' },
 });
-```
 
-### Anthropic
-
-```js
+// Anthropic
 createMemoryBank({
     llm: { apiKey: 'sk-ant-...', provider: 'anthropic', model: 'claude-sonnet-4-6' },
 });
-```
 
-### Custom LLM Client
-
-```js
+// Custom LLM client
 createMemoryBank({
     llmClient: {
         async createChatCompletion({ model, messages, tools, max_tokens, temperature }) {
@@ -268,7 +263,7 @@ class MyStorage extends BaseStorage {
 // BaseStorage provides: read(), write(), search(), ls(), getTree()
 ```
 
-## How Memory is Stored
+## How Memory Works On Disk
 
 Memory files are plain markdown with structured bullet metadata:
 
@@ -288,7 +283,7 @@ Memory files are plain markdown with structured bullet metadata:
 - Was on old medication | tier=history | status=superseded | updated_at=2025-03-12
 ```
 
-There is no hardcoded folder structure. The LLM organizes files into folders naturally based on the topics discussed.
+There is no hardcoded folder structure. Memory organizes files by topic as it learns about the user.
 
 ## Source Layout
 
