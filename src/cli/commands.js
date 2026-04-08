@@ -171,8 +171,14 @@ export async function importCmd(positionals, flags, mem, config, { showProgress 
         }
 
         const result = await mem.ingest(conv.messages, { updatedAt: conv.updatedAt, extractionMode });
-        if (result.status === 'error') {
-            process.stderr.write(`  ⚠ error: ${result.error}\n`);
+        if (showProgress) {
+            if (result.status === 'error') {
+                process.stderr.write(`  ⚠ error: ${result.error}\n`);
+            } else if (result.writeCalls > 0) {
+                process.stderr.write(`  → ${result.writeCalls} write${result.writeCalls === 1 ? '' : 's'}\n`);
+            } else {
+                process.stderr.write(`  → nothing to save\n`);
+            }
         }
         totalWriteCalls += result.writeCalls || 0;
         results.push({ session: label, messages: conv.messages.length, writeCalls: result.writeCalls, error: result.error });

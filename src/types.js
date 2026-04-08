@@ -16,7 +16,7 @@
  */
 
 /**
- * @typedef {'user_statement' | 'assistant_summary' | 'inference' | 'system'} Source
+ * @typedef {'user_statement' | 'llm_infer' | 'document' | 'document_infer' | 'assistant_summary' | 'inference' | 'system'} Source
  */
 
 /**
