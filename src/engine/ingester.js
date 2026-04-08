@@ -7,7 +7,7 @@
 /** @import { IngestOptions, IngestResult, LLMClient, Message, StorageBackend, ToolDefinition } from '../types.js' */
 import { runAgenticToolLoop } from './toolLoop.js';
 import { createExtractionExecutors } from './executors.js';
-import { resolvePromptSet } from '../prompts/index.js';
+import { resolvePromptSet } from '../prompt_sets/index.js';
 import {
     compactBullets,
     ensureBulletMetadata,
@@ -167,7 +167,7 @@ class MemoryIngester {
                     { role: 'user', content: userMessage }
                 ],
                 maxIterations: 12,
-                maxOutputTokens: isDocument ? 4000 : 500,
+                maxOutputTokens: 4000,
                 temperature: 0,
                 onToolCall: (name, args, result) => {
                     onToolCall?.(name, args, result);
