@@ -1,20 +1,20 @@
 {
-    "name": "@openanonymity/memory",
+    "name": "@openanonymity/nanomem",
     "version": "0.1.0",
     "description": "LLM-driven personal memory with agentic retrieval, extraction, and compaction",
     "type": "module",
     "bin": {
-        "memory": "./src/cli.js"
+        "nanomem": "./src/cli.js"
     },
     "engines": {
         "node": ">=18"
     },
     "repository": {
         "type": "git",
-        "url": "https://github.com/openanonymity/memory.git"
+        "url": "https://github.com/openanonymity/nanomem.git"
     },
     "bugs": {
-        "url": "https://github.com/openanonymity/memory/issues"
+        "url": "https://github.com/openanonymity/nanomem/issues"
     },
     "scripts": {
         "prepublishOnly": "npm run build:types",

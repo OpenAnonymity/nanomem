@@ -1,5 +1,5 @@
 /**
- * @openanonymity/memory — LLM-driven personal memory.
+ * @openanonymity/nanomem — LLM-driven personal memory.
  *
  * createMemoryBank(config) is the main entry point.
  *

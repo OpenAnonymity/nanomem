@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * CLI entry point for @openanonymity/memory.
+ * CLI entry point for @openanonymity/nanomem.
  *
- * Usage: memory <command> [args] [flags]
+ * Usage: nanomem <command> [args] [flags]
  */
 
 import { parseArgs } from 'node:util';

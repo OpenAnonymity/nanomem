@@ -32,13 +32,13 @@ Retrieval is only one part of memory. `nanomem` is built for the maintenance lay
 Install:
 
 ```bash
-npm install -g @openanonymity/memory
+npm install -g @openanonymity/nanomem
 ```
 
 Set up once:
 
 ```bash
-memory login
+nanomem login
 ```
 
 This walks you through provider, model, API key, and where to store your memory. Config is saved to `~/.nanomem/config.json`. Filesystem memory lives in `~/.memory/` by default.
@@ -46,28 +46,28 @@ This walks you through provider, model, API key, and where to store your memory.
 Import history or notes:
 
 ```bash
-memory import conversations.json
-memory import my-notes.md
-memory import ./notes/
+nanomem import conversations.json
+nanomem import my-notes.md
+nanomem import ./notes/
 ```
 
 Retrieve memory later:
 
 ```bash
-memory retrieve "what are my hobbies?"
+nanomem retrieve "what are my hobbies?"
 ```
 
 Compact and clean up memory:
 
 ```bash
-memory compact
+nanomem compact
 ```
 
 Scripted setup also works:
 
 ```bash
-memory login --provider openai --api-key sk-... --model gpt-5.4-mini
-memory login --provider anthropic --api-key sk-ant-... --model claude-sonnet-4-6 --path ~/project/memory
+nanomem login --provider openai --api-key sk-... --model gpt-5.4-mini
+nanomem login --provider anthropic --api-key sk-ant-... --model claude-sonnet-4-6 --path ~/project/memory
 ```
 
 Supported providers include OpenAI, Anthropic, Tinfoil, OpenRouter, and OpenAI-compatible endpoints via `--base-url`.
@@ -126,7 +126,7 @@ That structure is what lets the system do more than retrieval: it can keep track
 ## Using it in code
 
 ```js
-import { createMemoryBank } from '@openanonymity/memory';
+import { createMemoryBank } from '@openanonymity/nanomem';
 
 const memory = createMemoryBank({
   llm: { apiKey: 'sk-...', model: 'gpt-5.4-mini' },
@@ -148,16 +148,16 @@ await memory.compact();
 ## Common commands
 
 ```bash
-memory import <file|dir|->
-memory retrieve <query> [--context <file>]
-memory compact
-memory export --format zip
-memory status
+nanomem import <file|dir|->
+nanomem retrieve <query> [--context <file>]
+nanomem compact
+nanomem export --format zip
+nanomem status
 ```
 
 ## Import formats
 
-`memory import` supports:
+`nanomem import` supports:
 
 - ChatGPT exports
 - [OA Chat](https://chat.openanonymity.ai) exports
@@ -169,9 +169,9 @@ memory status
 Import can operate in both conversation-oriented and document-oriented modes, depending on the source or explicit flags.
 
 ```bash
-memory import conversations.json              # conversation mode
-memory import ./notes/                        # document mode (auto for directories)
-memory import my-notes.md --format markdown   # document mode (explicit)
+nanomem import conversations.json              # conversation mode
+nanomem import ./notes/                        # document mode (auto for directories)
+nanomem import my-notes.md --format markdown   # document mode (explicit)
 ```
 
 ## Storage backends

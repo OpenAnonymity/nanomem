@@ -1,5 +1,5 @@
 /**
- * Shared type definitions for @openanonymity/memory.
+ * Shared type definitions for @openanonymity/nanomem.
  *
  * This file contains only JSDoc typedefs. It has no runtime code.
  * Import types with: @import { TypeName } from './types.js'

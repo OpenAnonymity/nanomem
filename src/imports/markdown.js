@@ -6,7 +6,7 @@
  * as a user message, so the LLM extracts structured facts from it.
  *
  * Usage (library):
- *   import { parseMarkdownFiles } from '@openanonymity/memory/imports'
+ *   import { parseMarkdownFiles } from '@openanonymity/nanomem/imports'
  *   const sessions = parseMarkdownFiles([{ path: 'notes/health.md', content: '...' }])
  *   for (const session of sessions) await mem.ingest(session.messages)
  *

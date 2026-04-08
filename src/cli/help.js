@@ -2,7 +2,7 @@
  * CLI help text.
  */
 
-export const GLOBAL_HELP = `Usage: memory <command> [args] [flags]
+export const GLOBAL_HELP = `Usage: nanomem <command> [args] [flags]
 
 Commands:
 
@@ -35,25 +35,25 @@ Flags:
   -v, --version           Show version
 
 Examples:
-  memory login
-  memory import conversations.json
-  memory import my-notes.md
-  memory import ./notes/
-  memory retrieve "what are my hobbies?"
-  memory status
-  memory export --format zip
+  nanomem login
+  nanomem import conversations.json
+  nanomem import my-notes.md
+  nanomem import ./notes/
+  nanomem retrieve "what are my hobbies?"
+  nanomem status
+  nanomem export --format zip
 `;
 
 export const COMMAND_HELP = {
-    retrieve: 'Usage: memory retrieve <query> [--context <file>]\n\nRetrieve relevant memory context for a query.\nRequires an LLM API key.',
-    compact: 'Usage: memory compact\n\nDeduplicate and archive stale facts across all memory files.\nRequires an LLM API key.',
-    ls: 'Usage: memory ls [path]\n\nList files and directories in storage.',
-    read: 'Usage: memory read <path>\n\nRead a file from storage.',
-    write: 'Usage: memory write <path> [--content <text>]\n\nWrite content to a file. Reads from stdin if --content is not provided.',
-    delete: 'Usage: memory delete <path>\n\nDelete a file from storage.',
-    search: 'Usage: memory search <query>\n\nSearch files by keyword.',
-    export: 'Usage: memory export [--format txt|zip]\n\nExport all memory to a timestamped file in the current directory.\nDefault format is txt (line-delimited text). Use --format zip for a ZIP archive.',
-    import: `Usage: memory import <file|dir|->
+    retrieve: 'Usage: nanomem retrieve <query> [--context <file>]\n\nRetrieve relevant memory context for a query.\nRequires an LLM API key.',
+    compact: 'Usage: nanomem compact\n\nDeduplicate and archive stale facts across all memory files.\nRequires an LLM API key.',
+    ls: 'Usage: nanomem ls [path]\n\nList files and directories in storage.',
+    read: 'Usage: nanomem read <path>\n\nRead a file from storage.',
+    write: 'Usage: nanomem write <path> [--content <text>]\n\nWrite content to a file. Reads from stdin if --content is not provided.',
+    delete: 'Usage: nanomem delete <path>\n\nDelete a file from storage.',
+    search: 'Usage: nanomem search <query>\n\nSearch files by keyword.',
+    export: 'Usage: nanomem export [--format txt|zip]\n\nExport all memory to a timestamped file in the current directory.\nDefault format is txt (line-delimited text). Use --format zip for a ZIP archive.',
+    import: `Usage: nanomem import <file|dir|->
 
 Import conversations or notes and extract facts into memory.
 
@@ -67,14 +67,14 @@ Auto-detects format:
 
 For multi-session exports, use --session-id or --session-title to filter.
 Requires an LLM API key.`,
-    clear: 'Usage: memory clear --confirm\n\nDelete all memory files. Requires --confirm to prevent accidental data loss.',
-    status: 'Usage: memory status\n\nShow resolved config and storage statistics.',
-    login: `Usage: memory login
+    clear: 'Usage: nanomem clear --confirm\n\nDelete all memory files. Requires --confirm to prevent accidental data loss.',
+    status: 'Usage: nanomem status\n\nShow resolved config and storage statistics.',
+    login: `Usage: nanomem login
 
 Walks you through provider, model, API key, and storage path.
 Config is saved to ~/.nanomem/config.json.
 
 Non-interactive (for agents/scripts):
-  memory login --provider openai --api-key sk-... --model gpt-5.4-mini
-  memory login --provider anthropic --api-key sk-ant-... --path ~/project/memory`,
+  nanomem login --provider openai --api-key sk-... --model gpt-5.4-mini
+  nanomem login --provider anthropic --api-key sk-ant-... --path ~/project/memory`,
 };

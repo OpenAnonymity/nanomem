@@ -1,6 +1,6 @@
 # Memory System Internals
 
-This document gives a high-level view of how `@openanonymity/memory` works internally. For installation and usage, see the [README](../README.md).
+This document gives a high-level view of how `@openanonymity/nanomem` works internally. For installation and usage, see the [README](../README.md).
 
 ## Core Idea
 

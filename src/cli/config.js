@@ -40,12 +40,14 @@ export async function writeConfigFile(data) {
 // ─── Provider presets ───────────────────────────────────────────
 
 const PRESETS = {
-    tinfoil:    { envKey: 'TINFOIL_API_KEY',    baseUrl: 'https://inference.tinfoil.sh/v1', model: 'kimi-k2-5' },
-    openai:     { envKey: 'OPENAI_API_KEY',     baseUrl: 'https://api.openai.com/v1',       model: 'gpt-5.4-mini' },
-    anthropic:  { envKey: 'ANTHROPIC_API_KEY',  baseUrl: 'https://api.anthropic.com',       model: 'claude-sonnet-4-6', isAnthropic: true },
-    openrouter: { envKey: 'OPENROUTER_API_KEY', baseUrl: 'https://openrouter.ai/api/v1',    model: 'openai/gpt-4o',
-                  headers: { 'HTTP-Referer': 'https://github.com/openanonymity/memory', 'X-Title': 'simple-memory' } },
-    custom:     { envKey: null, baseUrl: null, model: null },
+    tinfoil: { envKey: 'TINFOIL_API_KEY', baseUrl: 'https://inference.tinfoil.sh/v1', model: 'kimi-k2-5' },
+    openai: { envKey: 'OPENAI_API_KEY', baseUrl: 'https://api.openai.com/v1', model: 'gpt-5.4-mini' },
+    anthropic: { envKey: 'ANTHROPIC_API_KEY', baseUrl: 'https://api.anthropic.com', model: 'claude-sonnet-4-6', isAnthropic: true },
+    openrouter: {
+        envKey: 'OPENROUTER_API_KEY', baseUrl: 'https://openrouter.ai/api/v1', model: 'openai/gpt-4o',
+        headers: { 'HTTP-Referer': 'https://github.com/openanonymity/nanomem', 'X-Title': 'nanomem' }
+    },
+    custom: { envKey: null, baseUrl: null, model: null },
 };
 
 // ─── Resolve config ─────────────────────────────────────────────
