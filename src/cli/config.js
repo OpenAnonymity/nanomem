@@ -85,7 +85,7 @@ export async function resolveConfig(flags) {
 
 const LLM_COMMANDS = new Set(['retrieve', 'extract', 'compact', 'import']);
 
-export function createMemoryFromConfig(config, command, { onToolCall, onProgress } = {}) {
+export function createMemoryFromConfig(config, command, { onToolCall, onProgress, onCompactProgress } = {}) {
     const needsLlm = LLM_COMMANDS.has(command);
 
     if (needsLlm && !config.apiKey) {
@@ -109,6 +109,7 @@ export function createMemoryFromConfig(config, command, { onToolCall, onProgress
         };
         if (onToolCall) opts.onToolCall = onToolCall;
         if (onProgress) opts.onProgress = onProgress;
+        if (onCompactProgress) opts.onCompactProgress = onCompactProgress;
     } else {
         opts.llmClient = {
             createChatCompletion() { throw new Error('This command requires an API key.'); },

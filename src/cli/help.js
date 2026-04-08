@@ -31,6 +31,7 @@ Flags:
   --base-url <url>        Custom API endpoint
   --path <dir>            Storage directory (default: ~/.memory)
   --json                  Force JSON output
+  --render-markdown       Render markdown for terminal output
   -h, --help              Show help
   -v, --version           Show version
 
@@ -48,7 +49,7 @@ export const COMMAND_HELP = {
     retrieve: 'Usage: nanomem retrieve <query> [--context <file>]\n\nRetrieve relevant memory context for a query.\nRequires an LLM API key.',
     compact: 'Usage: nanomem compact\n\nDeduplicate and archive stale facts across all memory files.\nRequires an LLM API key.',
     ls: 'Usage: nanomem ls [path]\n\nList files and directories in storage.',
-    read: 'Usage: nanomem read <path>\n\nRead a file from storage.',
+    read: 'Usage: nanomem read <path>\n\nRead a file from storage.\nUse --render-markdown to format markdown files for terminal display.',
     write: 'Usage: nanomem write <path> [--content <text>]\n\nWrite content to a file. Reads from stdin if --content is not provided.',
     delete: 'Usage: nanomem delete <path>\n\nDelete a file from storage.',
     search: 'Usage: nanomem search <query>\n\nSearch files by keyword.',

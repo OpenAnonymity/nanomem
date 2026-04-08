@@ -34,6 +34,7 @@ const OPTIONS = {
     'session-id':    { type: 'string' },
     'session-title': { type: 'string' },
     'confirm':       { type: 'boolean', default: false },
+    'render-markdown': { type: 'boolean', default: false },
 };
 
 const COMMAND_MAP = {
@@ -121,15 +122,6 @@ async function main() {
         };
     }
 
-    const mem = createMemoryFromConfig(config, commandName, memOpts);
-
-    // Spinner for operations that give no other feedback
-    const useSpinner = !values.json && process.stderr.isTTY &&
-        (commandName === 'retrieve' || commandName === 'compact');
-    const spinner = useSpinner && commandName === 'retrieve'
-        ? createSpinner('searching memory…')
-        : null;
-
     if (commandName === 'compact' && !values.json && process.stderr.isTTY) {
         const cc = {
             reset: '\x1b[0m', dim: '\x1b[2m',
@@ -155,6 +147,15 @@ async function main() {
             }
         };
     }
+
+    const mem = createMemoryFromConfig(config, commandName, memOpts);
+
+    // Spinner for operations that give no other feedback
+    const useSpinner = !values.json && process.stderr.isTTY &&
+        (commandName === 'retrieve' || commandName === 'compact');
+    const spinner = useSpinner && commandName === 'retrieve'
+        ? createSpinner('searching memory…')
+        : null;
 
     const result = await handler(commandArgs, values, mem, config, { showProgress, spinnerHolder });
 
