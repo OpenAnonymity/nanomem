@@ -308,7 +308,7 @@ export async function login(positionals, flags, mem, config) {
         const toSave = {
             provider: flags.provider || config.provider,
             apiKey: flags['api-key'],
-            storage: flags.storage || config.storage || 'filesystem',
+            storage: flags.storage || (flags.path ? 'filesystem' : null) || config.storage || 'filesystem',
         };
         if (flags.model) toSave.model = flags.model;
         if (flags.path)  toSave.storagePath = flags.path;

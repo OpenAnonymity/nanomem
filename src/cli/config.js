@@ -72,7 +72,7 @@ export async function resolveConfig(flags) {
     const baseUrl = flags['base-url'] || fileConfig.baseUrl || process.env.LLM_BASE_URL || preset.baseUrl;
     const model = flags.model || fileConfig.model || process.env.LLM_MODEL || preset.model;
     const headers = preset.headers || null;
-    const storage = flags.storage || fileConfig.storage || 'filesystem';
+    const storage = flags.storage || (flags.path ? 'filesystem' : null) || fileConfig.storage || 'filesystem';
     const rawPath = flags.path || fileConfig.storagePath || DEFAULT_STORAGE_PATH;
     const storagePath = rawPath.startsWith('~/') ? join(homedir(), rawPath.slice(2)) : rawPath;
 
