@@ -43,7 +43,7 @@ export function createMemoryBank(config = {}) {
         backend, bulletIndex, llmClient, model,
         onToolCall: config.onToolCall,
     });
-    const compactor = new MemoryCompactor({ backend, bulletIndex, llmClient, model });
+    const compactor = new MemoryCompactor({ backend, bulletIndex, llmClient, model, onProgress: config.onCompactProgress });
 
     async function write(path, content) {
         await backend.write(path, content);

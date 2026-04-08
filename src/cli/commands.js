@@ -202,8 +202,8 @@ export async function importCmd(positionals, flags, mem, config, { showProgress,
 
 export async function compact(positionals, flags, mem) {
     await mem.init();
-    await mem.compact();
-    return { status: 'compacted' };
+    const stats = await mem.compact();
+    return { status: 'compacted', filesChanged: stats?.filesChanged ?? 0, filesTotal: stats?.filesTotal ?? 0 };
 }
 
 export async function ls(positionals, flags, mem) {

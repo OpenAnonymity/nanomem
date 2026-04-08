@@ -126,9 +126,35 @@ async function main() {
     // Spinner for operations that give no other feedback
     const useSpinner = !values.json && process.stderr.isTTY &&
         (commandName === 'retrieve' || commandName === 'compact');
-    const spinner = useSpinner ? createSpinner(
-        commandName === 'retrieve' ? 'searching memory…' : 'compacting memory…'
-    ) : null;
+    const spinner = useSpinner && commandName === 'retrieve'
+        ? createSpinner('searching memory…')
+        : null;
+
+    if (commandName === 'compact' && !values.json && process.stderr.isTTY) {
+        const cc = {
+            reset: '\x1b[0m', dim: '\x1b[2m',
+            yellow: '\x1b[33m', gray: '\x1b[90m',
+        };
+        let activeSpinner = null;
+        process.stderr.write('\n');
+        memOpts.onCompactProgress = ({ stage, file, current, total, deduplicated, superseded, expired }) => {
+            if (stage === 'file') {
+                activeSpinner = createSpinner(`${cc.dim}(${current}/${total})${cc.reset} ${file}`);
+            } else if (stage === 'semantic') {
+                activeSpinner?.update(`reviewing working facts… ${cc.dim}${file}${cc.reset}`);
+            } else if (stage === 'file_done') {
+                const changes = [];
+                if (superseded   > 0) changes.push(`${superseded} superseded`);
+                if (deduplicated > 0) changes.push(`${deduplicated} deduplicated`);
+                if (expired      > 0) changes.push(`${expired} expired`);
+                const tag = changes.length > 0
+                    ? `${cc.yellow}${changes.join(', ')}${cc.reset}`
+                    : `${cc.dim}no changes${cc.reset}`;
+                activeSpinner?.stop(`  ${cc.gray}${file.padEnd(36)}${cc.reset}  ${tag}`);
+                activeSpinner = null;
+            }
+        };
+    }
 
     const result = await handler(commandArgs, values, mem, config, { showProgress, spinnerHolder });
 

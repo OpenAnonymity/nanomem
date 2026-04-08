@@ -84,11 +84,12 @@ Output only these lines, one per bullet, nothing else.`;
 // ─── Compactor ───────────────────────────────────────────────────
 
 class MemoryCompactor {
-    constructor({ backend, bulletIndex, llmClient, model }) {
+    constructor({ backend, bulletIndex, llmClient, model, onProgress }) {
         this._backend = backend;
         this._bulletIndex = bulletIndex;
         this._llmClient = llmClient;
         this._model = model;
+        this._onProgress = onProgress || null;
         this._running = false;
         this._fileSummaries = [];
     }
@@ -106,13 +107,22 @@ class MemoryCompactor {
                 .filter(f => f.oneLiner)
                 .map(f => ({ path: f.path, oneLiner: f.oneLiner }));
 
-            for (const file of realFiles) {
+            let filesChanged = 0;
+            const total = realFiles.length;
+
+            for (let i = 0; i < total; i++) {
+                const file = realFiles[i];
+                this._onProgress?.({ stage: 'file', file: file.path, current: i + 1, total });
+
                 const compacted = await this._compactFile(file.path, file.content || '');
                 if (!compacted) continue;
                 if (compacted.trim() === String(file.content || '').trim()) continue;
                 await this._backend.write(file.path, compacted);
                 await this._bulletIndex.refreshPath(file.path);
+                filesChanged++;
             }
+
+            return { filesChanged, filesTotal: total };
 
         } finally {
             this._running = false;
@@ -134,17 +144,24 @@ class MemoryCompactor {
         // Phase 1: deterministic dedup, tier assignment, expiry.
         const defaultTopic = inferTopicFromPath(path);
         const det = compactBullets(parsed, { defaultTopic });
+        const deduplicated = parsed.length - (det.working.length + det.longTerm.length + det.history.length);
+        const expired = det.history.filter(b => b.status === 'expired').length;
 
         // Phase 2: semantic review of Working bullets.
         // Only fires when Working bullets exist — skipped for stable long-term-only files.
         let working = det.working;
+        let superseded = 0;
         if (working.length > 0) {
+            this._onProgress?.({ stage: 'semantic', file: path });
             working = await this._semanticReviewWorking(working, det.longTerm, path);
+            superseded = working.filter(b => b.status === 'superseded').length;
         }
 
         // Re-run deterministic compaction so newly-superseded bullets flow to History.
         const allBullets = [...working, ...det.longTerm, ...det.history];
         const final = compactBullets(allBullets, { defaultTopic });
+
+        this._onProgress?.({ stage: 'file_done', file: path, deduplicated, superseded, expired });
 
         return renderCompactedDocument(
             final.working, final.longTerm, final.history,

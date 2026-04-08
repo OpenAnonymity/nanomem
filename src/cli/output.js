@@ -117,8 +117,14 @@ function formatAction(result) {
             return green(`✓ Written to ${result.path}`);
         case 'deleted':
             return green(`✓ Deleted ${result.path}`);
-        case 'compacted':
-            return green('✓ Memory compacted');
+        case 'compacted': {
+            const changed = result.filesChanged ?? 0;
+            const total   = result.filesTotal ?? 0;
+            const detail  = total > 0
+                ? `\n\n    ${dim('Files reviewed')}   ${bold(String(total))}\n    ${dim('Files updated')}    ${bold(String(changed))}`
+                : '';
+            return green('✓ Memory compacted') + detail;
+        }
         case 'processed':
             return section(green('✓ Facts extracted'), [
                 ['Files updated', result.writeCalls],
