@@ -4,12 +4,12 @@
  * Each mode provides an ingestionPrompt (and optionally others in future).
  * resolvePromptSet(mode) returns the full prompt set, falling back to 'conversation'.
  *
- * Adding a new mode: create src/prompts/<mode>.js, export ingestionPrompt,
+ * Adding a new mode: create src/prompt_sets/<mode>/ingestion.js, export ingestionPrompt,
  * then add it to PROMPT_SETS below.
  */
 
-import { ingestionPrompt as conversationIngestion } from './conversation.js';
-import { ingestionPrompt as documentIngestion } from './document.js';
+import { ingestionPrompt as conversationIngestion } from './conversation/ingestion.js';
+import { ingestionPrompt as documentIngestion } from './document/ingestion.js';
 
 /** @type {Record<string, { ingestionPrompt: string }>} */
 const PROMPT_SETS = {
