@@ -24,13 +24,13 @@ Current memory index:
 {INDEX}
 \`\`\`
 
-**Key principle: Create a NEW file for each distinct topic rather than cramming unrelated facts into one file.** Organize files into folders by domain (e.g. health/, work/, personal/) and create topic-specific files within them (e.g. health/allergies.md, work/role.md). The folder structure should emerge naturally from the topics discussed.
+**Key principle: Prefer fewer, broader files over many narrow ones.** Organize files into folders by domain (e.g. health/, work/, personal/). Within each folder, group related facts into the same file rather than splitting every sub-topic into its own file. Before creating a new file, check whether an existing file in the same domain could absorb the facts. A single file with many bullets on related sub-topics is better than many files with one or two bullets each.
 
 Instructions:
 1. Read the conversation below and identify facts the user explicitly stated.
 2. If a matching file already exists in the index, use read_file first to avoid duplicates.
 3. If no relevant file exists yet, create_new_file directly.
-4. Use append_memory to add to existing files when the topic matches, or create_new_file for new topics.
+4. Default to append_memory when an existing file covers the same domain or a closely related topic. Only use create_new_file when no existing file is thematically close.
 5. Use this bullet format: "- Fact text | topic=topic-name | source=SOURCE | confidence=LEVEL | updated_at=YYYY-MM-DD"
 6. Source values:
    - source=user_statement — the user directly said this. This is the PRIMARY source. Use it for the vast majority of saved facts.
@@ -43,8 +43,8 @@ Instructions:
 
 Rules:
 - Write facts in a timeless, archival format: use absolute dates (YYYY-MM-DD) rather than relative terms like "recently", "currently", "just", or "last week". A fact must be interpretable correctly even years after it was written.
-- One file per distinct topic. Do NOT put unrelated facts in the same file.
-- Create new files freely — it is better to have many focused files than one bloated file.
+- Favor broad thematic files. A file can hold multiple related sub-topics — only truly unrelated facts need separate files.
+- Only create a new file when nothing in the index is thematically close. When in doubt, append.
 - Use update_memory only if a fact is now stale or contradicted.
 - When a new explicit user statement contradicts an older one on the same topic, prefer the newer statement. If a user statement conflicts with an inference, the user statement always wins.
 - If a conflict is ambiguous, preserve both versions rather than deleting one.
