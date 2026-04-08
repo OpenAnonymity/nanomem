@@ -37,6 +37,7 @@ Instructions:
 8. If nothing meaningful can be extracted from a document, stop without calling any write tools.
 
 Rules:
+- Write facts in a timeless, archival format: use absolute dates (YYYY-MM-DD) rather than relative terms like "recently", "currently", "just", or "last week". A fact must be interpretable correctly even years after it was written.
 - One file per distinct topic. Do NOT put unrelated facts in the same file.
 - Create new files freely — focused files are better than bloated ones.
 - Content should be raw facts only — no filler commentary.`;

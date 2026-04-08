@@ -46,6 +46,7 @@ Input is one memory file. Rewrite it into:
 - fact | topic=<topic> | tier=history | status=superseded|expired|uncertain | source=user_statement|assistant_summary|inference|system | confidence=high|medium|low | updated_at=YYYY-MM-DD | expires_at=YYYY-MM-DD(optional)
 
 Rules:
+- Write facts in a timeless, archival format: use absolute dates (YYYY-MM-DD) rather than relative terms like "recently", "currently", "just", or "last week". A fact must be interpretable correctly even years after it was written.
 - Keep only concrete reusable facts.
 - Merge semantic duplicates and keep the most recent/best phrasing.
 - Resolve contradictions: newer user statements beat older ones; user statements beat inferences; higher confidence beats lower.

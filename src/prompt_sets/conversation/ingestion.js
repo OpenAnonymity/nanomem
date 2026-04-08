@@ -42,6 +42,7 @@ Instructions:
 11. If nothing new is worth remembering, simply stop without calling any write tools. Saving nothing is better than saving something wrong.
 
 Rules:
+- Write facts in a timeless, archival format: use absolute dates (YYYY-MM-DD) rather than relative terms like "recently", "currently", "just", or "last week". A fact must be interpretable correctly even years after it was written.
 - One file per distinct topic. Do NOT put unrelated facts in the same file.
 - Create new files freely — it is better to have many focused files than one bloated file.
 - Use update_memory only if a fact is now stale or contradicted.
