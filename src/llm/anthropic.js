@@ -212,7 +212,6 @@ function parseAnthropicResponse(data) {
     return {
         content,
         tool_calls: toolCalls,
-        finish_reason: data.stop_reason === 'max_tokens' ? 'length' : (data.stop_reason || null),
         usage: data.usage ? {
             prompt_tokens: data.usage.input_tokens,
             completion_tokens: data.usage.output_tokens,

@@ -41,12 +41,11 @@ export function createOpenAIClient({ apiKey, baseUrl = 'https://api.openai.com/v
         }
 
         const data = await response.json();
-        const choice = data.choices?.[0] || {};
-        const message = choice.message || {};
+        const choice = data.choices?.[0]?.message || {};
 
         return {
-            content: message.content || '',
-            tool_calls: (message.tool_calls || []).map((tc) => ({
+            content: choice.content || '',
+            tool_calls: (choice.tool_calls || []).map((tc) => ({
                 id: tc.id,
                 type: 'function',
                 function: {
@@ -54,7 +53,6 @@ export function createOpenAIClient({ apiKey, baseUrl = 'https://api.openai.com/v
                     arguments: tc.function?.arguments || '{}',
                 },
             })),
-            finish_reason: choice.finish_reason || null,
             usage: data.usage || null,
         };
     }
