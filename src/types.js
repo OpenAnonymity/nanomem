@@ -169,6 +169,7 @@
  * @typedef {object} ChatCompletionResponse
  * @property {string} content
  * @property {ToolCall[]} tool_calls
+ * @property {string} [finish_reason]
  * @property {{ prompt_tokens: number; completion_tokens: number } | null} usage
  */
 
@@ -222,6 +223,7 @@
  * @typedef {object} IngestResult
  * @property {'processed' | 'skipped' | 'error'} status
  * @property {number} writeCalls
+ * @property {Array<{path: string, before: string | null, after: string | null}>} [writes]
  * @property {string} [error]
  */
 
@@ -319,6 +321,7 @@
  * @property {'ram' | 'filesystem' | 'indexeddb' | StorageBackend} [storage]
  * @property {string} [storagePath]
  * @property {(event: ProgressEvent) => void} [onProgress]
+ * @property {(event: ProgressEvent) => void} [onCompactProgress]
  * @property {(name: string, args: Record<string, any>, result: string) => void} [onToolCall]
  * @property {(text: string) => void} [onModelText]
  */
@@ -368,7 +371,7 @@
  * @property {() => Promise<void>} init
  * @property {(query: string, conversationText?: string) => Promise<RetrievalResult | null>} retrieve
  * @property {(messages: Message[], options?: IngestOptions) => Promise<IngestResult>} ingest
- * @property {() => Promise<void>} compact
+ * @property {() => Promise<{filesChanged: number, filesTotal: number} | undefined>} compact
  * @property {StorageFacade} storage
  * @property {() => Promise<string>} serialize
  * @property {() => Promise<Uint8Array>} toZip
