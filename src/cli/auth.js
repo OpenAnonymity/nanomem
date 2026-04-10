@@ -61,7 +61,7 @@ export async function loginInteractive() {
     process.stderr.write('\n');
     process.stderr.write(`  ${c.bold}${c.cyan}Login${c.reset}\n`);
     process.stderr.write('\n');
-    process.stderr.write(`  ${c.white}simple-memory uses an LLM provider for extraction and retrieval.${c.reset}\n`);
+    process.stderr.write(`  ${c.white}nanomem uses an LLM provider for extraction and retrieval.${c.reset}\n`);
     process.stderr.write(`  ${c.white}Select your provider, model, and paste your API key to get started.${c.reset}\n`);
     process.stderr.write('\n');
 
