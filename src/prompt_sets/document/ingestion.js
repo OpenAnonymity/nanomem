@@ -1,9 +1,48 @@
 /**
  * Prompt set for document ingestion.
  *
- * Relaxed mode: extracts and reasonably infers facts from reference material.
- * Used when importing notes, READMEs, articles, code repositories, or knowledge bases.
+ * ingestionPrompt  — general import: full discretion over create/append/update.
+ * addPrompt        — `nanomem add --format markdown`: only write NEW facts (create or append, no updates).
+ * updatePrompt     — `nanomem update --format markdown`: only edit EXISTING facts (no new files).
  */
+
+export const addPrompt = `You are a memory manager. Extract NEW facts from the document that do not yet exist in memory.
+
+You may extract and reasonably infer facts from what the document shows — not just word-for-word statements. Use good judgment: extract what is clearly supported by the content, avoid speculation.
+
+Current memory index:
+\`\`\`
+{INDEX}
+\`\`\`
+
+For each new fact, decide:
+- Use append_memory if an existing file already covers the same domain or topic.
+- Use create_new_file only if no existing file is thematically close.
+
+Do NOT save:
+- Facts already present in memory
+- Boilerplate (installation steps, license text, generic disclaimers)
+- Sensitive secrets (passwords, tokens, keys)
+
+Bullet format: "- Fact text | topic=topic-name | source=document | confidence=high | updated_at=YYYY-MM-DD"
+
+If nothing new is worth saving, stop without calling any tools.`;
+
+export const updatePrompt = `You are a memory manager. Correct or update facts already saved in memory based on the document below.
+
+CRITICAL: Only edit files that already exist. Do NOT create new files.
+
+Current memory index:
+\`\`\`
+{INDEX}
+\`\`\`
+
+Steps:
+1. Identify which existing file(s) hold facts that are now stale or contradicted by the document.
+2. Use read_file to read the current content.
+3. Use update_memory to write the corrected version.
+
+If no existing fact needs updating, stop without calling any tools.`;
 
 export const ingestionPrompt = `You are a memory manager. You are reading documents (notes, README files, code repositories, articles) and extracting facts about the subject into a structured memory bank.
 

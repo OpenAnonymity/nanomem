@@ -43,6 +43,13 @@ nanomem login
 
 This walks you through provider, model, API key, and where to store your memory. Config is saved to `~/.config/nanomem/config.json`. Filesystem memory lives in `~/nanomem/` by default.
 
+Add facts directly:
+
+```bash
+nanomem add "I moved to Seattle and started a new job at Acme."
+nanomem update "Actually I moved to Portland, not Seattle."
+```
+
 Import history or notes:
 
 ```bash
@@ -149,12 +156,14 @@ await memory.compact();
 ## Common commands
 
 ```bash
-nanomem import <file|dir|->
-nanomem retrieve <query> [--context <file>]
-nanomem tree
-nanomem compact
-nanomem export --format zip
-nanomem status
+nanomem add <text>                           # add new facts
+nanomem update <text>                        # correct existing facts
+nanomem import <file|dir|->                  # import history or notes
+nanomem retrieve <query> [--context <file>]  # retrieve relevant context
+nanomem tree                                 # browse memory files
+nanomem compact                              # deduplicate and archive
+nanomem export --format zip                  # export everything
+nanomem status                               # show config and stats
 ```
 
 For terminal use, `--render` will format markdown-heavy output like `read` and `retrieve` into a more readable ANSI-rendered view while leaving `--json` and piped output unchanged.

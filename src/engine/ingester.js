@@ -19,68 +19,86 @@ import {
 
 const MAX_CONVERSATION_CHARS = 128000;
 
-/** @type {ToolDefinition[]} */
-const EXTRACTION_TOOLS = [
-    {
-        type: 'function',
-        function: {
-            name: 'read_file',
-            description: 'Read an existing memory file before writing.',
-            parameters: {
-                type: 'object',
-                properties: {
-                    path: { type: 'string', description: 'File path (e.g. personal/about.md)' }
-                },
-                required: ['path']
-            }
-        }
-    },
-    {
-        type: 'function',
-        function: {
-            name: 'create_new_file',
-            description: 'Create a new memory file for a topic not covered by any existing file.',
-            parameters: {
-                type: 'object',
-                properties: {
-                    path: { type: 'string', description: 'File path (e.g. projects/recipe-app.md)' },
-                    content: { type: 'string', description: 'Bullet-point content to write' }
-                },
-                required: ['path', 'content']
-            }
-        }
-    },
-    {
-        type: 'function',
-        function: {
-            name: 'append_memory',
-            description: 'Append new bullet points to an existing memory file.',
-            parameters: {
-                type: 'object',
-                properties: {
-                    path: { type: 'string', description: 'File path to append to' },
-                    content: { type: 'string', description: 'Bullet-point content to append' }
-                },
-                required: ['path', 'content']
-            }
-        }
-    },
-    {
-        type: 'function',
-        function: {
-            name: 'update_memory',
-            description: 'Overwrite an existing memory file. Use when existing content is stale or contradicted.',
-            parameters: {
-                type: 'object',
-                properties: {
-                    path: { type: 'string', description: 'File path to update' },
-                    content: { type: 'string', description: 'Complete new content for the file' }
-                },
-                required: ['path', 'content']
-            }
+/** @type {ToolDefinition} */
+const T_READ_FILE = {
+    type: 'function',
+    function: {
+        name: 'read_file',
+        description: 'Read an existing memory file before writing.',
+        parameters: {
+            type: 'object',
+            properties: {
+                path: { type: 'string', description: 'File path (e.g. personal/about.md)' }
+            },
+            required: ['path']
         }
     }
-];
+};
+
+/** @type {ToolDefinition} */
+const T_CREATE_NEW_FILE = {
+    type: 'function',
+    function: {
+        name: 'create_new_file',
+        description: 'Create a new memory file for a topic not covered by any existing file.',
+        parameters: {
+            type: 'object',
+            properties: {
+                path: { type: 'string', description: 'File path (e.g. projects/recipe-app.md)' },
+                content: { type: 'string', description: 'Bullet-point content to write' }
+            },
+            required: ['path', 'content']
+        }
+    }
+};
+
+/** @type {ToolDefinition} */
+const T_APPEND_MEMORY = {
+    type: 'function',
+    function: {
+        name: 'append_memory',
+        description: 'Append new bullet points to an existing memory file.',
+        parameters: {
+            type: 'object',
+            properties: {
+                path: { type: 'string', description: 'File path to append to' },
+                content: { type: 'string', description: 'Bullet-point content to append' }
+            },
+            required: ['path', 'content']
+        }
+    }
+};
+
+/** @type {ToolDefinition} */
+const T_UPDATE_MEMORY = {
+    type: 'function',
+    function: {
+        name: 'update_memory',
+        description: 'Overwrite an existing memory file. Use when existing content is stale or contradicted.',
+        parameters: {
+            type: 'object',
+            properties: {
+                path: { type: 'string', description: 'File path to update' },
+                content: { type: 'string', description: 'Complete new content for the file' }
+            },
+            required: ['path', 'content']
+        }
+    }
+};
+
+/**
+ * Tool sets per ingestion mode.
+ * `add`    — can only write new content (no update_memory).
+ * `update` — can only edit existing files (no create/append).
+ * Others   — full access.
+ * @type {Record<string, ToolDefinition[]>}
+ */
+const TOOLS_BY_MODE = {
+    add:          [T_READ_FILE, T_CREATE_NEW_FILE, T_APPEND_MEMORY],
+    update:       [T_READ_FILE, T_UPDATE_MEMORY],
+};
+
+const EXTRACTION_TOOLS = [T_READ_FILE, T_CREATE_NEW_FILE, T_APPEND_MEMORY, T_UPDATE_MEMORY];
 
 class MemoryIngester {
     constructor({ backend, bulletIndex, llmClient, model, onToolCall }) {
@@ -128,12 +146,14 @@ class MemoryIngester {
             ? `Document content:\n\`\`\`\n${conversationText}\n\`\`\``
             : `Conversation:\n\`\`\`\n${conversationText}\n\`\`\``;
 
+        const tools = TOOLS_BY_MODE[mode] || EXTRACTION_TOOLS;
+
         let toolCallLog;
         try {
             const result = await runAgenticToolLoop({
                 llmClient: this._llmClient,
                 model: this._model,
-                tools: EXTRACTION_TOOLS,
+                tools,
                 toolExecutors,
                 messages: [
                     { role: 'system', content: systemPrompt },
@@ -187,7 +207,9 @@ class MemoryIngester {
 
         const defaultTopic = inferTopicFromPath(path);
         const normalized = incomingBullets.map((bullet) => {
-            const b = ensureBulletMetadata({ ...bullet, updatedAt: null }, { defaultTopic, updatedAt });
+            // Preserve existing updatedAt so update_memory doesn't re-stamp unchanged bullets.
+            // Bullets without a date still fall back to updatedAt (today).
+            const b = ensureBulletMetadata(bullet, { defaultTopic, updatedAt });
             if (isDocument && b.source === 'user_statement') b.source = 'document';
             return b;
         });

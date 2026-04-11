@@ -161,10 +161,18 @@ export async function importCmd(positionals, flags, mem, config, { showProgress,
 
 export async function add(positionals, flags, mem, config, { showProgress, spinnerHolder } = {}) {
     const input = positionals[0] ?? (!process.stdin.isTTY ? await readStdin() : null);
-    if (!input) throw new Error('Usage: memory add <text>');
+    if (!input) throw new Error('Usage: nanomem add <text>');
 
     const conversations = parseConversations(input, flags);
-    return ingestConversations(conversations, 'conversation', mem, { showProgress, spinnerHolder, status: 'added', showDiff: true });
+    return ingestConversations(conversations, 'add', mem, { showProgress, spinnerHolder, status: 'added', showDiff: true });
+}
+
+export async function update(positionals, flags, mem, config, { showProgress, spinnerHolder } = {}) {
+    const input = positionals[0] ?? (!process.stdin.isTTY ? await readStdin() : null);
+    if (!input) throw new Error('Usage: nanomem update <text>');
+
+    const conversations = parseConversations(input, flags);
+    return ingestConversations(conversations, 'update', mem, { showProgress, spinnerHolder, status: 'updated', showDiff: true });
 }
 
 async function ingestConversations(conversations, extractionMode, mem, { showProgress, spinnerHolder, status, showDiff = false }) {
@@ -180,7 +188,7 @@ async function ingestConversations(conversations, extractionMode, mem, { showPro
 
     for (let i = 0; i < total; i++) {
         const conv = conversations[i];
-        const label = conv.title || `conversation ${i + 1}`;
+        const label = conv.title || (total > 1 ? `conversation ${i + 1}` : 'conversation');
 
         if (showProgress) {
             const counter = total > 1 ? `${c.gray}(${i + 1}/${total})${c.reset} ` : '';

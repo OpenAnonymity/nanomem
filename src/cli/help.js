@@ -11,7 +11,8 @@ Commands:
     status                                  Show current config and storage stats
 
   Memory:
-    add <text>                              Add raw text directly and extract facts
+    add <text>                              Add new facts from text (creates or appends files)
+    update <text>                           Edit existing facts from text (only modifies existing files)
     import <file|dir|->                     Import conversations or notes and extract facts
     retrieve <query> [--context <file>]     Retrieve relevant context for a query
     compact                                 Deduplicate and archive stale facts
@@ -39,6 +40,7 @@ Flags:
 Examples:
   nanomem login
   nanomem add "User: I moved to Seattle."
+  nanomem update "User: Actually I moved to Portland, not Seattle."
   nanomem import conversations.json
   nanomem import my-notes.md
   nanomem import ./notes/
@@ -48,7 +50,8 @@ Examples:
 `;
 
 export const COMMAND_HELP = {
-    add: 'Usage: nanomem add <text>\n\nAdd raw text directly and extract facts into memory.\nAccepts quoted text or piped stdin.\nRequires an LLM API key.',
+    add: 'Usage: nanomem add <text>\n\nAdd new facts from text. The LLM will create a new file or append to an existing one.\nAccepts quoted text or piped stdin.\nRequires an LLM API key.',
+    update: 'Usage: nanomem update <text>\n\nEdit existing facts from text. The LLM will only modify files that already exist — no new files are created.\nAccepts quoted text or piped stdin.\nRequires an LLM API key.',
     retrieve: 'Usage: nanomem retrieve <query> [--context <file>]\n\nRetrieve relevant memory context for a query.\nRequires an LLM API key.',
     compact: 'Usage: nanomem compact\n\nDeduplicate and archive stale facts across all memory files.\nRequires an LLM API key.',
     ls: 'Usage: nanomem ls [path]\n\nList files and directories in storage.',

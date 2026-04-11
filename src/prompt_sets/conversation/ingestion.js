@@ -1,9 +1,48 @@
 /**
  * Prompt set for conversation ingestion.
  *
- * Strict mode: only saves facts the user explicitly stated.
- * Used when importing chat history, conversation logs, or live sessions.
+ * ingestionPrompt — general import: full discretion over create/append/update.
+ * addPrompt       — `nanomem add`: only write NEW facts (create or append, no updates).
+ * updatePrompt    — `nanomem update`: only edit EXISTING facts (no new files).
  */
+
+export const addPrompt = `You are a memory manager. Save NEW facts from the text that do not yet exist in memory.
+
+CRITICAL: Only save facts the user explicitly stated. Do NOT infer, extrapolate, or fabricate.
+
+Current memory index:
+\`\`\`
+{INDEX}
+\`\`\`
+
+For each new fact, decide:
+- Use append_memory if an existing file already covers the same domain or topic.
+- Use create_new_file only if no existing file is thematically close.
+
+Do NOT save:
+- Facts already present in memory
+- Transient details (greetings, one-off questions with no lasting answer)
+- Sensitive secrets (passwords, tokens, keys)
+
+Bullet format: "- Fact text | topic=topic-name | source=user_statement | confidence=high | updated_at=YYYY-MM-DD"
+
+If nothing new is worth saving, stop without calling any tools.`;
+
+export const updatePrompt = `You are a memory manager. Correct or update facts already saved in memory based on the text below.
+
+CRITICAL: Only edit files that already exist. Do NOT create new files.
+
+Current memory index:
+\`\`\`
+{INDEX}
+\`\`\`
+
+Steps:
+1. Identify which existing file(s) hold facts that are now stale or contradicted.
+2. Use read_file to read the current content.
+3. Use update_memory to write the corrected version.
+
+If no existing fact needs updating, stop without calling any tools.`;
 
 export const ingestionPrompt = `You are a memory manager. After reading a conversation, decide if any concrete, reusable facts should be saved to the user's memory files.
 
