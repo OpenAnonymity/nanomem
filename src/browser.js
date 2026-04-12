@@ -1,17 +1,10 @@
 /**
- * @openanonymity/nanomem — LLM-driven personal memory.
+ * Browser-safe nanomem entrypoint.
  *
- * createMemoryBank(config) is the main entry point.
- *
- * Returned object has three named groups:
- *
- *   Engine   (LLM-driven):  init, retrieve, ingest, compact
- *   Backends (storage ops): mem.storage.{ read, write, delete, exists,
- *                                           search, ls, getTree,
- *                                           rebuildTree, exportAll }
- *   Utilities  (portability): mem.serialize(), mem.toZip()
+ * This mirrors createMemoryBank from index.js but excludes the filesystem
+ * backend so browser bundlers do not try to resolve node:* imports.
  */
-/** @import { LLMClient, MemoryBank, MemoryBankConfig, MemoryBankLLMConfig, Message, IngestOptions, RetrievalResult, AugmentQueryResult, StorageBackend } from './types.js' */
+/** @import { MemoryBank, MemoryBankConfig, MemoryBankLLMConfig, Message, IngestOptions, AugmentQueryResult, RetrievalResult, StorageBackend } from './types.js' */
 
 import { createOpenAIClient } from './llm/openai.js';
 import { createAnthropicClient } from './llm/anthropic.js';
@@ -23,7 +16,7 @@ import { MemoryCompactor } from './engine/compactor.js';
 import { InMemoryStorage } from './backends/ram.js';
 import { importData as importMemoryData } from './imports/importData.js';
 import { serialize, toZip } from './utils/portability.js';
-import { buildOmfExport, previewOmfImport, importOmf } from './omf.js';
+import { buildOmfExport, previewOmfImport, importOmf, parseOmfText, validateOmf } from './omf.js';
 
 /**
  * Remove review-only [[user_data]] markers before sending the final prompt to
@@ -39,27 +32,37 @@ export function stripUserDataTags(text) {
 }
 
 /**
- * Create a memory instance.
- *
  * @param {MemoryBankConfig} [config]
  * @returns {MemoryBank}
  */
 export function createMemoryBank(config = {}) {
-    const llmClient = config.llmClient || _createLlmClient(config.llm);
+    const llmClient = config.llmClient || createBrowserLlmClient(config.llm);
     const model = config.model || config.llm?.model || 'gpt-4o';
-    const backend = _createBackend(config.storage, config.storagePath);
+    const backend = createBrowserBackend(config.storage);
     const bulletIndex = new MemoryBulletIndex(backend);
 
     const retrieval = new MemoryRetriever({
-        backend, bulletIndex, llmClient, model,
+        backend,
+        bulletIndex,
+        llmClient,
+        model,
         onProgress: config.onProgress,
-        onModelText: config.onModelText,
+        onModelText: config.onModelText
     });
     const ingester = new MemoryIngester({
-        backend, bulletIndex, llmClient, model,
-        onToolCall: config.onToolCall,
+        backend,
+        bulletIndex,
+        llmClient,
+        model,
+        onToolCall: config.onToolCall
     });
-    const compactor = new MemoryCompactor({ backend, bulletIndex, llmClient, model, onProgress: config.onCompactProgress });
+    const compactor = new MemoryCompactor({
+        backend,
+        bulletIndex,
+        llmClient,
+        model,
+        onProgress: config.onCompactProgress
+    });
 
     async function write(path, content) {
         await backend.write(path, content);
@@ -76,39 +79,11 @@ export function createMemoryBank(config = {}) {
         await bulletIndex.rebuild();
     }
 
-    // ─── Public API ──────────────────────────────────────────────
     return {
-        /** Initialize the storage backend (creates seed files if empty). */
         init: () => backend.init(),
-
-        // ─── High-level (LLM-driven) ──────────────────────────────
-
-        /**
-         * Retrieve relevant memory context for a query.
-         * @param {string} query
-         * @param {string} [conversationText] current session text for reference resolution
-         * @returns {Promise<RetrievalResult | null>}
-         */
         retrieve: (query, conversationText) => retrieval.retrieveForQuery(query, conversationText),
-
-        /**
-         * Build a reviewable prompt that augments the user query with memory.
-         * @param {string} query
-         * @param {string} [conversationText]
-         * @returns {Promise<AugmentQueryResult | null>}
-         */
         augmentQuery: (query, conversationText) => retrieval.augmentQueryForPrompt(query, conversationText),
-
-        /**
-         * Ingest facts from a conversation into memory.
-         * @param {Message[]} messages
-         * @param {IngestOptions} [options]
-         */
         ingest: (messages, options) => ingester.ingest(messages, options),
-
-        /**
-         * Import supported conversation/document formats into memory.
-         */
         importData: (input, options) => importMemoryData({
             init: () => backend.init(),
             ingest: (messages, ingestOptions) => ingester.ingest(messages, ingestOptions)
@@ -158,62 +133,44 @@ export function createMemoryBank(config = {}) {
                 clear: () => backend.clear(),
             }, doc, options);
         },
-
-        /** Compact all memory files (dedup, archive stale facts). */
         compact: () => compactor.compactAll(),
-
-        // ─── Low-level (direct storage ops) ──────────────────────
-
         storage: {
-            read:         (path)          => backend.read(path),
-            resolvePath:  (path)          => backend.resolvePath ? backend.resolvePath(path) : Promise.resolve(null),
-            write:        (path, content) => write(path, content),
-            delete:       (path)          => remove(path),
-            exists:       (path)          => backend.exists(path),
-            search:       (query)         => backend.search(query),
-            ls:           (dirPath)       => backend.ls(dirPath),
-            getTree:     ()              => backend.getTree(),
-            rebuildTree: ()              => rebuildTree(),
-            exportAll:    ()              => backend.exportAll(),
-            clear:        ()              => backend.clear(),
+            read: (path) => backend.read(path),
+            resolvePath: (path) => backend.resolvePath ? backend.resolvePath(path) : Promise.resolve(null),
+            write: (path, content) => write(path, content),
+            delete: (path) => remove(path),
+            exists: (path) => backend.exists(path),
+            search: (query) => backend.search(query),
+            ls: (dirPath) => backend.ls(dirPath),
+            getTree: () => backend.getTree(),
+            rebuildTree: () => rebuildTree(),
+            exportAll: () => backend.exportAll(),
+            clear: () => backend.clear()
         },
-
-        // ─── Utilities (portability) ──────────────────────────────
-
-        /** Serialize entire memory state to a single portable string. */
         serialize: async () => serialize(await backend.exportAll()),
-
-        /** Serialize entire memory state to a ZIP archive (Uint8Array). */
         toZip: async () => toZip(await backend.exportAll()),
-
-        // ─── Internals (for advanced use / testing) ──────────────
         _backend: backend,
-        _bulletIndex: bulletIndex,
+        _bulletIndex: bulletIndex
     };
 }
 
-// ─── Internal Helpers ────────────────────────────────────────────
-
-function _createLlmClient(llmConfig = /** @type {MemoryBankLLMConfig} */ ({ apiKey: '' })) {
+function createBrowserLlmClient(llmConfig = /** @type {MemoryBankLLMConfig} */ ({ apiKey: '' })) {
     const { apiKey, baseUrl, headers, provider } = llmConfig;
     if (!apiKey) {
         throw new Error('createMemoryBank: config.llm.apiKey is required (or provide config.llmClient)');
     }
 
-    const detectedProvider = provider || _detectProvider(baseUrl);
-
+    const detectedProvider = provider || detectProvider(baseUrl);
     if (detectedProvider === 'anthropic') {
         return createAnthropicClient({ apiKey, baseUrl, headers });
     }
-
     if (detectedProvider === 'tinfoil') {
         return createTinfoilClient(llmConfig);
     }
-
     return createOpenAIClient({ apiKey, baseUrl, headers });
 }
 
-function _detectProvider(baseUrl) {
+function detectProvider(baseUrl) {
     if (!baseUrl) return 'openai';
     const lower = baseUrl.toLowerCase();
     if (lower.includes('anthropic.com')) return 'anthropic';
@@ -221,63 +178,49 @@ function _detectProvider(baseUrl) {
     return 'openai';
 }
 
-function _createBackend(storage, storagePath) {
-    // Custom backend object
+function createBrowserBackend(storage) {
     if (storage && typeof storage === 'object' && typeof storage.read === 'function') {
         return storage;
     }
 
     const storageType = typeof storage === 'string' ? storage : 'ram';
-
     switch (storageType) {
         case 'indexeddb':
-            return _asyncBackend(() => import('./backends/indexeddb.js').then(m => new m.IndexedDBStorage()));
+            return asyncBackend(() => import('./backends/indexeddb.js').then((module) => new module.IndexedDBStorage()));
         case 'filesystem':
-            return _asyncBackend(() => import('./backends/filesystem.js').then(m => new m.FileSystemStorage(storagePath || 'nanomem')));
+            throw new Error('createMemoryBank(browser): filesystem storage is not available in the browser entrypoint.');
         case 'ram':
         default:
             return new InMemoryStorage();
     }
 }
 
-function _asyncBackend(loader) {
-    let _backend = null;
-    let _loading = null;
+function asyncBackend(loader) {
+    let backend = null;
+    let loading = null;
 
     async function resolve() {
-        if (_backend) return _backend;
-        if (!_loading) _loading = loader().then(b => { _backend = b; return b; });
-        return _loading;
+        if (backend) return backend;
+        if (!loading) {
+            loading = loader().then((instance) => {
+                backend = instance;
+                return backend;
+            });
+        }
+        return loading;
     }
 
     const methods = ['init', 'read', 'resolvePath', 'write', 'delete', 'exists', 'ls', 'search', 'getTree', 'rebuildTree', 'exportAll', 'clear'];
     const proxy = {};
     for (const method of methods) {
         proxy[method] = async (...args) => {
-            const backend = await resolve();
-            return backend[method](...args);
+            const resolved = await resolve();
+            return resolved[method](...args);
         };
     }
     return /** @type {StorageBackend} */ (proxy);
 }
 
-// ─── Re-exports ──────────────────────────────────────────────────
-
-/** Re-export all shared type definitions for consumers. */
 export * from './types.js';
-export { createOpenAIClient } from './llm/openai.js';
-export { createAnthropicClient } from './llm/anthropic.js';
-export { InMemoryStorage } from './backends/ram.js';
-export { BaseStorage } from './backends/BaseStorage.js';
-export { MemoryBulletIndex } from './bullets/bulletIndex.js';
-export { MemoryRetriever } from './engine/retriever.js';
-export { MemoryIngester } from './engine/ingester.js';
-export { MemoryCompactor } from './engine/compactor.js';
-export { createRetrievalExecutors, createExtractionExecutors } from './engine/executors.js';
-export { serialize, deserialize, toZip } from './utils/portability.js';
+export * from './bullets/index.js';
 export { buildOmfExport, previewOmfImport, importOmf, parseOmfText, validateOmf } from './omf.js';
-export {
-    extractSessionsFromOAFastchatExport,
-    extractConversationFromOAFastchatExport,
-    listOAFastchatSessions
-} from './imports/oaFastchat.js';
