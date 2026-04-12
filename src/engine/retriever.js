@@ -341,18 +341,9 @@ class MemoryRetriever {
                 return null;
             }
 
-            const task = typeof augmentPayload?.task === 'string'
-                ? augmentPayload.task.trim()
-                : '';
-            const publicContext = typeof augmentPayload?.publicContext === 'string'
-                ? augmentPayload.publicContext.trim()
-                : '';
-            const privateContext = typeof augmentPayload?.privateContext === 'string'
-                ? augmentPayload.privateContext.trim()
-                : '';
             const reviewPrompt = typeof augmentPayload?.reviewPrompt === 'string'
                 ? augmentPayload.reviewPrompt
-                : MemoryRetriever._buildFullPrompt({ task, publicContext, privateContext });
+                : '';
             const apiPrompt = typeof augmentPayload?.apiPrompt === 'string'
                 ? augmentPayload.apiPrompt
                 : MemoryRetriever._stripUserDataTags(reviewPrompt);
@@ -361,7 +352,7 @@ class MemoryRetriever {
                 : await collectReadFiles(toolCallLog, this._backend);
             const paths = files.map((file) => file.path);
 
-            if (!task || files.length === 0) return null;
+            if (!reviewPrompt || files.length === 0) return null;
 
             onProgress?.({
                 stage: 'complete',
@@ -373,10 +364,7 @@ class MemoryRetriever {
                 files,
                 paths,
                 reviewPrompt,
-                apiPrompt,
-                task,
-                ...(publicContext ? { publicContext } : {}),
-                ...(privateContext ? { privateContext } : {})
+                apiPrompt
             };
         }
 
@@ -611,13 +599,6 @@ class MemoryRetriever {
         const realFiles = all.filter(f => !f.path.endsWith('_tree.md'));
         if (realFiles.length === 0) return true;
         return !realFiles.some(f => (f.itemCount || 0) > 0);
-    }
-
-    static _buildFullPrompt({ task, publicContext, privateContext }) {
-        const parts = [task];
-        if (publicContext) parts.push(`Public context:\n${publicContext}`);
-        if (privateContext) parts.push(`Private context (sensitive; do not quote):\n${privateContext}`);
-        return parts.join('\n\n');
     }
 
     static _stripUserDataTags(text) {

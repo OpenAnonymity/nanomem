@@ -219,9 +219,6 @@
  * @property {string[]} paths
  * @property {string} reviewPrompt
  * @property {string} apiPrompt
- * @property {string} task
- * @property {string} [publicContext]
- * @property {string} [privateContext]
  */
 
 /**
