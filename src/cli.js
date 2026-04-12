@@ -34,7 +34,8 @@ const OPTIONS = {
     'session-id':    { type: 'string' },
     'session-title': { type: 'string' },
     'confirm':       { type: 'boolean', default: false },
-    'render': { type: 'boolean', default: false },
+    'render':        { type: 'boolean', default: false },
+    'deep':          { type: 'boolean', default: false },
 };
 
 const COMMAND_MAP = {
@@ -96,7 +97,7 @@ async function main() {
     const memOpts = {};
 
     // Wire progress for import/extract — spinner per session with live tool call updates
-    const isImport = commandName === 'import' || commandName === 'add' || commandName === 'update' || commandName === 'extract';
+    const isImport = commandName === 'import' || commandName === 'add' || commandName === 'update' || commandName === 'extract' || commandName === 'delete';
     const showProgress = isImport && !values.json && process.stderr.isTTY;
     const spinnerHolder = { current: null }; // shared mutable ref between onToolCall and import loop
     if (showProgress) {
@@ -108,6 +109,7 @@ async function main() {
             delete_memory:   'cleaning up',
             read_file:       'reading',
             list_files:      'scanning',
+            delete_bullet:   'deleting',
         };
         memOpts.onToolCall = (name) => {
             const label = TOOL_LABELS[name] || name;

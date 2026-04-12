@@ -8,8 +8,8 @@
  * then add it to PROMPT_SETS below.
  */
 
-import { ingestionPrompt as conversationIngestion, addPrompt, updatePrompt } from './conversation/ingestion.js';
-import { ingestionPrompt as documentIngestion, addPrompt as documentAddPrompt, updatePrompt as documentUpdatePrompt } from './document/ingestion.js';
+import { ingestionPrompt as conversationIngestion, addPrompt, updatePrompt, deletePrompt, deepDeletePrompt } from './conversation/ingestion.js';
+import { ingestionPrompt as documentIngestion, addPrompt as documentAddPrompt, updatePrompt as documentUpdatePrompt, deletePrompt as documentDeletePrompt, deepDeletePrompt as documentDeepDeletePrompt } from './document/ingestion.js';
 
 /** @type {Record<string, { ingestionPrompt: string }>} */
 const PROMPT_SETS = {
@@ -19,6 +19,10 @@ const PROMPT_SETS = {
     update:          { ingestionPrompt: updatePrompt },
     document_add:    { ingestionPrompt: documentAddPrompt },
     document_update: { ingestionPrompt: documentUpdatePrompt },
+    delete:          { ingestionPrompt: deletePrompt },
+    deep_delete:     { ingestionPrompt: deepDeletePrompt },
+    document_delete:      { ingestionPrompt: documentDeletePrompt },
+    document_deep_delete: { ingestionPrompt: documentDeepDeletePrompt },
 };
 
 /**

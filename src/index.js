@@ -18,6 +18,7 @@ import { createAnthropicClient } from './llm/anthropic.js';
 import { MemoryBulletIndex } from './bullets/bulletIndex.js';
 import { MemoryRetriever } from './engine/retriever.js';
 import { MemoryIngester } from './engine/ingester.js';
+import { MemoryDeleter } from './engine/deleter.js';
 import { MemoryCompactor } from './engine/compactor.js';
 import { InMemoryStorage } from './backends/ram.js';
 import { serialize, toZip } from './utils/portability.js';
@@ -44,6 +45,7 @@ export function createMemoryBank(config = {}) {
         onToolCall: config.onToolCall,
     });
     const compactor = new MemoryCompactor({ backend, bulletIndex, llmClient, model, onProgress: config.onCompactProgress });
+    const deleter = new MemoryDeleter({ backend, bulletIndex, llmClient, model, onToolCall: config.onToolCall });
 
     async function write(path, content) {
         await backend.write(path, content);
@@ -84,6 +86,13 @@ export function createMemoryBank(config = {}) {
 
         /** Compact all memory files (dedup, archive stale facts). */
         compact: () => compactor.compactAll(),
+
+        /**
+         * Delete memory content matching a plain-text query.
+         * @param {string} query
+         * @returns {Promise<{ status: string, deleteCalls: number, writes: Array }>}
+         */
+        deleteContent: (query, options) => deleter.deleteForQuery(query, options),
 
         // ─── Low-level (direct storage ops) ──────────────────────
 

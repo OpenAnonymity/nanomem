@@ -129,6 +129,10 @@ function formatAction(result) {
             return section(green('✓ Facts extracted'), [
                 ['Files updated', result.writeCalls],
             ]);
+        case 'deleted_content':
+            return result.deleteCalls > 0
+                ? section(green('✓ Memory updated'), [['Facts removed', result.deleteCalls]])
+                : dim('– Nothing matched');
         case 'skipped':
             return dim('– Nothing to extract (conversation too short)');
         case 'imported':

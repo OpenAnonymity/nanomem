@@ -83,7 +83,7 @@ export async function resolveConfig(flags) {
 
 // ─── Create a memory instance from resolved config ──────────────
 
-const LLM_COMMANDS = new Set(['retrieve', 'extract', 'compact', 'import', 'add', 'update']);
+const LLM_COMMANDS = new Set(['retrieve', 'extract', 'compact', 'import', 'add', 'update', 'delete']);
 
 export function createMemoryFromConfig(config, command, { onToolCall, onProgress, onCompactProgress } = {}) {
     const needsLlm = LLM_COMMANDS.has(command);

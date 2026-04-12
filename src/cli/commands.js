@@ -267,13 +267,48 @@ export async function write(positionals, flags, mem) {
     return { status: 'written', path };
 }
 
-export async function del(positionals, flags, mem) {
-    const path = positionals[0];
-    if (!path) throw new Error('Usage: memory delete <path>');
+export async function del(positionals, flags, mem, config, { showProgress, spinnerHolder } = {}) {
+    const query = positionals[0] ?? (!process.stdin.isTTY ? await readStdin() : null);
+    if (!query) throw new Error('Usage: nanomem delete <query>');
 
     await mem.init();
-    await mem.storage.delete(path);
-    return { status: 'deleted', path };
+
+    const isTTY = process.stderr.isTTY;
+    const c = isTTY ? { green: '\x1b[32m', yellow: '\x1b[33m', dim: '\x1b[2m', bold: '\x1b[1m', reset: '\x1b[0m' }
+                    : { green: '', yellow: '', dim: '', bold: '', reset: '' };
+
+    let spinner = null;
+    if (showProgress && isTTY) {
+        spinner = createSpinner('thinking…');
+        if (spinnerHolder) spinnerHolder.current = spinner;
+    }
+
+    const result = await mem.deleteContent(query, { deep: !!flags.deep });
+
+    if (spinnerHolder) spinnerHolder.current = null;
+
+    if (showProgress) {
+        if (result.status === 'error') {
+            spinner?.stop(`  ${c.yellow}⚠ ${result.error}${c.reset}`);
+        } else if (result.deleteCalls > 0) {
+            spinner?.stop(`  ${c.green}✓ ${result.deleteCalls} fact${result.deleteCalls === 1 ? '' : 's'} deleted${c.reset}`);
+        } else {
+            spinner?.stop(`  ${c.dim}– nothing matched${c.reset}`);
+        }
+        if (result.writes?.length) {
+            for (const { path, before, after } of result.writes) {
+                if (after === null) {
+                    // Entire file was deleted (no bullets remained)
+                    process.stderr.write(`\n  \x1b[1m\x1b[36m${path}\x1b[0m  \x1b[2mfile deleted\x1b[0m\n`);
+                } else {
+                    printFileDiff(path, before, after);
+                }
+            }
+        }
+    }
+
+    const status = result.status === 'error' ? 'error' : 'deleted_content';
+    return { status, deleteCalls: result.deleteCalls, error: result.error };
 }
 
 export async function search(positionals, flags, mem) {

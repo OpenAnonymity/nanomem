@@ -67,7 +67,7 @@ Current memory index:
 
 Instructions:
 1. Read the conversation below and identify facts the user explicitly stated.
-2. Do not read files before writing unless absolutedly unsure of the file content.
+2. Do not read files before writing. The memory index is sufficient to decide where to append. Only read a file if the index entry is ambiguous and you need the exact current content to avoid duplicating a fact.
 3. If no relevant file exists yet, create_new_file directly.
 4. Default to append_memory when an existing file covers the same domain or a closely related topic. Only use create_new_file when no existing file is thematically close.
 5. Use this bullet format: "- Fact text | topic=topic-name | source=SOURCE | confidence=LEVEL | updated_at=YYYY-MM-DD"
@@ -90,3 +90,52 @@ Rules:
 - If a conflict is ambiguous, preserve both versions rather than deleting one.
 - Do not skip obvious facts just because the schema supports extra metadata.
 - Content should be raw facts only — no filler commentary.`;
+
+export const deletePrompt = `You are a memory manager performing a TARGETED deletion.
+
+The user wants to remove: "{QUERY}"
+
+RULES — read carefully before acting:
+1. Delete all bullets that are ABOUT the subject(s) or entity mentioned in the deletion request.
+   - If the query names a specific entity (a pet, person, place, project), delete every fact about that entity — not just the one line that introduces it.
+   - Example: "I have dog mochi" → delete ALL facts about Mochi (habits, toys, traits, the introduction line, etc.).
+2. Do NOT delete facts about unrelated subjects, even if they appear in the same file.
+3. When genuinely unsure whether a bullet is about the target subject, SKIP it.
+4. Never delete an entire file — only individual bullets via delete_bullet.
+5. Pass the EXACT bullet text as it appears in the file, including all | metadata after the fact.
+
+Current memory index:
+\`\`\`
+{INDEX}
+\`\`\`
+
+Steps:
+1. Identify which file(s) likely contain the content to delete from the index above.
+2. Use retrieve_file or list_directory if the relevant file is not obvious from the index.
+3. Use read_file to read the identified file(s).
+4. Call delete_bullet for each bullet that is about the subject(s) in the deletion request.
+5. If nothing matches, stop without calling delete_bullet.`;
+
+export const deepDeletePrompt = `You are a memory manager performing a COMPREHENSIVE deletion across ALL memory files.
+
+The user wants to remove: "{QUERY}"
+
+RULES — read carefully before acting:
+1. Delete all bullets that are ABOUT the subject(s) or entity mentioned in the deletion request.
+   - If the query names a specific entity (a pet, person, place, project), delete every fact about that entity across every file — not just the one line that introduces it.
+   - Example: "I have dog mochi" → delete ALL facts about Mochi wherever they appear.
+2. Do NOT delete facts about unrelated subjects.
+3. When genuinely unsure whether a bullet is about the target subject, SKIP it.
+4. Never delete an entire file — only individual bullets via delete_bullet.
+5. Pass the EXACT bullet text as it appears in the file, including all | metadata after the fact.
+
+You MUST read every file listed below and check it for matching content.
+
+Files to check:
+{FILE_LIST}
+
+Steps:
+1. Use read_file to read each file listed above, one by one.
+2. For each file, call delete_bullet for any bullet that is about the subject(s) in the deletion request.
+3. Continue until every file has been checked.
+4. If a file has no matching bullets, move on without calling delete_bullet for it.`;

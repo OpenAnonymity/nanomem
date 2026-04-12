@@ -117,6 +117,70 @@ export function createExtractionExecutors(backend, hooks = {}) {
     };
 }
 
+/**
+ * Build tool executors for the deletion flow.
+ * @param {StorageBackend} backend
+ * @param {{ refreshIndex?: Function, onWrite?: Function }} [hooks]
+ */
+export function createDeletionExecutors(backend, hooks = {}) {
+    const { refreshIndex, onWrite } = hooks;
+
+    return {
+        list_directory: async ({ dir_path }) => {
+            const { files, dirs } = await backend.ls(dir_path || '');
+            return JSON.stringify({ files, dirs });
+        },
+        retrieve_file: async ({ query }) => {
+            const results = await backend.search(query);
+            const contentPaths = results.map(r => r.path);
+
+            const allFiles = await backend.exportAll();
+            const queryLower = query.toLowerCase();
+            const pathMatches = allFiles
+                .filter(f => !f.path.endsWith('_tree.md') && f.path.toLowerCase().includes(queryLower))
+                .map(f => f.path);
+
+            const seen = new Set();
+            const paths = [];
+            for (const p of [...pathMatches, ...contentPaths]) {
+                if (!seen.has(p)) { seen.add(p); paths.push(p); }
+            }
+
+            return JSON.stringify({ paths: paths.slice(0, 5), count: Math.min(paths.length, 5) });
+        },
+        read_file: async ({ path }) => {
+            const content = await backend.read(path);
+            if (content === null) return JSON.stringify({ error: `File not found: ${path}` });
+            return content;
+        },
+        delete_bullet: async ({ path, bullet_text }) => {
+            const before = await backend.read(path);
+            if (!before) return JSON.stringify({ error: `File not found: ${path}` });
+            // Strip pipe-delimited metadata if present — removeArchivedItem matches
+            // against bullet.text (fact text only), not the full line with metadata.
+            const factText = bullet_text.includes('|')
+                ? bullet_text.split('|')[0].trim()
+                : bullet_text.trim();
+            const after = removeArchivedItem(before, factText, path);
+            if (after === null) {
+                return JSON.stringify({ error: `No exact match found for the given bullet text in: ${path}` });
+            }
+            // If no bullets remain, delete the file entirely instead of leaving empty headers.
+            const remaining = parseBullets(after);
+            if (remaining.length === 0) {
+                await backend.delete(path);
+                if (refreshIndex) await refreshIndex(path);
+                onWrite?.(path, before, null);
+                return JSON.stringify({ success: true, path, action: 'file_deleted', removed: factText });
+            }
+            await backend.write(path, after);
+            if (refreshIndex) await refreshIndex(path);
+            onWrite?.(path, before, after);
+            return JSON.stringify({ success: true, path, action: 'deleted', removed: factText });
+        },
+    };
+}
+
 function removeArchivedItem(content, itemText, path) {
     const raw = String(content || '');
     const target = normalizeFactText(itemText);

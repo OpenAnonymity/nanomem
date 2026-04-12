@@ -65,6 +65,13 @@ nanomem retrieve "what are my hobbies?"
 nanomem retrieve "what are my hobbies?" --render
 ```
 
+Delete facts from memory:
+
+```bash
+nanomem delete "I have a dog named Mochi"
+nanomem delete "I have a dog named Mochi" --deep
+```
+
 Compact and clean up memory:
 
 ```bash
@@ -158,6 +165,8 @@ await memory.compact();
 ```bash
 nanomem add <text>                           # add new facts
 nanomem update <text>                        # correct existing facts
+nanomem delete <query>                       # delete facts matching a query
+nanomem delete <query> --deep                # delete across all files (thorough)
 nanomem import <file|dir|->                  # import history or notes
 nanomem retrieve <query> [--context <file>]  # retrieve relevant context
 nanomem tree                                 # browse memory files
