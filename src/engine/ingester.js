@@ -142,8 +142,8 @@ class MemoryIngester {
                 maxIterations: 12,
                 maxOutputTokens: 4000,
                 temperature: 0,
-                onToolCall: (name, args, result) => {
-                    onToolCall?.(name, args, result);
+                onToolCall: (name, args, result, meta) => {
+                    onToolCall?.(name, args, result, meta);
                 }
             });
             toolCallLog = result.toolCallLog;

@@ -199,6 +199,8 @@
  * @property {string} [tool]
  * @property {Record<string, any>} [args]
  * @property {string | Record<string, any>} [result]
+ * @property {'started' | 'finished'} [toolState]
+ * @property {string} [toolCallId]
  * @property {string[]} [paths]
  * @property {number} [iteration]
  * @property {string} [path]
@@ -209,6 +211,17 @@
  * @property {{ path: string; content: string }[]} files
  * @property {string[]} paths
  * @property {string | null} assembledContext
+ */
+
+/**
+ * @typedef {object} AugmentQueryResult
+ * @property {{ path: string; content: string }[]} files
+ * @property {string[]} paths
+ * @property {string} reviewPrompt
+ * @property {string} apiPrompt
+ * @property {string} task
+ * @property {string} [publicContext]
+ * @property {string} [privateContext]
  */
 
 /**
@@ -236,9 +249,17 @@
  */
 
 /**
+ * @typedef {object} ToolCallEventMeta
+ * @property {'started' | 'finished'} status
+ * @property {string} toolCallId
+ * @property {number} iteration
+ * @property {boolean} [terminal]
+ */
+
+/**
  * @typedef {object} ToolLoopResult
  * @property {string} textResponse
- * @property {{ name: string; arguments: Record<string, any> } | null} terminalToolResult
+ * @property {{ name: string; arguments: Record<string, any>; result?: string } | null} terminalToolResult
  * @property {LLMMessage[]} messages
  * @property {number} iterations
  * @property {ToolCallLogEntry[]} toolCallLog
@@ -255,10 +276,11 @@
  * @property {number} [maxIterations]
  * @property {number} [maxOutputTokens]
  * @property {number} [temperature]
- * @property {((name: string, args: Record<string, any>, result: string) => void) | null} [onToolCall]
+ * @property {((name: string, args: Record<string, any>, result: string | null, meta: ToolCallEventMeta) => void) | null} [onToolCall]
  * @property {((text: string, iteration: number) => void) | null} [onModelText]
  * @property {((chunk: string, iteration: number) => void) | null} [onReasoning]
  * @property {AbortSignal | null} [signal]
+ * @property {boolean} [executeTerminalTool]
  */
 
 /**
@@ -277,6 +299,7 @@
  * @typedef {object} StorageBackend
  * @property {() => Promise<void>} init
  * @property {(path: string) => Promise<string | null>} read
+ * @property {(path: string) => Promise<string | null>} [resolvePath]
  * @property {(path: string, content: string) => Promise<void>} write
  * @property {(path: string) => Promise<void>} delete
  * @property {(path: string) => Promise<boolean>} exists
@@ -291,6 +314,7 @@
 /**
  * @typedef {object} StorageFacade
  * @property {(path: string) => Promise<string | null>} read
+ * @property {(path: string) => Promise<string | null>} [resolvePath]
  * @property {(path: string, content: string) => Promise<void>} write
  * @property {(path: string) => Promise<void>} delete
  * @property {(path: string) => Promise<boolean>} exists
@@ -311,6 +335,10 @@
  * @property {string} [model]
  * @property {'openai' | 'anthropic' | 'tinfoil' | 'custom' | string} [provider]
  * @property {Record<string, string>} [headers]
+ * @property {string} [enclaveURL]
+ * @property {string} [configRepo]
+ * @property {string} [attestationBundleURL]
+ * @property {'ehbp' | 'tls'} [transport]
  */
 
 /**
@@ -322,7 +350,7 @@
  * @property {string} [storagePath]
  * @property {(event: ProgressEvent) => void} [onProgress]
  * @property {(event: ProgressEvent) => void} [onCompactProgress]
- * @property {(name: string, args: Record<string, any>, result: string) => void} [onToolCall]
+ * @property {(name: string, args: Record<string, any>, result: string | null, meta: ToolCallEventMeta) => void} [onToolCall]
  * @property {(text: string) => void} [onModelText]
  */
 
@@ -339,6 +367,104 @@
  * @property {string | null} title
  * @property {Message[]} messages
  * @property {string | null} updatedAt
+ */
+
+/**
+ * @typedef {object} MemoryImportConversation
+ * @property {string | null} [title]
+ * @property {Message[]} messages
+ * @property {string | number | null} [updatedAt]
+ * @property {'conversation' | 'document'} [mode]
+ */
+
+/**
+ * @typedef {'auto' | 'normalized' | 'oa-fastchat' | 'chatgpt' | 'messages' | 'transcript' | 'markdown'} ImportFormat
+ */
+
+/**
+ * @typedef {object} ImportProgressEvent
+ * @property {'start' | 'item_start' | 'item_complete' | 'complete'} stage
+ * @property {number} totalItems
+ * @property {number} [itemIndex]
+ * @property {string | null} [itemTitle]
+ * @property {'processed' | 'skipped' | 'error'} [itemStatus]
+ * @property {string | null} [itemError]
+ */
+
+/**
+ * @typedef {object} ImportDataOptions
+ * @property {ImportFormat} [format]
+ * @property {string} [sourceName]
+ * @property {string} [sessionId]
+ * @property {string} [sessionTitle]
+ * @property {'conversation' | 'document'} [mode]
+ * @property {(event: ImportProgressEvent) => void} [onProgress]
+ */
+
+/**
+ * @typedef {object} ImportDataItemResult
+ * @property {string | null} title
+ * @property {string | null} updatedAt
+ * @property {'processed' | 'skipped' | 'error'} status
+ * @property {number} writeCalls
+ * @property {string} [error]
+ */
+
+/**
+ * @typedef {object} ImportDataResult
+ * @property {number} totalItems
+ * @property {number} imported
+ * @property {number} skipped
+ * @property {number} errors
+ * @property {number} totalWriteCalls
+ * @property {string | null} authError
+ * @property {ImportDataItemResult[]} results
+ */
+
+/**
+ * @typedef {object} OmfMemoryItem
+ * @property {string} content
+ * @property {string} [category]
+ * @property {string[]} [tags]
+ * @property {'active' | 'archived' | 'expired'} [status]
+ * @property {string} [created_at]
+ * @property {string} [updated_at]
+ * @property {string} [expires_at]
+ * @property {Record<string, any>} [extensions]
+ */
+
+/**
+ * @typedef {object} OmfDocument
+ * @property {string} omf
+ * @property {string} exported_at
+ * @property {{ app?: string }} [source]
+ * @property {OmfMemoryItem[]} memories
+ */
+
+/**
+ * @typedef {object} OmfImportOptions
+ * @property {boolean} [includeArchived]
+ */
+
+/**
+ * @typedef {object} OmfImportPreview
+ * @property {number} total
+ * @property {number} filtered
+ * @property {number} toImport
+ * @property {number} duplicates
+ * @property {number} newFiles
+ * @property {number} existingFiles
+ * @property {Record<string, { new: number, duplicate: number, document?: boolean }>} byFile
+ */
+
+/**
+ * @typedef {object} OmfImportResult
+ * @property {number} total
+ * @property {number} imported
+ * @property {number} duplicates
+ * @property {number} skipped
+ * @property {number} filesWritten
+ * @property {string[]} errors
  */
 
 /**
@@ -370,7 +496,12 @@
  * @typedef {object} MemoryBank
  * @property {() => Promise<void>} init
  * @property {(query: string, conversationText?: string) => Promise<RetrievalResult | null>} retrieve
+ * @property {(query: string, conversationText?: string) => Promise<AugmentQueryResult | null>} augmentQuery
  * @property {(messages: Message[], options?: IngestOptions) => Promise<IngestResult>} ingest
+ * @property {(input: string | unknown | MemoryImportConversation | MemoryImportConversation[] | Array<{ path: string, content: string }>, options?: ImportDataOptions) => Promise<ImportDataResult>} importData
+ * @property {() => Promise<OmfDocument>} exportOmf
+ * @property {(doc: OmfDocument, options?: OmfImportOptions) => Promise<OmfImportPreview>} previewOmfImport
+ * @property {(doc: OmfDocument, options?: OmfImportOptions) => Promise<OmfImportResult>} importOmf
  * @property {() => Promise<{filesChanged: number, filesTotal: number} | undefined>} compact
  * @property {StorageFacade} storage
  * @property {() => Promise<string>} serialize

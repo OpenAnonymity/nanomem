@@ -33,7 +33,8 @@ export async function runAgenticToolLoop(options) {
         onToolCall = null,
         onModelText = null,
         onReasoning = null,
-        signal = null
+        signal = null,
+        executeTerminalTool = false
     } = options;
 
     const messages = [...initialMessages];
@@ -41,6 +42,9 @@ export async function runAgenticToolLoop(options) {
     let textResponse = '';
     let terminalToolResult = null;
     let iterations = 0;
+    const emitToolCall = (name, args, result, meta) => {
+        onToolCall?.(name, args, result, meta);
+    };
 
     // Stream when onReasoning is provided (surfaces reasoning tokens in real time).
     // Otherwise use non-streaming createChatCompletion for reliable tool call parsing.
@@ -109,7 +113,7 @@ export async function runAgenticToolLoop(options) {
 
         // Execute each tool call
         let hitTerminal = false;
-        for (const tc of responseToolCalls) {
+        for (const [toolIndex, tc] of responseToolCalls.entries()) {
             const toolName = tc.function?.name || '';
             let args;
             try {
@@ -120,18 +124,45 @@ export async function runAgenticToolLoop(options) {
                 args = {};
             }
 
-            const toolCallId = tc.id || '';
+            const toolCallId = tc.id || `iter-${iterations}-tool-${toolIndex + 1}-${toolName || 'tool'}`;
 
             // Check for terminal tool
             if (terminalTool && toolName === terminalTool) {
-                terminalToolResult = { name: toolName, arguments: args };
-                toolCallLog.push({ name: toolName, args, result: '[terminal]', toolCallId });
-                onToolCall?.(toolName, args, '[terminal]');
+                emitToolCall(toolName, args, null, {
+                    status: 'started',
+                    toolCallId,
+                    iteration: iterations,
+                    terminal: true
+                });
+                let result = '[terminal]';
+                if (executeTerminalTool) {
+                    const executor = toolExecutors[toolName];
+                    if (!executor) {
+                        result = JSON.stringify({ error: `Unknown tool: ${toolName}` });
+                    } else {
+                        try {
+                            result = await executor(args);
+                        } catch (err) {
+                            const message = err instanceof Error ? err.message : String(err);
+                            result = JSON.stringify({ error: `Tool error: ${message}` });
+                        }
+                    }
+                }
 
-                // Still need to append tool result so conversation is valid
+                terminalToolResult = { name: toolName, arguments: args, result };
+                toolCallLog.push({ name: toolName, args, result, toolCallId });
+                emitToolCall(toolName, args, result, {
+                    status: 'finished',
+                    toolCallId,
+                    iteration: iterations,
+                    terminal: true
+                });
+
                 messages.push({
                     role: 'tool',
-                    content: JSON.stringify({ acknowledged: true }),
+                    content: typeof result === 'string'
+                        ? result
+                        : JSON.stringify(result),
                     tool_call_id: toolCallId
                 });
                 hitTerminal = true;
@@ -139,6 +170,12 @@ export async function runAgenticToolLoop(options) {
             }
 
             // Execute the tool
+            emitToolCall(toolName, args, null, {
+                status: 'started',
+                toolCallId,
+                iteration: iterations,
+                terminal: false
+            });
             let result;
             const executor = toolExecutors[toolName];
             if (!executor) {
@@ -153,7 +190,12 @@ export async function runAgenticToolLoop(options) {
             }
 
             toolCallLog.push({ name: toolName, args, result, toolCallId });
-            onToolCall?.(toolName, args, result);
+            emitToolCall(toolName, args, result, {
+                status: 'finished',
+                toolCallId,
+                iteration: iterations,
+                terminal: false
+            });
 
             // Append tool result
             messages.push({
