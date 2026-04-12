@@ -141,6 +141,7 @@ Rules:
 - Pass only the minimum set of memory file paths needed for a high-quality answer.
 - Do not include any facts, summaries, names, or rewritten instructions in the tool arguments.
 - If a file does not materially improve the final answer, leave it out.
+- If a file only confirms a general interest already obvious from the query, leave it out.
 - If nothing relevant is found, call augment_query with an empty memory_files array.
 - Make exactly one augment_query call for this user message.
 - Do NOT call assemble_context in this mode.
@@ -283,11 +284,13 @@ class MemoryRetriever {
                 let progressResult = toolState === 'started' ? '' : (result || '');
                 if (toolState === 'finished' && isAugmentMode && name === 'augment_query') {
                     let toolError = '';
+                    let noRelevantMemory = false;
                     let canonicalPaths = null;
                     if (typeof result === 'string') {
                         try {
                             const parsed = JSON.parse(result);
                             toolError = typeof parsed?.error === 'string' ? parsed.error : '';
+                            noRelevantMemory = parsed?.noRelevantMemory === true;
                             canonicalPaths = Array.isArray(parsed?.files)
                                 ? parsed.files
                                     .map((file) => (typeof file?.path === 'string' ? file.path : null))
@@ -301,6 +304,8 @@ class MemoryRetriever {
 
                     if (toolError) {
                         progressResult = `error: ${toolError}`;
+                    } else if (noRelevantMemory) {
+                        progressResult = 'no relevant memory kept';
                     } else {
                         if (Array.isArray(canonicalPaths) && canonicalPaths.length > 0) {
                             progressArgs = { ...(args || {}), memory_files: canonicalPaths };

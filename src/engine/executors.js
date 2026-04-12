@@ -80,14 +80,16 @@ Core rules:
 
 Privacy and minimization:
 - Every included fact should pass this test: "Does the frontier model need this specific fact to answer well?" If no, leave it out.
+- If a memory fact only repeats or confirms what the current query already makes obvious, leave it out.
 - Generalize when possible. Prefer "their partner is vegetarian" or just "vegetarian-friendly options" over a partner's real name.
 - Open-ended everyday questions usually need less context than planning or personalized analysis questions.
 - Do not assume household members are part of the request unless the user's question or the retrieved memory makes that clearly necessary.
 
-Examples of over-sharing to avoid:
-- Dinner suggestions: you may include "vegetarian-friendly options" if the meal is clearly for multiple people. Do NOT include a partner's real name. Do NOT include location unless the task is about nearby restaurants or delivery.
-- Home affordability: include salary and location only if they affect the math. Do NOT include partner names, job titles, hobbies, or health conditions.
-- Shopping: include sizes, brands, and specs when needed. Do NOT include relationship status or unrelated biographical details.
+Common over-sharing patterns to avoid:
+- Do not include background facts that merely restate the topic, interest, or domain already obvious from the user's current query.
+- Do not include descriptive biography when the answer only needs concrete constraints, preferences, specs, or requirements.
+- Only include memory when it changes the answer: constraints, tradeoffs, personalization, or disambiguation.
+- Prefer concise, answer-shaping facts over broad user background.
 
 The user will review the exact prompt before it is sent. Keep it useful, minimal, and explicit.`;
 
@@ -134,6 +136,7 @@ function buildCrafterInput({ userQuery, files, conversationText }) {
 - reviewPrompt should be the exact final prompt that will be shown to the user
 - keep the current user request in normal prose
 - any extra facts injected from memory or recent conversation must stay wrapped in [[user_data]] tags
+- if a memory fact only restates the domain already obvious from the query, omit it
 - omit names, relationship labels, and locations unless the prompt really needs them`);
 
     return sections.join('\n\n');
@@ -365,6 +368,13 @@ export function createAugmentQueryExecutor({ backend, llmClient, model, query, c
 
         if (crafterError) {
             return JSON.stringify({ error: `${crafterError} (after ${AUGMENT_CRAFTER_MAX_ATTEMPTS} attempts)` });
+        }
+
+        if (!/\[\[user_data\]\]/.test(reviewPrompt)) {
+            return JSON.stringify({
+                noRelevantMemory: true,
+                files: []
+            });
         }
 
         const apiPrompt = stripUserDataTags(reviewPrompt);
