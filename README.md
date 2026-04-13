@@ -1,5 +1,13 @@
 # @openanonymity/nanomem
 
+```
+ __   __     ______     __   __     ______     __    __     ______     __    __
+/\ "-.\ \   /\  __ \   /\ "-.\ \   /\  __ \   /\ "-./  \   /\  ___\   /\ "-./  \
+\ \ \-.  \  \ \  __ \  \ \ \-.  \  \ \ \/\ \  \ \ \-./\ \  \ \  __\   \ \ \-./\ \
+ \ \_\\"\_\  \ \_\ \_\  \ \_\\"\_\  \ \_____\  \ \_\ \ \_\  \ \_____\  \ \_\ \ \_\
+  \/_/ \/_/   \/_/\/_/   \/_/ \/_/   \/_____/   \/_/  \/_/   \/_____/   \/_/  \/_/
+```
+
 **Personal memory you own, in files you can actually read.**
 
 `nanomem` turns chats, notes, and exports into a markdown memory system that an LLM can update and retrieve as facts evolve over time. The result stays inspectable, portable, and user-owned instead of disappearing into hidden vector state.
