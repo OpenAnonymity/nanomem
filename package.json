@@ -17,6 +17,7 @@
         "url": "https://github.com/openanonymity/nanomem/issues"
     },
     "scripts": {
+        "test": "node --test test/**/*.test.js",
         "vendor:tinfoil": "node scripts/vendor-tinfoil.mjs",
         "prepublishOnly": "npm run build:types",
         "build:types": "tsc",
