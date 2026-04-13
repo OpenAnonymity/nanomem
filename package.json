@@ -19,7 +19,7 @@
     "scripts": {
         "test": "node --test test/**/*.test.js",
         "vendor:tinfoil": "node scripts/vendor-tinfoil.mjs",
-        "prepublishOnly": "npm run build:types",
+        "prepublishOnly": "npm run vendor:tinfoil && npm run build:types",
         "build:types": "tsc",
         "prepack": "tsc"
     },
