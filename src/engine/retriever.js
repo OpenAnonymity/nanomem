@@ -5,9 +5,10 @@
  * and assemble relevant memory context. Falls back to brute-force text
  * search if the LLM call fails.
  */
-/** @import { LLMClient, Message, ProgressEvent, RetrievalResult, StorageBackend, ToolDefinition } from '../types.js' */
+/** @import { LLMClient, Message, ProgressEvent, RetrievalResult, AugmentQueryResult, StorageBackend, ToolDefinition } from '../types.js' */
 import { runAgenticToolLoop } from './toolLoop.js';
-import { createRetrievalExecutors } from './executors.js';
+import { createAugmentQueryExecutor, createRetrievalExecutors } from './executors.js';
+import { trimRecentConversation } from './recentConversation.js';
 import {
     normalizeFactText,
     parseBullets,
@@ -105,6 +106,68 @@ When recent conversation context is provided alongside the query, use it to reso
 
 Only include content that genuinely helps answer this specific query. Do not include unrelated files from other domains.`;
 
+/** @type {ToolDefinition} */
+const AUGMENT_QUERY_TOOL = {
+    type: 'function',
+    function: {
+        name: 'augment_query',
+        description: 'Hand off the original user query plus the minimal relevant memory file paths to the prompt crafter. Call this exactly once after you have identified the relevant files.',
+        parameters: {
+            type: 'object',
+            properties: {
+                user_query: {
+                    type: 'string',
+                    description: 'The original user query copied verbatim. Do not paraphrase it.'
+                },
+                memory_files: {
+                    type: 'array',
+                    description: 'The minimal set of relevant memory file paths needed by the prompt crafter.'
+                }
+            },
+            required: ['user_query', 'memory_files']
+        }
+    }
+};
+
+const AUGMENT_SYSTEM_ADDENDUM = `
+
+## Augment Query
+
+After reading memory files, you MUST call augment_query with the original user query plus the minimal relevant memory file paths. Do NOT draft the final prompt in the tool arguments. The augment_query tool itself will run the prompt-crafting pass.
+
+Rules:
+- Read the relevant files first so you know which paths matter.
+- Set user_query to the original user message verbatim.
+- Pass only the minimum set of memory file paths needed for a high-quality answer.
+- Do not include any facts, summaries, names, or rewritten instructions in the tool arguments.
+- If a file does not materially improve the final answer, leave it out.
+- If a file only confirms a general interest already obvious from the query, leave it out.
+- If nothing relevant is found, call augment_query with an empty memory_files array.
+- Make exactly one augment_query call for this user message.
+- Do NOT call assemble_context in this mode.
+`;
+
+async function collectReadFiles(toolCallLog, backend) {
+    const files = [];
+    const seenPaths = new Set();
+    for (const entry of toolCallLog) {
+        if (entry.name !== 'read_file' || !entry.args?.path || !entry.result) continue;
+        const path = typeof backend.resolvePath === 'function'
+            ? (await backend.resolvePath(entry.args.path)) || entry.args.path
+            : entry.args.path;
+        if (seenPaths.has(path)) continue;
+        try {
+            const parsed = JSON.parse(entry.result);
+            if (parsed.error) continue;
+        } catch {
+            // Non-JSON results are file contents.
+        }
+        seenPaths.add(path);
+        files.push({ path, content: entry.result });
+    }
+    return files;
+}
+
 
 class MemoryRetriever {
     constructor({ backend, bulletIndex, llmClient, model, onProgress, onModelText }) {
@@ -140,7 +203,7 @@ class MemoryRetriever {
         let result;
         try {
             onProgress?.({ stage: 'retrieval', message: 'Selecting relevant memory files...' });
-            result = await this._toolCallingRetrieval(query, index, onProgress, conversationText, onModelText);
+            result = await this._toolCallingRetrieval(query, index, onProgress, conversationText, onModelText, { mode: 'retrieve' });
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             onProgress?.({ stage: 'fallback', message: `LLM unavailable (${message}) — falling back to keyword search. Results may be less accurate.` });
@@ -155,10 +218,46 @@ class MemoryRetriever {
         return result;
     }
 
-    async _toolCallingRetrieval(query, index, onProgress, conversationText, onModelText) {
-        const systemPrompt = RETRIEVAL_SYSTEM_PROMPT
-            .replace('{INDEX}', index);
-        const toolExecutors = createRetrievalExecutors(this._backend);
+    /**
+     * @param {string} query
+     * @param {string} index
+     * @param {(event: ProgressEvent) => void | null} onProgress
+     * @param {string | undefined} conversationText
+     * @param {((text: string, iteration: number) => void) | null} onModelText
+     * @param {{ mode: 'retrieve' | 'augment' }} options
+     * @returns {Promise<RetrievalResult | AugmentQueryResult | null>}
+     */
+    async _toolCallingRetrieval(query, index, onProgress, conversationText, onModelText, options = { mode: 'retrieve' }) {
+        const isAugmentMode = options.mode === 'augment';
+        const systemPrompt = (
+            RETRIEVAL_SYSTEM_PROMPT.replace('{INDEX}', index) +
+            (isAugmentMode ? AUGMENT_SYSTEM_ADDENDUM : '')
+        );
+        const toolExecutors = {
+            ...createRetrievalExecutors(this._backend),
+            ...(isAugmentMode ? {
+                augment_query: createAugmentQueryExecutor({
+                    backend: this._backend,
+                    llmClient: this._llmClient,
+                    model: this._model,
+                    query,
+                    conversationText,
+                    onProgress: (event) => {
+                        if (!event?.stage || !event?.message) return;
+                        onProgress?.({
+                            stage: event.stage,
+                            message: event.message
+                        });
+                    }
+                })
+            } : {})
+        };
+        const tools = isAugmentMode
+            ? [
+                ...RETRIEVAL_TOOLS.filter((tool) => tool.function.name !== 'assemble_context'),
+                AUGMENT_QUERY_TOOL
+            ]
+            : RETRIEVAL_TOOLS;
 
         const recentContext = this._buildRecentContext(conversationText);
         const userContent = recentContext
@@ -168,18 +267,64 @@ class MemoryRetriever {
         const { terminalToolResult, toolCallLog } = await runAgenticToolLoop({
             llmClient: this._llmClient,
             model: this._model,
-            tools: RETRIEVAL_TOOLS,
+            tools,
             toolExecutors,
             messages: [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: userContent }
             ],
-            terminalTool: 'assemble_context',
-            maxIterations: 8,
+            terminalTool: isAugmentMode ? 'augment_query' : 'assemble_context',
+            maxIterations: isAugmentMode ? 12 : 8,
             maxOutputTokens: 4000,
             temperature: 0,
-            onToolCall: (name, args, result) => {
-                onProgress?.({ stage: 'tool_call', message: `Tool: ${name}`, tool: name, args, result });
+            executeTerminalTool: isAugmentMode,
+            onToolCall: (name, args, result, meta) => {
+                const toolState = meta?.status || 'finished';
+                let progressArgs = args;
+                let progressResult = toolState === 'started' ? '' : (result || '');
+                if (toolState === 'finished' && isAugmentMode && name === 'augment_query') {
+                    let toolError = '';
+                    let noRelevantMemory = false;
+                    let canonicalPaths = null;
+                    if (typeof result === 'string') {
+                        try {
+                            const parsed = JSON.parse(result);
+                            toolError = typeof parsed?.error === 'string' ? parsed.error : '';
+                            noRelevantMemory = parsed?.noRelevantMemory === true;
+                            canonicalPaths = Array.isArray(parsed?.files)
+                                ? parsed.files
+                                    .map((file) => (typeof file?.path === 'string' ? file.path : null))
+                                    .filter(Boolean)
+                                : null;
+                        } catch {
+                            toolError = '';
+                            canonicalPaths = null;
+                        }
+                    }
+
+                    if (toolError) {
+                        progressResult = `error: ${toolError}`;
+                    } else if (noRelevantMemory) {
+                        progressResult = 'no relevant memory kept';
+                    } else {
+                        if (Array.isArray(canonicalPaths) && canonicalPaths.length > 0) {
+                            progressArgs = { ...(args || {}), memory_files: canonicalPaths };
+                        }
+                        const selectedCount = Array.isArray(progressArgs?.memory_files) ? progressArgs.memory_files.length : 0;
+                        progressResult = selectedCount === 0
+                            ? 'no relevant memory selected'
+                            : `crafted augmented prompt from ${selectedCount} file${selectedCount === 1 ? '' : 's'}`;
+                    }
+                }
+                onProgress?.({
+                    stage: 'tool_call',
+                    message: `Tool: ${name}`,
+                    tool: name,
+                    args: progressArgs,
+                    result: progressResult,
+                    toolState,
+                    toolCallId: meta?.toolCallId
+                });
             },
             onModelText,
             onReasoning: (chunk, iteration) => {
@@ -187,23 +332,51 @@ class MemoryRetriever {
             }
         });
 
-        const files = [];
-        const seenPaths = new Set();
-        for (const entry of toolCallLog) {
-            if (entry.name === 'read_file' && entry.args?.path && entry.result) {
-                const path = entry.args.path;
-                if (seenPaths.has(path)) continue;
-                try {
-                    const parsed = JSON.parse(entry.result);
-                    if (parsed.error) continue;
-                } catch { /* not JSON, it's file content */ }
-                seenPaths.add(path);
-                files.push({ path, content: entry.result });
+        if (isAugmentMode) {
+            let augmentPayload = null;
+            try {
+                augmentPayload = terminalToolResult?.result
+                    ? JSON.parse(terminalToolResult.result)
+                    : null;
+            } catch {
+                augmentPayload = null;
             }
+
+            if (augmentPayload?.noRelevantMemory === true) {
+                return null;
+            }
+
+            const reviewPrompt = typeof augmentPayload?.reviewPrompt === 'string'
+                ? augmentPayload.reviewPrompt
+                : '';
+            const apiPrompt = typeof augmentPayload?.apiPrompt === 'string'
+                ? augmentPayload.apiPrompt
+                : MemoryRetriever._stripUserDataTags(reviewPrompt);
+            const files = Array.isArray(augmentPayload?.files)
+                ? augmentPayload.files.filter((file) => typeof file?.path === 'string' && typeof file?.content === 'string')
+                : await collectReadFiles(toolCallLog, this._backend);
+            const paths = files.map((file) => file.path);
+
+            if (!reviewPrompt || files.length === 0) return null;
+
+            onProgress?.({
+                stage: 'complete',
+                message: `Crafted prompt from ${files.length} memory file${files.length === 1 ? '' : 's'}.`,
+                paths
+            });
+
+            return {
+                files,
+                paths,
+                reviewPrompt,
+                apiPrompt
+            };
         }
 
-        const assembledContext = terminalToolResult?.arguments?.content || null;
+        const files = await collectReadFiles(toolCallLog, this._backend);
         const paths = files.map(f => f.path);
+
+        const assembledContext = terminalToolResult?.arguments?.content || null;
 
         if (files.length === 0 && !assembledContext) return null;
 
@@ -216,6 +389,37 @@ class MemoryRetriever {
         });
 
         return { files, paths, assembledContext: assembledContext || snippetContext };
+    }
+
+    /**
+     * @param {string} query
+     * @param {string} [conversationText]
+     * @returns {Promise<AugmentQueryResult | null>}
+     */
+    async augmentQueryForPrompt(query, conversationText) {
+        if (!query || !query.trim()) return null;
+
+        const onProgress = this._onProgress;
+        const onModelText = this._onModelText;
+
+        onProgress?.({ stage: 'init', message: 'Reading memory index...' });
+        await this._backend.init();
+        const index = await this._backend.getTree();
+
+        if (!index || await this._isMemoryEmpty(index)) {
+            return null;
+        }
+
+        try {
+            onProgress?.({ stage: 'retrieval', message: 'Reading memory and crafting a review prompt...' });
+            return /** @type {Promise<AugmentQueryResult | null>} */ (
+                this._toolCallingRetrieval(query, index, onProgress, conversationText, onModelText, { mode: 'augment' })
+            );
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            onProgress?.({ stage: 'fallback', message: `Memory prompt crafting unavailable (${message}).` });
+            return null;
+        }
     }
 
     async _textSearchFallbackWithLoad(query, onProgress, conversationText) {
@@ -390,17 +594,9 @@ class MemoryRetriever {
     }
 
     _buildRecentContext(conversationText) {
-        if (!conversationText || conversationText.length < 20) return null;
-        if (conversationText.length <= MAX_RECENT_CONTEXT_CHARS) {
-            const hasMultipleTurns = /\n/.test(conversationText.trim());
-            return hasMultipleTurns ? conversationText : null;
-        }
-        let tail = conversationText.slice(-MAX_RECENT_CONTEXT_CHARS);
-        const firstNewline = tail.indexOf('\n');
-        if (firstNewline > 0 && firstNewline < 200) {
-            tail = tail.slice(firstNewline + 1);
-        }
-        return tail.trim() || null;
+        return trimRecentConversation(conversationText, {
+            maxChars: MAX_RECENT_CONTEXT_CHARS
+        });
     }
 
     async _isMemoryEmpty(index) {
@@ -408,6 +604,11 @@ class MemoryRetriever {
         const realFiles = all.filter(f => !f.path.endsWith('_tree.md'));
         if (realFiles.length === 0) return true;
         return !realFiles.some(f => (f.itemCount || 0) > 0);
+    }
+
+    static _stripUserDataTags(text) {
+        if (!text) return text;
+        return text.replace(/\[\[user_data\]\]/g, '').replace(/\[\[\/user_data\]\]/g, '');
     }
 }
 

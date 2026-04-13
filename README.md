@@ -24,6 +24,7 @@ Retrieval is only one part of memory. `nanomem` is built for the maintenance lay
 - **Compaction and cleanup.** Collapse repeated signals into stable knowledge and move stale memory into history.
 - **Conflict-aware updates.** Resolve outdated or contradictory facts using recency, source, and confidence.
 - **Import your existing history.** Start from ChatGPT exports, [OA Chat](https://chat.openanonymity.ai) exports, transcripts, message arrays, markdown notes, or whole markdown directories.
+- **Portable memory exchange.** Export full memory state as plain text, ZIP, or Open Memory Format (OMF), and merge OMF documents back in programmatically.
 - **Flexible storage.** Run on local files, IndexedDB, in-memory storage, or a custom backend.
 - **Built to plug in.** Use it from the CLI, as a library, or as a memory layer for other agents.
 
@@ -87,6 +88,17 @@ nanomem login --provider anthropic --api-key sk-ant-... --model claude-sonnet-4-
 
 Supported providers include OpenAI, Anthropic, Tinfoil, OpenRouter, and OpenAI-compatible endpoints via `--base-url`.
 
+When `provider` is `tinfoil`, nanomem now uses the Tinfoil SDK and fails
+closed on enclave attestation verification before any inference request is
+sent. Browser consumers load a vendored SDK bundle, construct `TinfoilAI`,
+and require `await client.getVerificationDocument()` to report
+`securityVerified === true` before inference. The vendored bundle lives at
+`src/vendor/tinfoil.browser.js`; refresh it after SDK upgrades with:
+
+```bash
+npm run vendor:tinfoil
+```
+
 ## How it works
 
 ```text
@@ -103,7 +115,9 @@ conversation / notes / exports
             |  memory retrieve
             |  file selection + bullet-level scoring
             v
-      assembled memory context
+   prompt crafting / retrieval
+   retrieve -> augment_query(user_query, memory_files)
+   -> minimized reviewable prompt
             |
             v
        memory compact
@@ -158,6 +172,10 @@ await memory.ingest([
 
 const result = await memory.retrieve('Where do I live now?');
 await memory.compact();
+
+const omf = await memory.exportOmf();
+const preview = await memory.previewOmfImport(omf);
+await memory.importOmf(omf);
 ```
 
 ## Common commands
@@ -206,6 +224,8 @@ nanomem import my-notes.md --format markdown   # document mode (explicit)
 ## Learn more
 
 Internals: [docs/memory-system.md](./docs/memory-system.md)
+
+OMF spec: [docs/omf.md](./docs/omf.md)
 
 ## License
 

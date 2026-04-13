@@ -11,17 +11,33 @@
  *                                           rebuildTree, exportAll }
  *   Utilities  (portability): mem.serialize(), mem.toZip()
  */
-/** @import { LLMClient, MemoryBank, MemoryBankConfig, MemoryBankLLMConfig, Message, IngestOptions, RetrievalResult, StorageBackend } from './types.js' */
+/** @import { LLMClient, MemoryBank, MemoryBankConfig, MemoryBankLLMConfig, Message, IngestOptions, RetrievalResult, AugmentQueryResult, StorageBackend } from './types.js' */
 
 import { createOpenAIClient } from './llm/openai.js';
 import { createAnthropicClient } from './llm/anthropic.js';
+import { createTinfoilClient } from './llm/tinfoil.js';
 import { MemoryBulletIndex } from './bullets/bulletIndex.js';
 import { MemoryRetriever } from './engine/retriever.js';
 import { MemoryIngester } from './engine/ingester.js';
 import { MemoryDeleter } from './engine/deleter.js';
 import { MemoryCompactor } from './engine/compactor.js';
 import { InMemoryStorage } from './backends/ram.js';
+import { importData as importMemoryData } from './imports/importData.js';
 import { serialize, toZip } from './utils/portability.js';
+import { buildOmfExport, previewOmfImport, importOmf } from './omf.js';
+
+/**
+ * Remove review-only [[user_data]] markers before sending the final prompt to
+ * the frontier model.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+export function stripUserDataTags(text) {
+    return String(text ?? '')
+        .replace(/\[\[user_data\]\]/g, '')
+        .replace(/\[\[\/user_data\]\]/g, '');
+}
 
 /**
  * Create a memory instance.
@@ -78,11 +94,72 @@ export function createMemoryBank(config = {}) {
         retrieve: (query, conversationText) => retrieval.retrieveForQuery(query, conversationText),
 
         /**
+         * Build a reviewable prompt that augments the user query with memory.
+         * @param {string} query
+         * @param {string} [conversationText]
+         * @returns {Promise<AugmentQueryResult | null>}
+         */
+        augmentQuery: (query, conversationText) => retrieval.augmentQueryForPrompt(query, conversationText),
+
+        /**
          * Ingest facts from a conversation into memory.
          * @param {Message[]} messages
          * @param {IngestOptions} [options]
          */
         ingest: (messages, options) => ingester.ingest(messages, options),
+
+        /**
+         * Import supported conversation/document formats into memory.
+         */
+        importData: (input, options) => importMemoryData({
+            init: () => backend.init(),
+            ingest: (messages, ingestOptions) => ingester.ingest(messages, ingestOptions)
+        }, input, options),
+        exportOmf: async () => {
+            await backend.init();
+            return buildOmfExport({
+                read: (path) => backend.read(path),
+                write: (path, content) => write(path, content),
+                delete: (path) => remove(path),
+                exists: (path) => backend.exists(path),
+                search: (query) => backend.search(query),
+                ls: (dirPath) => backend.ls(dirPath),
+                getTree: () => backend.getTree(),
+                rebuildTree: () => rebuildTree(),
+                exportAll: () => backend.exportAll(),
+                clear: () => backend.clear(),
+            }, { sourceApp: 'nanomem' });
+        },
+        previewOmfImport: async (doc, options) => {
+            await backend.init();
+            return previewOmfImport({
+                read: (path) => backend.read(path),
+                write: (path, content) => write(path, content),
+                delete: (path) => remove(path),
+                exists: (path) => backend.exists(path),
+                search: (query) => backend.search(query),
+                ls: (dirPath) => backend.ls(dirPath),
+                getTree: () => backend.getTree(),
+                rebuildTree: () => rebuildTree(),
+                exportAll: () => backend.exportAll(),
+                clear: () => backend.clear(),
+            }, doc, options);
+        },
+        importOmf: async (doc, options) => {
+            await backend.init();
+            return importOmf({
+                read: (path) => backend.read(path),
+                write: (path, content) => write(path, content),
+                delete: (path) => remove(path),
+                exists: (path) => backend.exists(path),
+                search: (query) => backend.search(query),
+                ls: (dirPath) => backend.ls(dirPath),
+                getTree: () => backend.getTree(),
+                rebuildTree: () => rebuildTree(),
+                exportAll: () => backend.exportAll(),
+                clear: () => backend.clear(),
+            }, doc, options);
+        },
 
         /** Compact all memory files (dedup, archive stale facts). */
         compact: () => compactor.compactAll(),
@@ -98,6 +175,7 @@ export function createMemoryBank(config = {}) {
 
         storage: {
             read:         (path)          => backend.read(path),
+            resolvePath:  (path)          => backend.resolvePath ? backend.resolvePath(path) : Promise.resolve(null),
             write:        (path, content) => write(path, content),
             delete:       (path)          => remove(path),
             exists:       (path)          => backend.exists(path),
@@ -137,6 +215,10 @@ function _createLlmClient(llmConfig = /** @type {MemoryBankLLMConfig} */ ({ apiK
         return createAnthropicClient({ apiKey, baseUrl, headers });
     }
 
+    if (detectedProvider === 'tinfoil') {
+        return createTinfoilClient(llmConfig);
+    }
+
     return createOpenAIClient({ apiKey, baseUrl, headers });
 }
 
@@ -144,6 +226,7 @@ function _detectProvider(baseUrl) {
     if (!baseUrl) return 'openai';
     const lower = baseUrl.toLowerCase();
     if (lower.includes('anthropic.com')) return 'anthropic';
+    if (lower.includes('tinfoil.sh')) return 'tinfoil';
     return 'openai';
 }
 
@@ -176,7 +259,7 @@ function _asyncBackend(loader) {
         return _loading;
     }
 
-    const methods = ['init', 'read', 'write', 'delete', 'exists', 'ls', 'search', 'getTree', 'rebuildTree', 'exportAll', 'clear'];
+    const methods = ['init', 'read', 'resolvePath', 'write', 'delete', 'exists', 'ls', 'search', 'getTree', 'rebuildTree', 'exportAll', 'clear'];
     const proxy = {};
     for (const method of methods) {
         proxy[method] = async (...args) => {
@@ -201,6 +284,7 @@ export { MemoryIngester } from './engine/ingester.js';
 export { MemoryCompactor } from './engine/compactor.js';
 export { createRetrievalExecutors, createExtractionExecutors } from './engine/executors.js';
 export { serialize, deserialize, toZip } from './utils/portability.js';
+export { buildOmfExport, previewOmfImport, importOmf, parseOmfText, validateOmf } from './omf.js';
 export {
     extractSessionsFromOAFastchatExport,
     extractConversationFromOAFastchatExport,

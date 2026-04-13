@@ -45,6 +45,9 @@ class IndexedDBStorage extends BaseStorage {
                 try { await this._bootstrap(); } catch (err) {
                     console.warn('[IndexedDBStorage] Init error:', err);
                 }
+                try { await this.rebuildTree(); } catch (err) {
+                    console.warn('[IndexedDBStorage] Tree rebuild error:', err);
+                }
                 resolve(/** @type {IDBDatabase} */ (this.db));
             };
 
@@ -100,9 +103,9 @@ class IndexedDBStorage extends BaseStorage {
 
         await /** @type {Promise<void>} */ (new Promise((resolve, reject) => {
             const tx = /** @type {IDBDatabase} */ (this.db).transaction(STORE_NAME, 'readwrite');
-            const request = tx.objectStore(STORE_NAME).put(record);
-            request.onsuccess = () => resolve();
-            request.onerror = () => reject(request.error);
+            tx.objectStore(STORE_NAME).put(record);
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
         }));
     }
 
@@ -116,9 +119,9 @@ class IndexedDBStorage extends BaseStorage {
 
         await /** @type {Promise<void>} */ (new Promise((resolve, reject) => {
             const tx = /** @type {IDBDatabase} */ (this.db).transaction(STORE_NAME, 'readwrite');
-            const request = tx.objectStore(STORE_NAME).delete(path);
-            request.onsuccess = () => resolve();
-            request.onerror = () => reject(request.error);
+            tx.objectStore(STORE_NAME).delete(path);
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
         }));
         await this.rebuildTree();
     }
@@ -153,7 +156,7 @@ class IndexedDBStorage extends BaseStorage {
     /** @returns {Promise<void>} */
     async rebuildTree() {
         await this.init();
-        const all = await this._getAll();
+        const all = this._sanitizeRecords(await this._getAll());
         const files = all
             .filter((r) => !this._isInternalPath(r.path))
             .sort((a, b) => a.path.localeCompare(b.path));
@@ -181,7 +184,7 @@ class IndexedDBStorage extends BaseStorage {
     /** @returns {Promise<ExportRecord[]>} */
     async exportAll() {
         await this.init();
-        return this._getAll();
+        return this._sanitizeRecords(await this._getAll());
     }
 
     // ─── Internal IndexedDB helpers ──────────────────────────────
@@ -202,6 +205,16 @@ class IndexedDBStorage extends BaseStorage {
             request.onsuccess = () => resolve(request.result || []);
             request.onerror = () => reject(request.error);
         });
+    }
+
+    _sanitizeRecords(records) {
+        return (records || [])
+            .filter((record) => typeof record?.path === 'string' && record.path.trim())
+            .map((record) => ({
+                ...record,
+                path: record.path.trim()
+            }))
+            .filter((record) => this._isInternalPath(record.path) || typeof record?.content === 'string');
     }
 }
 
