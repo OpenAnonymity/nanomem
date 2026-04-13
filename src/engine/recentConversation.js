@@ -52,7 +52,7 @@ function trimByTail(raw, maxChars) {
  *
  * @param {string} conversationText
  * @param {object} options
- * @param {number} options.maxChars
+ * @param {number} [options.maxChars]
  * @param {number} [options.maxTurns]
  * @param {number} [options.maxUserChars]
  * @param {number} [options.maxAssistantChars]

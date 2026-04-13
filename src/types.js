@@ -219,6 +219,7 @@
  * @property {string[]} paths
  * @property {string} reviewPrompt
  * @property {string} apiPrompt
+ * @property {string | null} assembledContext
  */
 
 /**
@@ -500,6 +501,7 @@
  * @property {(doc: OmfDocument, options?: OmfImportOptions) => Promise<OmfImportPreview>} previewOmfImport
  * @property {(doc: OmfDocument, options?: OmfImportOptions) => Promise<OmfImportResult>} importOmf
  * @property {() => Promise<{filesChanged: number, filesTotal: number} | undefined>} compact
+ * @property {(query: string, options?: {deep?: boolean, mode?: string}) => Promise<{status: string, deleteCalls: number, writes: Array<any>}>} [deleteContent]
  * @property {StorageFacade} storage
  * @property {() => Promise<string>} serialize
  * @property {() => Promise<Uint8Array>} toZip

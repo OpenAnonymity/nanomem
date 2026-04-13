@@ -282,7 +282,7 @@ export function createAugmentQueryExecutor({ backend, llmClient, model, query, c
 
         let reviewPrompt = '';
         let crafterError = '';
-        const messages = [
+        const messages = /** @type {import('../types.js').LLMMessage[]} */ ([
             { role: 'system', content: AUGMENT_QUERY_EXECUTOR_SYSTEM_PROMPT },
             {
                 role: 'user',
@@ -292,7 +292,7 @@ export function createAugmentQueryExecutor({ backend, llmClient, model, query, c
                     conversationText
                 })
             }
-        ];
+        ]);
 
         for (let attempt = 1; attempt <= AUGMENT_CRAFTER_MAX_ATTEMPTS; attempt += 1) {
             let response;

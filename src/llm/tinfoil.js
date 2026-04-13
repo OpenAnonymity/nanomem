@@ -5,6 +5,9 @@
  * In Node environments it imports the `tinfoil` package directly.
  */
 /** @import { ChatCompletionParams, ChatCompletionResponse, LLMClient, MemoryBankLLMConfig, ToolCall } from '../types.js' */
+/**
+ * @typedef {Error & { status?: number, retryable?: boolean, retryAfterMs?: number | null, _retryFinalized?: boolean }} ApiError
+ */
 
 const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504]);
 const RETRYABLE_ERROR_CODES = new Set([
@@ -462,7 +465,7 @@ function sleep(ms) {
 async function createHttpError(response, attempt = 1) {
     const text = await response.text().catch(() => '');
     const suffix = attempt > 1 ? ` after ${attempt} attempts` : '';
-    const error = new Error(`Tinfoil API error ${response.status}${suffix}: ${text}`);
+    const error = /** @type {ApiError} */ (new Error(`Tinfoil API error ${response.status}${suffix}: ${text}`));
     error.status = response.status;
     error.retryable = RETRYABLE_STATUS.has(response.status);
     error.retryAfterMs = parseRetryAfterMs(response);
@@ -487,9 +490,12 @@ function parseRetryAfterMs(response) {
     return null;
 }
 
+/**
+ * @param {unknown} error
+ * @returns {ApiError}
+ */
 function asError(error) {
-    if (error instanceof Error) return error;
-    return new Error(String(error));
+    return /** @type {ApiError} */ (error instanceof Error ? error : new Error(String(error)));
 }
 
 function finalizeRetryError(error, attempt) {

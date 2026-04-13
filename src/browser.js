@@ -223,6 +223,5 @@ function asyncBackend(loader) {
     return /** @type {StorageBackend} */ (proxy);
 }
 
-export * from './types.js';
 export * from './bullets/index.js';
 export { buildOmfExport, previewOmfImport, importOmf, parseOmfText, validateOmf } from './omf.js';

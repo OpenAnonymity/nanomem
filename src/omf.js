@@ -59,20 +59,21 @@ export function validateOmf(doc) {
     if (!doc || typeof doc !== 'object') {
         return { valid: false, error: 'Not a valid JSON object' };
     }
-    if (!doc.omf) {
+    const d = /** @type {any} */ (doc);
+    if (!d.omf) {
         return { valid: false, error: 'Missing "omf" version field. Is this an OMF file?' };
     }
-    if (!SUPPORTED_OMF_VERSIONS.includes(String(doc.omf))) {
+    if (!SUPPORTED_OMF_VERSIONS.includes(String(d.omf))) {
         return {
             valid: false,
-            error: `Unsupported OMF version "${doc.omf}". Supported: ${SUPPORTED_OMF_VERSIONS.join(', ')}`
+            error: `Unsupported OMF version "${d.omf}". Supported: ${SUPPORTED_OMF_VERSIONS.join(', ')}`
         };
     }
-    if (!Array.isArray(doc.memories)) {
+    if (!Array.isArray(d.memories)) {
         return { valid: false, error: 'Missing or invalid "memories" array' };
     }
-    for (let index = 0; index < doc.memories.length; index += 1) {
-        const memory = doc.memories[index];
+    for (let index = 0; index < d.memories.length; index += 1) {
+        const memory = d.memories[index];
         if (!memory || typeof memory !== 'object') {
             return { valid: false, error: `Memory item at index ${index} is not an object` };
         }
@@ -187,7 +188,7 @@ export async function previewOmfImport(storage, doc, options = {}) {
     const total = doc.memories.length;
     let filtered = 0;
     let duplicates = 0;
-    const byFile = {};
+    const byFile = /** @type {Record<string, {new: number, duplicate: number, document?: boolean}>} */ ({});
 
     for (const item of doc.memories) {
         if (!includeArchived && (item.status === 'archived' || item.status === 'expired')) {

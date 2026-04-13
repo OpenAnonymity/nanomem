@@ -369,7 +369,8 @@ class MemoryRetriever {
                 files,
                 paths,
                 reviewPrompt,
-                apiPrompt
+                apiPrompt,
+                assembledContext: null
             };
         }
 

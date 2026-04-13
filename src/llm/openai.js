@@ -7,6 +7,9 @@
  * Uses `fetch` (built into Node 18+ and browsers).
  */
 /** @import { ChatCompletionParams, ChatCompletionResponse, LLMClient, LLMClientOptions, ToolCall } from '../types.js' */
+/**
+ * @typedef {Error & { status?: number, retryable?: boolean, retryAfterMs?: number | null, _retryFinalized?: boolean }} ApiError
+ */
 
 const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504]);
 const RETRYABLE_ERROR_CODES = new Set([
@@ -203,6 +206,11 @@ function isRetryableNetworkError(error) {
         || message.includes('connection');
 }
 
+/**
+ * @param {number} attempt
+ * @param {number | null} [retryAfterMs]
+ * @returns {number}
+ */
 function getRetryDelay(attempt, retryAfterMs = null) {
     if (retryAfterMs != null && Number.isFinite(retryAfterMs) && retryAfterMs > 0) {
         return Math.min(retryAfterMs, MAX_DELAY_MS);
@@ -220,7 +228,7 @@ function sleep(ms) {
 async function createHttpError(response, attempt = 1) {
     const text = await response.text().catch(() => '');
     const suffix = attempt > 1 ? ` after ${attempt} attempts` : '';
-    const error = new Error(`OpenAI API error ${response.status}${suffix}: ${text}`);
+    const error = /** @type {ApiError} */ (new Error(`OpenAI API error ${response.status}${suffix}: ${text}`));
     error.status = response.status;
     error.retryable = RETRYABLE_STATUS.has(response.status);
     error.retryAfterMs = parseRetryAfterMs(response);
@@ -258,8 +266,12 @@ function finalizeRetryError(error, attempts) {
     return normalized;
 }
 
+/**
+ * @param {unknown} error
+ * @returns {ApiError}
+ */
 function asError(error) {
-    return error instanceof Error ? error : new Error(String(error));
+    return /** @type {ApiError} */ (error instanceof Error ? error : new Error(String(error)));
 }
 
 async function readSSE(response, onMessage) {

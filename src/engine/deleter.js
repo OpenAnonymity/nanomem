@@ -82,7 +82,7 @@ const DEEP_DELETION_TOOLS = DELETION_TOOLS.filter(t =>
 
 export class MemoryDeleter {
     /**
-     * @param {{ backend: StorageBackend, bulletIndex: object, llmClient: LLMClient, model: string, onToolCall?: Function }}
+     * @param {{ backend: StorageBackend, bulletIndex: object, llmClient: LLMClient, model: string, onToolCall?: Function }} options
      */
     constructor({ backend, bulletIndex, llmClient, model, onToolCall }) {
         this._backend = backend;
@@ -96,7 +96,7 @@ export class MemoryDeleter {
      * Delete memory content matching the given query.
      *
      * @param {string} query  Plain-text description of what to delete.
-     * @param {{ deep?: boolean }} [options]
+     * @param {{ deep?: boolean, mode?: string }} [options]
      * @returns {Promise<{ status: string, deleteCalls: number, writes: Array }>}
      */
     async deleteForQuery(query, options = {}) {

@@ -317,12 +317,13 @@ function coerceMarkdownInput(input, sourceName) {
 function normalizeSessions(sessions, defaultMode = 'conversation') {
     return sessions
         .map((session) => {
-            const messages = normalizeMessages(session?.messages || session?.conversation || []);
-            const mode = session?.mode === 'document' ? 'document' : defaultMode;
+            const s = /** @type {any} */ (session);
+            const messages = normalizeMessages(s?.messages || s?.conversation || []);
+            const mode = /** @type {'conversation' | 'document'} */ (s?.mode === 'document' ? 'document' : defaultMode);
             return {
-                title: normalizeTitle(session?.title || session?.session?.title || null),
+                title: normalizeTitle(s?.title || s?.session?.title || null),
                 messages,
-                updatedAt: normalizeUpdatedAt(session?.updatedAt || session?.session?.updatedAt || null),
+                updatedAt: normalizeUpdatedAt(s?.updatedAt || s?.session?.updatedAt || null),
                 mode
             };
         })
@@ -336,8 +337,9 @@ function normalizeSessions(sessions, defaultMode = 'conversation') {
 function normalizeMessages(messages) {
     return messages
         .map((message) => {
-            const role = message?.role === 'assistant' ? 'assistant' : 'user';
-            const content = normalizeMessageContent(message?.content);
+            const m = /** @type {any} */ (message);
+            const role = /** @type {'user' | 'assistant'} */ (m?.role === 'assistant' ? 'assistant' : 'user');
+            const content = normalizeMessageContent(m?.content);
             return { role, content };
         })
         .filter((message) => message.content.trim());
@@ -354,16 +356,18 @@ function normalizeMessageContent(content) {
             .map((part) => {
                 if (!part) return '';
                 if (typeof part === 'string') return part;
-                if (typeof part.text === 'string') return part.text;
-                if (typeof part.content === 'string') return part.content;
+                const p = /** @type {any} */ (part);
+                if (typeof p.text === 'string') return p.text;
+                if (typeof p.content === 'string') return p.content;
                 return '';
             })
             .filter(Boolean)
             .join('');
     }
     if (content && typeof content === 'object') {
-        if (typeof content.text === 'string') return content.text;
-        if (typeof content.content === 'string') return content.content;
+        const c = /** @type {any} */ (content);
+        if (typeof c.text === 'string') return c.text;
+        if (typeof c.content === 'string') return c.content;
     }
     return '';
 }
@@ -412,7 +416,8 @@ function titleFromSourceName(sourceName) {
  * @returns {value is MemoryImportConversation}
  */
 function isConversationLike(value) {
-    return !!value && typeof value === 'object' && Array.isArray(value.messages);
+    const v = /** @type {any} */ (value);
+    return !!v && typeof v === 'object' && Array.isArray(v.messages);
 }
 
 /**
@@ -420,10 +425,11 @@ function isConversationLike(value) {
  * @returns {value is { path: string, content: string }}
  */
 function isMarkdownRecord(value) {
-    return !!value
-        && typeof value === 'object'
-        && typeof value.path === 'string'
-        && typeof value.content === 'string';
+    const v = /** @type {any} */ (value);
+    return !!v
+        && typeof v === 'object'
+        && typeof v.path === 'string'
+        && typeof v.content === 'string';
 }
 
 /**
@@ -431,10 +437,11 @@ function isMarkdownRecord(value) {
  * @returns {boolean}
  */
 function isMessageLike(value) {
-    return !!value
-        && typeof value === 'object'
-        && (value.role === 'user' || value.role === 'assistant')
-        && (typeof value.content === 'string' || Array.isArray(value.content));
+    const v = /** @type {any} */ (value);
+    return !!v
+        && typeof v === 'object'
+        && (v.role === 'user' || v.role === 'assistant')
+        && (typeof v.content === 'string' || Array.isArray(v.content));
 }
 
 /**
