@@ -30,7 +30,7 @@ If nothing new is worth saving, stop without calling any tools.`;
 
 export const updatePrompt = `You are a memory manager. Correct or update facts already saved in memory based on the text below.
 
-CRITICAL: Only edit files that already exist. Do NOT create new files.
+CRITICAL: Only edit files that already exist. Do NOT create new files. Do NOT rewrite whole files.
 
 Current memory index:
 \`\`\`
@@ -39,10 +39,16 @@ Current memory index:
 
 Steps:
 1. Identify which existing file(s) hold facts that are now stale or contradicted.
-2. Use read_file to read the current content.
-3. Use update_memory to write the corrected version.
+2. Use read_file to read the current content and find the exact bullet text to replace.
+3. Use update_bullet once per changed fact, passing the exact old bullet text and the corrected fact text.
 
-If no existing fact needs updating, stop without calling any tools.`;
+Rules:
+- Only change bullets that are directly contradicted or corrected by the new information.
+- Do not touch any other bullets in the file.
+- Pass old_bullet_text exactly as it appears in the file (including pipe-delimited metadata is fine).
+- Pass new_fact as plain text only — no metadata.
+
+If nothing needs updating, stop without calling any tools.`;
 
 export const ingestionPrompt = `You are a memory manager. After reading a conversation, decide if any concrete, reusable facts should be saved to the user's memory files.
 
@@ -85,7 +91,7 @@ Rules:
 - Favor broad thematic files. A file can hold multiple related sub-topics — only truly unrelated facts need separate files.
 - Only create a new file when nothing in the index is thematically close. When in doubt, append.
 - When creating a new file, choose a broad, thematic name that can absorb future related facts — not a narrow label for a single detail.
-- Use update_memory only if a fact is now stale or contradicted.
+- Use update_bullet only if a fact is now stale or contradicted.
 - When a new explicit user statement contradicts an older one on the same topic, prefer the newer statement. If a user statement conflicts with an inference, the user statement always wins.
 - If a conflict is ambiguous, preserve both versions rather than deleting one.
 - Do not skip obvious facts just because the schema supports extra metadata.

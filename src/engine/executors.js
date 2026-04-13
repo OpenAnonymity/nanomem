@@ -431,6 +431,31 @@ export function createExtractionExecutors(backend, hooks = {}) {
             onWrite?.(path, before ?? '', normalized);
             return JSON.stringify({ success: true, path, action: 'updated' });
         },
+        update_bullet: async ({ path, old_bullet_text, new_fact }) => {
+            const before = await backend.read(path);
+            if (!before) return JSON.stringify({ error: `File not found: ${path}` });
+
+            const factText = old_bullet_text.includes('|')
+                ? old_bullet_text.split('|')[0].trim()
+                : old_bullet_text.trim();
+            const target = normalizeFactText(factText);
+            if (!target) return JSON.stringify({ error: 'old_bullet_text must not be empty' });
+
+            const parsed = parseBullets(before);
+            const idx = parsed.findIndex((b) => normalizeFactText(b.text) === target);
+            if (idx === -1) return JSON.stringify({ error: `No exact match found for the given bullet text in: ${path}` });
+
+            parsed[idx] = { ...parsed[idx], text: new_fact.trim() };
+            const compacted = compactBullets(parsed, { defaultTopic: inferTopicFromPath(path), maxActivePerTopic: 1000 });
+            const after = renderCompactedDocument(
+                compacted.working, compacted.longTerm, compacted.history,
+                { titleTopic: inferTopicFromPath(path) }
+            );
+            await backend.write(path, after);
+            if (refreshIndex) await refreshIndex(path);
+            onWrite?.(path, before, after);
+            return JSON.stringify({ success: true, path, action: 'bullet_updated', old: factText, new: new_fact.trim() });
+        },
         archive_memory: async ({ path, item_text }) => {
             const existing = await backend.read(path);
             if (!existing) return JSON.stringify({ error: `File not found: ${path}` });

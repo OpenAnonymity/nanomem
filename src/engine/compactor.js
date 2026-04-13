@@ -33,16 +33,13 @@ Input is one memory file. Rewrite it into:
 
 # Memory: <Topic>
 
-## Working
-### <Topic>
+## Working memory (current context subject to change)
 - fact | topic=<topic> | tier=working | status=active | source=user_statement|assistant_summary|inference|system | confidence=high|medium|low | updated_at=YYYY-MM-DD | review_at=YYYY-MM-DD(optional) | expires_at=YYYY-MM-DD(optional)
 
-## Long-Term
-### <Topic>
+## Long-term memory (stable facts that are unlikely to change)
 - fact | topic=<topic> | tier=long_term | status=active | source=user_statement|assistant_summary|inference|system | confidence=high|medium|low | updated_at=YYYY-MM-DD | expires_at=YYYY-MM-DD(optional)
 
-## History
-### <Topic>
+## History (no longer current)
 - fact | topic=<topic> | tier=history | status=superseded|expired|uncertain | source=user_statement|assistant_summary|inference|system | confidence=high|medium|low | updated_at=YYYY-MM-DD | expires_at=YYYY-MM-DD(optional)
 
 Rules:

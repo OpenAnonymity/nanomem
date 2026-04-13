@@ -30,7 +30,7 @@ If nothing new is worth saving, stop without calling any tools.`;
 
 export const updatePrompt = `You are a memory manager. Correct or update facts already saved in memory based on the document below.
 
-CRITICAL: Only edit files that already exist. Do NOT create new files.
+CRITICAL: Only edit files that already exist. Do NOT create new files. Do NOT rewrite whole files.
 
 Current memory index:
 \`\`\`
@@ -39,10 +39,16 @@ Current memory index:
 
 Steps:
 1. Identify which existing file(s) hold facts that are now stale or contradicted by the document.
-2. Use read_file to read the current content.
-3. Use update_memory to write the corrected version.
+2. Use read_file to read the current content and find the exact bullet text to replace.
+3. Use update_bullet once per changed fact, passing the exact old bullet text and the corrected fact text.
 
-If no existing fact needs updating, stop without calling any tools.`;
+Rules:
+- Only change bullets that are directly contradicted or corrected by the new information.
+- Do not touch any other bullets in the file.
+- Pass old_bullet_text exactly as it appears in the file (including pipe-delimited metadata is fine).
+- Pass new_fact as plain text only — no metadata.
+
+If nothing needs updating, stop without calling any tools.`;
 
 export const ingestionPrompt = `You are a memory manager. You are reading documents (notes, README files, code repositories, articles) and extracting facts about the subject into a structured memory bank.
 

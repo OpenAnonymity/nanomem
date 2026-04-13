@@ -86,6 +86,24 @@ const T_UPDATE_MEMORY = {
     }
 };
 
+/** @type {ToolDefinition} */
+const T_UPDATE_BULLET = {
+    type: 'function',
+    function: {
+        name: 'update_bullet',
+        description: 'Replace a single bullet fact in an existing memory file. Pass the exact existing fact text and the corrected replacement text. Only the matched bullet is changed — the rest of the file is untouched.',
+        parameters: {
+            type: 'object',
+            properties: {
+                path: { type: 'string', description: 'File path containing the bullet to update' },
+                old_bullet_text: { type: 'string', description: 'The exact fact text of the bullet to replace (may include pipe-delimited metadata)' },
+                new_fact: { type: 'string', description: 'The corrected fact text (plain text only, no metadata)' }
+            },
+            required: ['path', 'old_bullet_text', 'new_fact']
+        }
+    }
+};
+
 /**
  * Tool sets per ingestion mode.
  * `add`    — can only write new content (no update_memory).
@@ -95,7 +113,7 @@ const T_UPDATE_MEMORY = {
  */
 const TOOLS_BY_MODE = {
     add:          [T_READ_FILE, T_CREATE_NEW_FILE, T_APPEND_MEMORY],
-    update:       [T_READ_FILE, T_UPDATE_MEMORY],
+    update:       [T_READ_FILE, T_UPDATE_BULLET],
 };
 
 const EXTRACTION_TOOLS = [T_READ_FILE, T_CREATE_NEW_FILE, T_APPEND_MEMORY, T_UPDATE_MEMORY];
@@ -172,7 +190,7 @@ class MemoryIngester {
             return { status: 'error', writeCalls: 0, error: message };
         }
 
-        const writeTools = ['create_new_file', 'append_memory', 'update_memory', 'archive_memory', 'delete_memory'];
+        const writeTools = ['create_new_file', 'append_memory', 'update_memory', 'update_bullet', 'archive_memory', 'delete_memory'];
         const writeCalls = toolCallLog.filter(e => writeTools.includes(e.name));
 
         return { status: 'processed', writeCalls: writeCalls.length, writes };

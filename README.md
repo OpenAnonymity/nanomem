@@ -145,16 +145,13 @@ Memory is stored as markdown with structured metadata:
 ```md
 # Memory: Work
 
-## Working
-### Current context
+## Working memory (current context subject to change)
 - Preparing for a product launch next month | topic=work | tier=working | status=active | source=user_statement | confidence=high | updated_at=2026-04-07 | review_at=2026-04-20
 
-## Long-Term
-### Stable facts
+## Long-term memory (stable facts that are unlikely to change)
 - Leads the backend team at Acme | topic=work | tier=long_term | status=active | source=user_statement | confidence=high | updated_at=2026-04-07
 
-## History
-### No longer current
+## History (no longer current)
 - Previously lived in New York | topic=personal | tier=history | status=superseded | source=user_statement | confidence=high | updated_at=2024-06-01
 ```
 

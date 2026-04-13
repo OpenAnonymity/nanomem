@@ -33,11 +33,11 @@ export function parseBullets(content) {
         const headingMatch = line.match(HEADING_REGEX);
         if (headingMatch) {
             currentHeading = headingMatch[1].trim() || currentHeading;
-            if (/^(working)$/i.test(currentHeading)) {
+            if (/^working/i.test(currentHeading)) {
                 section = 'working';
-            } else if (/^(long[- ]?term|active)$/i.test(currentHeading)) {
+            } else if (/^(long[- ]?term|active)/i.test(currentHeading)) {
                 section = 'long_term';
-            } else if (/^(history|archive)$/i.test(currentHeading)) {
+            } else if (/^(history|archive)/i.test(currentHeading)) {
                 section = 'history';
             }
             continue;
@@ -160,9 +160,8 @@ function inferDocumentTopic(bullets, fallback = 'general') {
     return firstTopic || fallback;
 }
 
-function renderSection(lines, title, subsectionTitle, bullets, forceHistory = false) {
+function renderSection(lines, title, bullets, forceHistory = false) {
     lines.push(`## ${title}`);
-    lines.push(`### ${subsectionTitle}`);
 
     if (!bullets || bullets.length === 0) {
         lines.push('_No entries yet._');
@@ -189,11 +188,11 @@ export function renderCompactedDocument(working, longTerm, history, options = {}
     const docTopic = normalizeTopic(options.titleTopic || inferDocumentTopic([...working, ...longTerm, ...history], 'general'));
     lines.push(`# Memory: ${topicHeading(docTopic)}`);
     lines.push('');
-    renderSection(lines, 'Working', 'Current context', working);
+    renderSection(lines, 'Working memory (current context subject to change)', working);
     lines.push('');
-    renderSection(lines, 'Long-Term', 'Stable facts', longTerm);
+    renderSection(lines, 'Long-term memory (stable facts that are unlikely to change)', longTerm);
     lines.push('');
-    renderSection(lines, 'History', 'No longer current', history, true);
+    renderSection(lines, 'History (no longer current)', history, true);
 
     return lines.join('\n').trim();
 }

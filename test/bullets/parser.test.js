@@ -178,9 +178,9 @@ describe('renderCompactedDocument', () => {
 
     it('produces a document with all three sections', () => {
         const doc = renderCompactedDocument(working, longTerm, history);
-        assert.ok(doc.includes('## Working'));
-        assert.ok(doc.includes('## Long-Term'));
-        assert.ok(doc.includes('## History'));
+        assert.ok(doc.includes('## Working memory (current context subject to change)'));
+        assert.ok(doc.includes('## Long-term memory (stable facts that are unlikely to change)'));
+        assert.ok(doc.includes('## History (no longer current)'));
     });
 
     it('uses titleTopic option for the document heading', () => {
