@@ -120,7 +120,7 @@ export function extractTitles(content) {
 
         const title = headingMatch[1].trim();
         if (!title) continue;
-        if (/^(working|long[- ]?term|history|active|archive|current context|stable facts|no longer current)$/i.test(title)) continue;
+        if (/^(working|long[- ]?term|history|active|archive)/i.test(title)) continue;
         titles.push(title);
     }
 

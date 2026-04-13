@@ -5,17 +5,14 @@ import { parseBullets, countBullets, extractTitles, renderBullet, renderCompacte
 const SAMPLE_DOC = `
 # Memory: Work
 
-## Working
-### Current context
+## Working memory (current context subject to change)
 - Debugging the auth module | topic=work | tier=working | status=active | source=user_statement | confidence=high | updated_at=2024-06-01
 
-## Long-Term
-### Stable facts
+## Long-term memory (stable facts that are unlikely to change)
 - Uses TypeScript for all new projects | topic=work | tier=long_term | status=active | source=user_statement | confidence=high | updated_at=2024-01-10
 - Prefers functional programming style | topic=work | tier=long_term | status=active | source=assistant_summary | confidence=medium | updated_at=2024-02-01
 
-## History
-### No longer current
+## History (no longer current)
 - Was using Flow for type checking | topic=work | tier=history | status=superseded | source=user_statement | confidence=high | updated_at=2023-05-01
 `.trim();
 
@@ -60,7 +57,7 @@ describe('parseBullets', () => {
     });
 
     it('infers tier from section when not explicit', () => {
-        const doc = `## Working\n### Current context\n- A task I am working on`;
+        const doc = `## Working memory (current context subject to change)\n- A task I am working on`;
         const bullets = parseBullets(doc);
         assert.equal(bullets[0].tier, 'working');
         assert.equal(bullets[0].explicitTier, false);
@@ -96,9 +93,9 @@ describe('extractTitles', () => {
     });
     it('excludes structural headings like Working, Long-Term, History', () => {
         const titles = extractTitles(SAMPLE_DOC);
-        assert.ok(!titles.includes('Working'));
-        assert.ok(!titles.includes('Long-Term'));
-        assert.ok(!titles.includes('History'));
+        assert.ok(!titles.includes('Working memory (current context subject to change)'));
+        assert.ok(!titles.includes('Long-term memory (stable facts that are unlikely to change)'));
+        assert.ok(!titles.includes('History (no longer current)'));
     });
     it('returns empty array for no headings', () => {
         assert.deepEqual(extractTitles('- just a bullet'), []);
