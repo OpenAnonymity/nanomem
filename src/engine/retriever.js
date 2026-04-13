@@ -377,11 +377,15 @@ class MemoryRetriever {
         const files = await collectReadFiles(toolCallLog, this._backend);
         const paths = files.map(f => f.path);
 
+        const terminalWasCalled = terminalToolResult != null;
         const assembledContext = terminalToolResult?.arguments?.content || null;
+
+        // LLM explicitly said nothing relevant — respect that, don't fall back to snippet context.
+        if (terminalWasCalled && !assembledContext) return null;
 
         if (files.length === 0 && !assembledContext) return null;
 
-        const snippetContext = await this._buildSnippetContext(paths, query, conversationText);
+        const snippetContext = terminalWasCalled ? null : await this._buildSnippetContext(paths, query, conversationText);
 
         onProgress?.({
             stage: 'complete',

@@ -129,7 +129,7 @@ export async function retrieve(positionals, flags, mem) {
 
     const result = await mem.retrieve(query, conversationText);
     if (!result || !result.assembledContext) {
-        return { assembledContext: null, message: 'No relevant context found.' };
+        return 'No relevant context found.';
     }
     return result;
 }
