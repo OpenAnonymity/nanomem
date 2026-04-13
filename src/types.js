@@ -120,7 +120,7 @@
 /**
  * @typedef {object} ToolFunctionParameters
  * @property {'object'} type
- * @property {Record<string, { type: string; description?: string }>} properties
+ * @property {Record<string, { type: string; description?: string; items?: object }>} properties
  * @property {string[]} required
  */
 

@@ -40,12 +40,12 @@ Current memory index:
 Steps:
 1. Identify which existing file(s) hold facts that are now stale or contradicted by the document.
 2. Use read_file to read the current content and find the exact bullet text to replace.
-3. Use update_bullet once per changed fact, passing the exact old bullet text and the corrected fact text.
+3. Use update_bullets with all corrections for that file in a single call, passing the exact old fact text and the corrected fact text for each.
 
 Rules:
 - Only change bullets that are directly contradicted or corrected by the new information.
 - Do not touch any other bullets in the file.
-- Pass old_bullet_text exactly as it appears in the file (including pipe-delimited metadata is fine).
+- Pass old_fact exactly as it appears in the file (including pipe-delimited metadata is fine).
 - Pass new_fact as plain text only — no metadata.
 
 If nothing needs updating, stop without calling any tools.`;

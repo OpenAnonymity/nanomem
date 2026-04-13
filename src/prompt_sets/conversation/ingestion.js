@@ -40,12 +40,12 @@ Current memory index:
 Steps:
 1. Identify which existing file(s) hold facts that are now stale or contradicted.
 2. Use read_file to read the current content and find the exact bullet text to replace.
-3. Use update_bullet once per changed fact, passing the exact old bullet text and the corrected fact text.
+3. Use update_bullets with all corrections for that file in a single call, passing the exact old fact text and the corrected fact text for each.
 
 Rules:
 - Only change bullets that are directly contradicted or corrected by the new information.
 - Do not touch any other bullets in the file.
-- Pass old_bullet_text exactly as it appears in the file (including pipe-delimited metadata is fine).
+- Pass old_fact exactly as it appears in the file (including pipe-delimited metadata is fine).
 - Pass new_fact as plain text only — no metadata.
 
 If nothing needs updating, stop without calling any tools.`;
@@ -91,7 +91,7 @@ Rules:
 - Favor broad thematic files. A file can hold multiple related sub-topics — only truly unrelated facts need separate files.
 - Only create a new file when nothing in the index is thematically close. When in doubt, append.
 - When creating a new file, choose a broad, thematic name that can absorb future related facts — not a narrow label for a single detail.
-- Use update_bullet only if a fact is now stale or contradicted.
+- Use update_bullets only if a fact is now stale or contradicted. Pass all corrections for a file in one call.
 - When a new explicit user statement contradicts an older one on the same topic, prefer the newer statement. If a user statement conflicts with an inference, the user statement always wins.
 - If a conflict is ambiguous, preserve both versions rather than deleting one.
 - Do not skip obvious facts just because the schema supports extra metadata.

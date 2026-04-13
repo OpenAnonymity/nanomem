@@ -406,7 +406,7 @@ export function createExtractionExecutors(backend, hooks = {}) {
         },
         create_new_file: async ({ path, content }) => {
             const exists = await backend.exists(path);
-            if (exists) return JSON.stringify({ error: `File already exists: ${path}. Use append_memory or update_bullet instead.` });
+            if (exists) return JSON.stringify({ error: `File already exists: ${path}. Use append_memory or update_bullets instead.` });
             const normalized = normalizeContent ? normalizeContent(content, path) : content;
             await backend.write(path, normalized);
             if (refreshIndex) await refreshIndex(path);
@@ -423,21 +423,33 @@ export function createExtractionExecutors(backend, hooks = {}) {
             onWrite?.(path, existing ?? '', newContent);
             return JSON.stringify({ success: true, path, action: 'appended' });
         },
-        update_bullet: async ({ path, old_bullet_text, new_fact }) => {
+        update_bullets: async ({ path, updates }) => {
             const before = await backend.read(path);
             if (!before) return JSON.stringify({ error: `File not found: ${path}` });
-
-            const factText = old_bullet_text.includes('|')
-                ? old_bullet_text.split('|')[0].trim()
-                : old_bullet_text.trim();
-            const target = normalizeFactText(factText);
-            if (!target) return JSON.stringify({ error: 'old_bullet_text must not be empty' });
+            if (!Array.isArray(updates) || updates.length === 0) return JSON.stringify({ error: 'updates must be a non-empty array' });
 
             const parsed = parseBullets(before);
-            const idx = parsed.findIndex((b) => normalizeFactText(b.text) === target);
-            if (idx === -1) return JSON.stringify({ error: `No exact match found for the given bullet text in: ${path}` });
+            let matchedCount = 0;
+            const errors = [];
 
-            parsed[idx] = { ...parsed[idx], text: new_fact.trim() };
+            for (const { old_fact, new_fact } of updates) {
+                const factText = typeof old_fact === 'string' && old_fact.includes('|')
+                    ? old_fact.split('|')[0].trim()
+                    : String(old_fact || '').trim();
+                const target = normalizeFactText(factText);
+                if (!target) { errors.push('empty old_fact'); continue; }
+
+                const idx = parsed.findIndex((b) => normalizeFactText(b.text) === target);
+                if (idx === -1) { errors.push(`No match: ${factText}`); continue; }
+
+                parsed[idx] = { ...parsed[idx], text: String(new_fact || '').trim() };
+                matchedCount++;
+            }
+
+            if (matchedCount === 0) {
+                return JSON.stringify({ error: errors.join('; ') || 'No bullets matched' });
+            }
+
             const compacted = compactBullets(parsed, { defaultTopic: inferTopicFromPath(path), maxActivePerTopic: 1000 });
             const after = renderCompactedDocument(
                 compacted.working, compacted.longTerm, compacted.history,
@@ -446,7 +458,9 @@ export function createExtractionExecutors(backend, hooks = {}) {
             await backend.write(path, after);
             if (refreshIndex) await refreshIndex(path);
             onWrite?.(path, before, after);
-            return JSON.stringify({ success: true, path, action: 'bullet_updated', old: factText, new: new_fact.trim() });
+            const result = { success: true, path, action: 'bullets_updated', updated: matchedCount };
+            if (errors.length) result.errors = errors;
+            return JSON.stringify(result);
         },
         archive_memory: async ({ path, item_text }) => {
             const existing = await backend.read(path);

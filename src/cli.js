@@ -108,6 +108,7 @@ async function main() {
             delete_memory:   'cleaning up',
             read_file:       'reading',
             list_files:      'scanning',
+            update_bullets:  'updating',
             delete_bullet:   'deleting',
         };
         memOpts.onToolCall = (name) => {
