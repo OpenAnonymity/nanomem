@@ -44,7 +44,6 @@ await esbuild.build({
     platform: 'browser',
     target: ['es2020'],
     outfile: path.join(vendorDir, 'tinfoil.browser.js'),
-    banner: { js: '// @ts-nocheck' },
     minify: false,
     define: {
         'process.env.NODE_ENV': '"production"',
@@ -53,5 +52,10 @@ await esbuild.build({
     logLevel: 'info',
     plugins: [zlibShimPlugin]
 });
+
+await fs.writeFile(
+    path.join(vendorDir, 'tinfoil.browser.d.ts'),
+    'export declare class TinfoilAI { [key: string]: any; }\nexport default TinfoilAI;\n'
+);
 
 console.log('Tinfoil SDK vendored → nanomem/src/vendor/tinfoil.browser.js');
