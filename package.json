@@ -1,6 +1,6 @@
 {
     "name": "@openanonymity/nanomem",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "description": "LLM-driven personal memory with agentic retrieval, extraction, and compaction",
     "type": "module",
     "bin": {
