@@ -165,7 +165,7 @@ import { createMemoryBank } from '@openanonymity/nanomem';
 const memory = createMemoryBank({
   llm: { apiKey: 'sk-...', model: 'gpt-5.4-mini' },
   storage: 'filesystem',
-  storagePath: './memory'
+  storagePath: '~/nanomem'
 });
 
 await memory.init();
