@@ -104,7 +104,6 @@ async function main() {
         const TOOL_LABELS = {
             create_new_file: 'creating file',
             append_memory:   'appending',
-            update_memory:   'updating',
             archive_memory:  'archiving',
             delete_memory:   'cleaning up',
             read_file:       'reading',

@@ -70,23 +70,6 @@ const T_APPEND_MEMORY = {
 };
 
 /** @type {ToolDefinition} */
-const T_UPDATE_MEMORY = {
-    type: 'function',
-    function: {
-        name: 'update_memory',
-        description: 'Overwrite an existing memory file. Use when existing content is stale or contradicted.',
-        parameters: {
-            type: 'object',
-            properties: {
-                path: { type: 'string', description: 'File path to update' },
-                content: { type: 'string', description: 'Complete new content for the file' }
-            },
-            required: ['path', 'content']
-        }
-    }
-};
-
-/** @type {ToolDefinition} */
 const T_UPDATE_BULLET = {
     type: 'function',
     function: {
@@ -106,7 +89,7 @@ const T_UPDATE_BULLET = {
 
 /**
  * Tool sets per ingestion mode.
- * `add`    — can only write new content (no update_memory).
+ * `add`    — can only write new content.
  * `update` — can only edit existing files (no create/append).
  * Others   — full access.
  * @type {Record<string, ToolDefinition[]>}
@@ -116,7 +99,7 @@ const TOOLS_BY_MODE = {
     update:       [T_READ_FILE, T_UPDATE_BULLET],
 };
 
-const EXTRACTION_TOOLS = [T_READ_FILE, T_CREATE_NEW_FILE, T_APPEND_MEMORY, T_UPDATE_MEMORY];
+const EXTRACTION_TOOLS = [T_READ_FILE, T_CREATE_NEW_FILE, T_APPEND_MEMORY, T_UPDATE_BULLET];
 
 class MemoryIngester {
     constructor({ backend, bulletIndex, llmClient, model, onToolCall }) {
@@ -190,7 +173,7 @@ class MemoryIngester {
             return { status: 'error', writeCalls: 0, error: message };
         }
 
-        const writeTools = ['create_new_file', 'append_memory', 'update_memory', 'update_bullet', 'archive_memory', 'delete_memory'];
+        const writeTools = ['create_new_file', 'append_memory', 'update_bullet', 'archive_memory', 'delete_memory'];
         const writeCalls = toolCallLog.filter(e => writeTools.includes(e.name));
 
         return { status: 'processed', writeCalls: writeCalls.length, writes };
@@ -225,7 +208,7 @@ class MemoryIngester {
 
         const defaultTopic = inferTopicFromPath(path);
         const normalized = incomingBullets.map((bullet) => {
-            // Preserve existing updatedAt so update_memory doesn't re-stamp unchanged bullets.
+            // Preserve existing updatedAt so unchanged bullets aren't re-stamped.
             // Bullets without a date still fall back to updatedAt (today).
             const b = ensureBulletMetadata(bullet, { defaultTopic, updatedAt });
             if (isDocument && b.source === 'user_statement') b.source = 'document';

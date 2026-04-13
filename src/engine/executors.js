@@ -406,7 +406,7 @@ export function createExtractionExecutors(backend, hooks = {}) {
         },
         create_new_file: async ({ path, content }) => {
             const exists = await backend.exists(path);
-            if (exists) return JSON.stringify({ error: `File already exists: ${path}. Use append_memory or update_memory instead.` });
+            if (exists) return JSON.stringify({ error: `File already exists: ${path}. Use append_memory or update_bullet instead.` });
             const normalized = normalizeContent ? normalizeContent(content, path) : content;
             await backend.write(path, normalized);
             if (refreshIndex) await refreshIndex(path);
@@ -422,14 +422,6 @@ export function createExtractionExecutors(backend, hooks = {}) {
             if (refreshIndex) await refreshIndex(path);
             onWrite?.(path, existing ?? '', newContent);
             return JSON.stringify({ success: true, path, action: 'appended' });
-        },
-        update_memory: async ({ path, content }) => {
-            const before = await backend.read(path);
-            const normalized = normalizeContent ? normalizeContent(content, path) : content;
-            await backend.write(path, normalized);
-            if (refreshIndex) await refreshIndex(path);
-            onWrite?.(path, before ?? '', normalized);
-            return JSON.stringify({ success: true, path, action: 'updated' });
         },
         update_bullet: async ({ path, old_bullet_text, new_fact }) => {
             const before = await backend.read(path);
