@@ -5,6 +5,7 @@
  * Format: array of conversation objects, each with a flat `chat_messages` array.
  * Messages have a `content` array of typed blocks (text, tool_use, tool_result, token_budget).
  */
+/** @import { ChatGptSession, Message } from '../types.js' */
 import { safeDateIso } from '../bullets/normalize.js';
 
 const SKIP_CONTENT_TYPES = new Set([
@@ -29,7 +30,7 @@ export function isClaudeExport(parsed) {
 /**
  * Parse a Claude export into normalized sessions.
  * @param {unknown[]} conversations — the parsed JSON array
- * @returns {{ title: string | null, messages: { role: 'user' | 'assistant', content: string }[], updatedAt: string | null }[]}
+ * @returns {ChatGptSession[]}
  */
 export function parseClaudeExport(conversations) {
     if (!Array.isArray(conversations)) {
@@ -41,14 +42,17 @@ export function parseClaudeExport(conversations) {
         .filter(session => session.messages.length > 0);
 }
 
+/** @returns {ChatGptSession} */
 function normalizeClaudeConversation(conversation) {
     const chatMessages = conversation?.chat_messages || [];
+    /** @type {Message[]} */
     const messages = [];
 
     for (const msg of chatMessages) {
         const sender = msg?.sender;
         if (sender !== 'human' && sender !== 'assistant') continue;
 
+        /** @type {'user' | 'assistant'} */
         const role = sender === 'human' ? 'user' : 'assistant';
         const text = extractText(msg?.content);
 
