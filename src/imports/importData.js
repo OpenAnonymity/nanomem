@@ -3,6 +3,7 @@
 import { safeDateIso } from '../bullets/normalize.js';
 import { extractSessionsFromOAFastchatExport } from './oaFastchat.js';
 import { isChatGptExport, parseChatGptExport } from './chatgpt.js';
+import { isClaudeExport, parseClaudeExport } from './claude.js';
 import { parseMarkdownFiles } from './markdown.js';
 
 /**
@@ -173,6 +174,13 @@ export function parseImportInput(input, options = {}) {
         };
     }
 
+    if (requestedFormat === 'claude' || (requestedFormat === 'auto' && isClaudeExport(parsedJson))) {
+        return {
+            items: normalizeSessions(parseClaudeExport(parsedJson), 'conversation'),
+            mode: options.mode || 'conversation'
+        };
+    }
+
     if (requestedFormat === 'messages' || (requestedFormat === 'auto' && Array.isArray(parsedJson) && parsedJson.every(isMessageLike))) {
         return {
             items: normalizeSessions([{
@@ -229,7 +237,7 @@ function normalizeUpdatedAt(value) {
 /**
  * @param {string | undefined} format
  * @param {string} sourceName
- * @returns {'auto' | 'normalized' | 'oa-fastchat' | 'chatgpt' | 'messages' | 'transcript' | 'markdown'}
+ * @returns {'auto' | 'normalized' | 'oa-fastchat' | 'chatgpt' | 'claude' | 'messages' | 'transcript' | 'markdown'}
  */
 function normalizeRequestedFormat(format, sourceName) {
     const normalized = String(format || '').trim().toLowerCase();

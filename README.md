@@ -31,7 +31,7 @@ Retrieval is only one part of memory. `nanomem` is built for the maintenance lay
 - **Evolving memory state.** Keep facts current as they change over time instead of treating memory as an append-only log.
 - **Compaction and cleanup.** Collapse repeated signals into stable knowledge and move stale memory into history.
 - **Conflict-aware updates.** Resolve outdated or contradictory facts using recency, source, and confidence.
-- **Import your existing history.** Start from ChatGPT exports, [OA Chat](https://chat.openanonymity.ai) exports, transcripts, message arrays, markdown notes, or whole markdown directories.
+- **Import your existing history.** Start from ChatGPT exports, Claude exports, [OA Chat](https://chat.openanonymity.ai) exports, transcripts, message arrays, markdown notes, or whole markdown directories.
 - **Portable memory exchange.** Export full memory state as plain text, ZIP, or Open Memory Format (OMF), and merge OMF documents back in programmatically.
 - **Flexible storage.** Run on local files, IndexedDB, in-memory storage, or a custom backend.
 - **Built to plug in.** Use it from the CLI, as a library, or as a memory layer for other agents.
@@ -204,7 +204,8 @@ For terminal use, `--render` will format markdown-heavy output like `read` and `
 
 `nanomem import` supports:
 
-- ChatGPT exports
+- ChatGPT exports (`conversations.json` from "Export data")
+- Claude exports (`conversations.json` from "Export data")
 - [OA Chat](https://chat.openanonymity.ai) exports
 - markdown notes
 - recursive markdown directory imports
@@ -214,7 +215,9 @@ For terminal use, `--render` will format markdown-heavy output like `read` and `
 Import can operate in both conversation-oriented and document-oriented modes, depending on the source or explicit flags.
 
 ```bash
-nanomem import conversations.json              # conversation mode
+nanomem import conversations.json              # auto-detects ChatGPT or Claude format
+nanomem import conversations.json --format claude   # explicit Claude format
+nanomem import conversations.json --format chatgpt  # explicit ChatGPT format
 nanomem import ./notes/                        # document mode (auto for directories)
 nanomem import my-notes.md --format markdown   # document mode (explicit)
 ```

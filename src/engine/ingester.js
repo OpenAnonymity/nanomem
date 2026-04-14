@@ -218,9 +218,9 @@ class MemoryIngester {
 
         const defaultTopic = inferTopicFromPath(path);
         const normalized = incomingBullets.map((bullet) => {
-            // Preserve existing updatedAt so unchanged bullets aren't re-stamped.
-            // Bullets without a date still fall back to updatedAt (today).
-            const b = ensureBulletMetadata(bullet, { defaultTopic, updatedAt });
+            // Clear the LLM-written date so the conversation-level updatedAt
+            // is used as the fallback (falls back to today when not provided).
+            const b = ensureBulletMetadata({ ...bullet, updatedAt: null }, { defaultTopic, updatedAt });
             if (isDocument && b.source === 'user_statement') b.source = 'document';
             return b;
         });

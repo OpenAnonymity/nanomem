@@ -10,6 +10,11 @@ export {
 } from './chatgpt.js';
 
 export {
+    isClaudeExport,
+    parseClaudeExport,
+} from './claude.js';
+
+export {
     parseMarkdownFiles,
 } from './markdown.js';
 

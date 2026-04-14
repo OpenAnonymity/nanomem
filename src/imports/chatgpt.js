@@ -68,7 +68,7 @@ function normalizeChatGptConversation(conversation) {
 
     const title = (conversation?.title || '').trim() || null;
     const updatedAt = conversation?.update_time
-        ? safeDateIso(String(conversation.update_time * 1000))
+        ? safeDateIso(conversation.update_time * 1000)
         : null;
     return { title, messages, updatedAt };
 }

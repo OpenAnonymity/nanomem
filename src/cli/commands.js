@@ -8,6 +8,7 @@ import { serialize, toZip } from '../utils/portability.js';
 import { safeDateIso } from '../bullets/normalize.js';
 import { extractSessionsFromOAFastchatExport } from '../imports/oaFastchat.js';
 import { isChatGptExport, parseChatGptExport } from '../imports/chatgpt.js';
+import { isClaudeExport, parseClaudeExport } from '../imports/claude.js';
 import { parseMarkdownFiles } from '../imports/markdown.js';
 import { loginInteractive } from './auth.js';
 import { writeConfigFile, CONFIG_PATH } from './config.js';
@@ -75,6 +76,11 @@ function parseConversations(input, flags) {
         // ChatGPT export (conversations.json)
         if (isChatGptExport(parsed)) {
             return parseChatGptExport(parsed);
+        }
+
+        // Claude export (conversations.json)
+        if (isClaudeExport(parsed)) {
+            return parseClaudeExport(parsed);
         }
 
         // Plain messages array
