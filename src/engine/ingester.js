@@ -151,11 +151,13 @@ class MemoryIngester {
             mergeWithExisting: (existing, incoming, path) => this._mergeWithExisting(existing, incoming, path, updatedAt, isDocument),
             refreshIndex: (path) => this._bulletIndex.refreshPath(path),
             onWrite: (path, before, after) => writes.push({ path, before, after }),
+            updatedAt,
         });
 
+        const dateNote = `\nFrom ${updatedAt}. Use this date when writing date references in facts.\n`;
         const userMessage = isDocument
-            ? `Document content:\n\`\`\`\n${conversationText}\n\`\`\``
-            : `Conversation:\n\`\`\`\n${conversationText}\n\`\`\``;
+            ? `${dateNote}Document content:\n\`\`\`\n${conversationText}\n\`\`\``
+            : `${dateNote}Conversation:\n\`\`\`\n${conversationText}\n\`\`\``;
 
         const tools = TOOLS_BY_MODE[mode] || EXTRACTION_TOOLS;
 

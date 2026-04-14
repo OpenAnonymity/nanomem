@@ -12,10 +12,12 @@
 /** @import { ChatCompletionResponse, ExtractionExecutorHooks, LLMClient, StorageBackend, ToolDefinition } from '../types.js' */
 import {
     compactBullets,
+    ensureBulletMetadata,
     inferTopicFromPath,
     normalizeFactText,
     parseBullets,
     renderCompactedDocument,
+    todayIsoDate,
 } from '../bullets/index.js';
 import { trimRecentConversation } from './recentConversation.js';
 
@@ -396,7 +398,7 @@ export function createAugmentQueryExecutor({ backend, llmClient, model, query, c
  * @param {ExtractionExecutorHooks} [hooks]
  */
 export function createExtractionExecutors(backend, hooks = {}) {
-    const { normalizeContent, mergeWithExisting, refreshIndex, onWrite } = hooks;
+    const { normalizeContent, mergeWithExisting, refreshIndex, onWrite, updatedAt } = hooks;
 
     return {
         read_file: async ({ path }) => {
@@ -429,6 +431,8 @@ export function createExtractionExecutors(backend, hooks = {}) {
             if (!Array.isArray(updates) || updates.length === 0) return JSON.stringify({ error: 'updates must be a non-empty array' });
 
             const parsed = parseBullets(before);
+            const defaultTopic = inferTopicFromPath(path);
+            const effectiveUpdatedAt = updatedAt || todayIsoDate();
             let matchedCount = 0;
             const errors = [];
 
@@ -442,7 +446,23 @@ export function createExtractionExecutors(backend, hooks = {}) {
                 const idx = parsed.findIndex((b) => normalizeFactText(b.text) === target);
                 if (idx === -1) { errors.push(`No match: ${factText}`); continue; }
 
-                parsed[idx] = { ...parsed[idx], text: String(new_fact || '').trim() };
+                // Supersede the old bullet and push a new active replacement.
+                // Strip any metadata the LLM may have included in new_fact.
+                const oldBullet = parsed[idx];
+                const rawNewFact = String(new_fact || '').trim();
+                const cleanNewFact = rawNewFact.includes('|')
+                    ? rawNewFact.split('|')[0].trim()
+                    : rawNewFact;
+                parsed[idx] = { ...oldBullet, status: 'superseded', tier: 'history' };
+                parsed.push(ensureBulletMetadata(
+                    {
+                        text: cleanNewFact,
+                        topic: oldBullet.topic,
+                        source: oldBullet.source,
+                        confidence: oldBullet.confidence,
+                    },
+                    { defaultTopic, updatedAt: effectiveUpdatedAt }
+                ));
                 matchedCount++;
             }
 
@@ -450,10 +470,10 @@ export function createExtractionExecutors(backend, hooks = {}) {
                 return JSON.stringify({ error: errors.join('; ') || 'No bullets matched' });
             }
 
-            const compacted = compactBullets(parsed, { defaultTopic: inferTopicFromPath(path), maxActivePerTopic: 1000 });
+            const compacted = compactBullets(parsed, { defaultTopic, maxActivePerTopic: 1000 });
             const after = renderCompactedDocument(
                 compacted.working, compacted.longTerm, compacted.history,
-                { titleTopic: inferTopicFromPath(path) }
+                { titleTopic: defaultTopic }
             );
             await backend.write(path, after);
             if (refreshIndex) await refreshIndex(path);

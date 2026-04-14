@@ -274,7 +274,7 @@ class MemoryRetriever {
                 { role: 'user', content: userContent }
             ],
             terminalTool: isAugmentMode ? 'augment_query' : 'assemble_context',
-            maxIterations: isAugmentMode ? 12 : 8,
+            maxIterations: isAugmentMode ? 12 : 10,
             maxOutputTokens: 4000,
             temperature: 0,
             executeTerminalTool: isAugmentMode,
