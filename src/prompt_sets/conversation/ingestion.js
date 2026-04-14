@@ -28,9 +28,9 @@ Bullet format: "- Fact text | topic=topic-name | source=user_statement | confide
 
 If nothing new is worth saving, stop without calling any tools.`;
 
-export const updatePrompt = `You are a memory manager. Correct or update facts already saved in memory based on the text below.
+export const updatePrompt = `You are a memory manager. Update the user's memory based on the text below.
 
-CRITICAL: Only edit files that already exist. Do NOT create new files. Do NOT rewrite whole files.
+CRITICAL: Only save facts the user explicitly stated. Do NOT infer, extrapolate, or fabricate.
 
 Current memory index:
 \`\`\`
@@ -38,17 +38,20 @@ Current memory index:
 \`\`\`
 
 Steps:
-1. Identify which existing file(s) hold facts that are now stale or contradicted.
+1. Identify which existing file(s) might hold facts that are stale or contradicted by the new information.
 2. Use read_file to read the current content and find the exact bullet text to replace.
-3. Use update_bullets with all corrections for that file in a single call, passing the exact old fact text and the corrected fact text for each.
+3. If a matching old fact exists, use update_bullets with all corrections for that file in a single call, passing the exact old fact text and the corrected fact text for each.
+4. If no existing fact matches — the information is entirely new — use append_memory to add it to an existing file that covers the same domain, or create_new_file if no existing file is thematically close.
 
 Rules:
+- Prefer update_bullets when an existing fact is directly contradicted or corrected.
 - Only change bullets that are directly contradicted or corrected by the new information.
 - Do not touch any other bullets in the file.
 - Pass old_fact exactly as it appears in the file (including pipe-delimited metadata is fine).
 - Pass new_fact as plain text only — no metadata.
+- When appending or creating, use this bullet format: "- Fact text | topic=topic-name | source=user_statement | confidence=high | updated_at=YYYY-MM-DD"
 
-If nothing needs updating, stop without calling any tools.`;
+If nothing new or changed is worth saving, stop without calling any tools.`;
 
 export const ingestionPrompt = `You are a memory manager. After reading a conversation, decide if any concrete, reusable facts should be saved to the user's memory files.
 
