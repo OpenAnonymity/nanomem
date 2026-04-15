@@ -5,9 +5,9 @@
  * agentic loop to decide whether to create/append/update memory files.
  */
 /** @import { IngestOptions, IngestResult, LLMClient, Message, StorageBackend, ToolDefinition } from '../types.js' */
-import { runAgenticToolLoop } from './toolLoop.js';
+import { runAgenticToolLoop } from '../internal/toolLoop.js';
 import { createExtractionExecutors } from './executors.js';
-import { resolvePromptSet } from '../prompt_sets/index.js';
+import { resolvePromptSet } from '../prompts/index.js';
 import {
     compactBullets,
     ensureBulletMetadata,
@@ -15,7 +15,7 @@ import {
     parseBullets,
     renderCompactedDocument,
     todayIsoDate
-} from '../bullets/index.js';
+} from '../internal/format/index.js';
 
 const MAX_CONVERSATION_CHARS = 128000;
 

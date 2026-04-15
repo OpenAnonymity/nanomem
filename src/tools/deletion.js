@@ -10,9 +10,9 @@
  *   deep    — all files are enumerated upfront; LLM reads every one.
  */
 /** @import { LLMClient, StorageBackend } from '../types.js' */
-import { runAgenticToolLoop } from './toolLoop.js';
+import { runAgenticToolLoop } from '../internal/toolLoop.js';
 import { createDeletionExecutors } from './executors.js';
-import { resolvePromptSet } from '../prompt_sets/index.js';
+import { resolvePromptSet } from '../prompts/index.js';
 
 /** Tools used in default (index-guided) delete mode. */
 const DELETION_TOOLS = [

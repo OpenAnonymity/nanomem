@@ -18,8 +18,9 @@ import {
     parseBullets,
     renderCompactedDocument,
     todayIsoDate,
-} from '../bullets/index.js';
-import { trimRecentConversation } from './recentConversation.js';
+} from '../internal/format/index.js';
+import { trimRecentConversation } from '../internal/recentConversation.js';
+import { augmentCrafterPrompt } from '../prompts/retrieval.js';
 
 const MAX_AUGMENT_QUERY_FILES = 8;
 const MAX_AUGMENT_FILE_CHARS = 1800;
@@ -60,40 +61,7 @@ function pathMatchesQuery(path, query) {
         || normalizeLookupPath(rawPath, { stripExtension: true }).includes(normalizedQuery);
 }
 
-const AUGMENT_QUERY_EXECUTOR_SYSTEM_PROMPT = `You craft delegation prompts for a frontier model.
-
-Your job is to turn a user's request plus selected memory into a minimized, self-contained prompt with explicit [[user_data]] tagging.
-
-Return JSON only with this exact shape:
-{"reviewPrompt":"string"}
-
-Core rules:
-- The frontier model has zero prior context. Include everything it actually needs in one pass.
-- Include only the minimum user-specific data required to answer well.
-- If memory is not actually needed, keep the prompt generic.
-- Keep the user's current request in normal prose.
-- Every additional fact sourced from memory files or recent conversation that you include must be wrapped in [[user_data]]...[[/user_data]].
-- Do not wrap generic instructions, output-format guidance, or your own reasoning in tags.
-- Strip personal identifiers unless they are strictly necessary.
-- No real names unless the task genuinely requires the specific name.
-- No specific location unless the task depends on location.
-- Put everything into one final minimized prompt in reviewPrompt.
-- Do not include markdown fences or any text outside the JSON object.
-
-Privacy and minimization:
-- Every included fact should pass this test: "Does the frontier model need this specific fact to answer well?" If no, leave it out.
-- If a memory fact only repeats or confirms what the current query already makes obvious, leave it out.
-- Generalize when possible. Prefer "their partner is vegetarian" or just "vegetarian-friendly options" over a partner's real name.
-- Open-ended everyday questions usually need less context than planning or personalized analysis questions.
-- Do not assume household members are part of the request unless the user's question or the retrieved memory makes that clearly necessary.
-
-Common over-sharing patterns to avoid:
-- Do not include background facts that merely restate the topic, interest, or domain already obvious from the user's current query.
-- Do not include descriptive biography when the answer only needs concrete constraints, preferences, specs, or requirements.
-- Only include memory when it changes the answer: constraints, tradeoffs, personalization, or disambiguation.
-- Prefer concise, answer-shaping facts over broad user background.
-
-The user will review the exact prompt before it is sent. Keep it useful, minimal, and explicit.`;
+const AUGMENT_QUERY_EXECUTOR_SYSTEM_PROMPT = augmentCrafterPrompt;
 
 function clipText(value, limit) {
     const text = typeof value === 'string' ? value.trim() : '';

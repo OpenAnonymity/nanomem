@@ -6,16 +6,20 @@
  * search if the LLM call fails.
  */
 /** @import { LLMClient, Message, ProgressEvent, RetrievalResult, AugmentQueryResult, StorageBackend, ToolDefinition } from '../types.js' */
-import { runAgenticToolLoop } from './toolLoop.js';
+import { runAgenticToolLoop } from '../internal/toolLoop.js';
 import { createAugmentQueryExecutor, createRetrievalExecutors } from './executors.js';
-import { trimRecentConversation } from './recentConversation.js';
+import { trimRecentConversation } from '../internal/recentConversation.js';
+import {
+    retrievalPrompt,
+    augmentAddendum
+} from '../prompts/retrieval.js';
 import {
     normalizeFactText,
     parseBullets,
     renderBullet,
     scoreBullet,
     tokenizeQuery
-} from '../bullets/index.js';
+} from '../internal/format/index.js';
 
 const MAX_FILES_TO_LOAD = 8;
 const MAX_TOTAL_CONTEXT_CHARS = 4000;
@@ -82,29 +86,7 @@ const RETRIEVAL_TOOLS = [
     }
 ];
 
-const RETRIEVAL_SYSTEM_PROMPT = `You are a memory retrieval assistant. Your job is to find and assemble relevant personal context from the user's memory files to help answer their query.
-
-You have access to a memory filesystem. The index below shows all available files:
-
-\`\`\`
-{INDEX}
-\`\`\`
-
-Instructions:
-1. Look at the index above. If you can already see relevant file paths, use read_file directly to read them.
-2. Use retrieve_file only when you need to search by keyword (e.g. "cooking", "Stanford") — it searches file contents, not paths.
-3. Use list_directory to see ALL files in a directory when the query relates to a broad domain (e.g. list "health" for any medicine/health query).
-4. Read at most ${MAX_FILES_TO_LOAD} files.
-5. You MUST always finish by calling assemble_context — write a direct, synthesized answer in plain prose based on what you read. Do NOT paste raw bullet lists or file content. If the query is historical or comparative, reason over the facts and answer accordingly.
-6. If nothing is relevant, call assemble_context with an empty string.
-
-IMPORTANT — Domain-exhaustive retrieval:
-- When a query touches a domain (health, work, personal), prefer completeness over selectivity within that domain. File descriptions may be incomplete.
-- For family-related queries: check personal/family.md AND any health files about family members.
-
-When recent conversation context is provided alongside the query, use it to resolve references like "that", "the same", "what we discussed", etc. The conversation shows what the user has been talking about recently.
-
-Only include content that genuinely helps answer this specific query. Do not include unrelated files from other domains.`;
+const RETRIEVAL_SYSTEM_PROMPT = retrievalPrompt.replace('{MAX_FILES}', String(MAX_FILES_TO_LOAD));
 
 /** @type {ToolDefinition} */
 const AUGMENT_QUERY_TOOL = {
@@ -129,23 +111,7 @@ const AUGMENT_QUERY_TOOL = {
     }
 };
 
-const AUGMENT_SYSTEM_ADDENDUM = `
-
-## Augment Query
-
-After reading memory files, you MUST call augment_query with the original user query plus the minimal relevant memory file paths. Do NOT draft the final prompt in the tool arguments. The augment_query tool itself will run the prompt-crafting pass.
-
-Rules:
-- Read the relevant files first so you know which paths matter.
-- Set user_query to the original user message verbatim.
-- Pass only the minimum set of memory file paths needed for a high-quality answer.
-- Do not include any facts, summaries, names, or rewritten instructions in the tool arguments.
-- If a file does not materially improve the final answer, leave it out.
-- If a file only confirms a general interest already obvious from the query, leave it out.
-- If nothing relevant is found, call augment_query with an empty memory_files array.
-- Make exactly one augment_query call for this user message.
-- Do NOT call assemble_context in this mode.
-`;
+const AUGMENT_SYSTEM_ADDENDUM = augmentAddendum;
 
 async function collectReadFiles(toolCallLog, backend) {
     const files = [];
