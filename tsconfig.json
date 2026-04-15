@@ -16,5 +16,5 @@
         "skipLibCheck": true
     },
     "include": ["src/**/*.js"],
-    "exclude": ["src/cli.js", "src/cli/**", "src/vendor/**"]
+    "exclude": ["src/cli.js", "src/cli/**"]
 }

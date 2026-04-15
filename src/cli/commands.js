@@ -4,12 +4,12 @@
 
 import { readFile, writeFile, readdir, stat } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
-import { serialize, toZip } from '../utils/portability.js';
-import { safeDateIso } from '../bullets/normalize.js';
-import { extractSessionsFromOAFastchatExport } from '../imports/oaFastchat.js';
-import { isChatGptExport, parseChatGptExport } from '../imports/chatgpt.js';
-import { isClaudeExport, parseClaudeExport } from '../imports/claude.js';
-import { parseMarkdownFiles } from '../imports/markdown.js';
+import { serialize, toZip } from '../internal/portability.js';
+import { safeDateIso } from '../internal/format/normalize.js';
+import { extractSessionsFromOAFastchatExport } from '../internal/imports/oaFastchat.js';
+import { isChatGptExport, parseChatGptExport } from '../internal/imports/chatgpt.js';
+import { isClaudeExport, parseClaudeExport } from '../internal/imports/claude.js';
+import { parseMarkdownFiles } from '../internal/imports/markdown.js';
 import { loginInteractive } from './auth.js';
 import { writeConfigFile, CONFIG_PATH } from './config.js';
 import { createSpinner } from './spinner.js';

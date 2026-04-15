@@ -13,18 +13,18 @@
  */
 /** @import { LLMClient, MemoryBank, MemoryBankConfig, MemoryBankLLMConfig, Message, IngestOptions, RetrievalResult, AugmentQueryResult, StorageBackend } from './types.js' */
 
-import { createOpenAIClient } from './llm/openai.js';
-import { createAnthropicClient } from './llm/anthropic.js';
-import { createTinfoilClient } from './llm/tinfoil.js';
-import { MemoryBulletIndex } from './bullets/bulletIndex.js';
-import { MemoryRetriever } from './engine/retriever.js';
-import { MemoryIngester } from './engine/ingester.js';
-import { MemoryDeleter } from './engine/deleter.js';
-import { MemoryCompactor } from './engine/compactor.js';
-import { InMemoryStorage } from './backends/ram.js';
-import { importData as importMemoryData } from './imports/importData.js';
-import { serialize, toZip } from './utils/portability.js';
-import { buildOmfExport, previewOmfImport, importOmf } from './omf.js';
+import { createOpenAIClient } from './internal/llm-client/openai.js';
+import { createAnthropicClient } from './internal/llm-client/anthropic.js';
+import { createTinfoilClient } from './internal/llm-client/tinfoil.js';
+import { MemoryBulletIndex } from './internal/format/bulletIndex.js';
+import { MemoryRetriever } from './tools/retrieval.js';
+import { MemoryIngester } from './tools/ingestion.js';
+import { MemoryDeleter } from './tools/deletion.js';
+import { MemoryCompactor } from './tools/compaction.js';
+import { InMemoryStorage } from './internal/storage/ram.js';
+import { importData as importMemoryData } from './internal/imports/importData.js';
+import { serialize, toZip } from './internal/portability.js';
+import { buildOmfExport, previewOmfImport, importOmf } from './internal/omf.js';
 
 /**
  * Remove review-only [[user_data]] markers before sending the final prompt to
@@ -240,9 +240,9 @@ function _createBackend(storage, storagePath) {
 
     switch (storageType) {
         case 'indexeddb':
-            return _asyncBackend(() => import('./backends/indexeddb.js').then(m => new m.IndexedDBStorage()));
+            return _asyncBackend(() => import('./internal/storage/indexeddb.js').then(m => new m.IndexedDBStorage()));
         case 'filesystem':
-            return _asyncBackend(() => import('./backends/filesystem.js').then(m => new m.FileSystemStorage(storagePath || 'nanomem')));
+            return _asyncBackend(() => import('./internal/storage/filesystem.js').then(m => new m.FileSystemStorage(storagePath || 'nanomem')));
         case 'ram':
         default:
             return new InMemoryStorage();
@@ -274,19 +274,19 @@ function _asyncBackend(loader) {
 
 /** Re-export all shared type definitions for consumers. */
 export * from './types.js';
-export { createOpenAIClient } from './llm/openai.js';
-export { createAnthropicClient } from './llm/anthropic.js';
-export { InMemoryStorage } from './backends/ram.js';
-export { BaseStorage } from './backends/BaseStorage.js';
-export { MemoryBulletIndex } from './bullets/bulletIndex.js';
-export { MemoryRetriever } from './engine/retriever.js';
-export { MemoryIngester } from './engine/ingester.js';
-export { MemoryCompactor } from './engine/compactor.js';
-export { createRetrievalExecutors, createExtractionExecutors } from './engine/executors.js';
-export { serialize, deserialize, toZip } from './utils/portability.js';
-export { buildOmfExport, previewOmfImport, importOmf, parseOmfText, validateOmf } from './omf.js';
+export { createOpenAIClient } from './internal/llm-client/openai.js';
+export { createAnthropicClient } from './internal/llm-client/anthropic.js';
+export { InMemoryStorage } from './internal/storage/ram.js';
+export { BaseStorage } from './internal/storage/BaseStorage.js';
+export { MemoryBulletIndex } from './internal/format/bulletIndex.js';
+export { MemoryRetriever } from './tools/retrieval.js';
+export { MemoryIngester } from './tools/ingestion.js';
+export { MemoryCompactor } from './tools/compaction.js';
+export { createRetrievalExecutors, createExtractionExecutors } from './tools/executors.js';
+export { serialize, deserialize, toZip } from './internal/portability.js';
+export { buildOmfExport, previewOmfImport, importOmf, parseOmfText, validateOmf } from './internal/omf.js';
 export {
     extractSessionsFromOAFastchatExport,
     extractConversationFromOAFastchatExport,
     listOAFastchatSessions
-} from './imports/oaFastchat.js';
+} from './internal/imports/oaFastchat.js';

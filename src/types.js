@@ -507,7 +507,7 @@
  * @property {() => Promise<string>} serialize
  * @property {() => Promise<Uint8Array>} toZip
  * @property {StorageBackend} _backend
- * @property {import('./bullets/bulletIndex.js').MemoryBulletIndex} _bulletIndex
+ * @property {import('./internal/format/bulletIndex.js').MemoryBulletIndex} _bulletIndex
  */
 
 export {};
