@@ -1,6 +1,6 @@
 /**
  * Normalization utilities for memory bullet metadata.
- * @import { Tier, Status, Source, Confidence, Bullet, EnsureBulletMetadataOptions } from '../types.js'
+ * @import { Tier, Status, Source, Confidence, Bullet, EnsureBulletMetadataOptions } from '../../types.js'
  */
 
 /**

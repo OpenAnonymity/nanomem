@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { scoreBullet, tokenizeQuery } from '../../src/bullets/scoring.js';
+import { scoreBullet, tokenizeQuery } from '../../src/internal/format/scoring.js';
 
 describe('tokenizeQuery', () => {
     it('splits on non-alphanumeric characters', () => {

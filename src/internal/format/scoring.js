@@ -1,7 +1,7 @@
 /**
  * Relevance scoring for memory bullet retrieval.
  */
-/** @import { Bullet } from '../types.js' */
+/** @import { Bullet } from '../../types.js' */
 import {
     normalizeTier,
     normalizeStatus,

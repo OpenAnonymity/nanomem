@@ -1,4 +1,4 @@
-/** @import { Bullet, BulletItem, StorageBackend } from '../types.js' */
+/** @import { Bullet, BulletItem, StorageBackend } from '../../types.js' */
 import { parseBullets, todayIsoDate } from './index.js';
 
 class MemoryBulletIndex {

@@ -1,7 +1,7 @@
 /**
  * Parsing and rendering for memory bullets.
  */
-/** @import { Bullet } from '../types.js' */
+/** @import { Bullet } from '../../types.js' */
 import {
     safeDateIso,
     normalizeTier,

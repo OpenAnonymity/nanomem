@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseBullets, countBullets, extractTitles, renderBullet, renderCompactedDocument } from '../../src/bullets/parser.js';
+import { parseBullets, countBullets, extractTitles, renderBullet, renderCompactedDocument } from '../../src/internal/format/parser.js';
 
 const SAMPLE_DOC = `
 # Memory: Work

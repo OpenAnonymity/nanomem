@@ -6,7 +6,7 @@
  *   high > medium > low
  *   newer > older
  */
-/** @import { Bullet, CompactionResult, CompactBulletsOptions, Confidence, Source } from '../types.js' */
+/** @import { Bullet, CompactionResult, CompactBulletsOptions, Confidence, Source } from '../../types.js' */
 import {
     ensureBulletMetadata,
     normalizeFactText,
