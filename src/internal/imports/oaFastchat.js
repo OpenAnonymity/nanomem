@@ -1,4 +1,4 @@
-/** @import { Message, SessionSummary, SessionWithConversation } from '../types.js' */
+/** @import { Message, SessionSummary, SessionWithConversation } from '../../types.js' */
 
 function toArray(value) {
     return Array.isArray(value) ? value : [];

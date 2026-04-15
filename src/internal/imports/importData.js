@@ -1,6 +1,6 @@
-/** @import { ImportDataItemResult, ImportDataOptions, ImportDataResult, MemoryBank, MemoryImportConversation, Message } from '../types.js' */
+/** @import { ImportDataItemResult, ImportDataOptions, ImportDataResult, MemoryBank, MemoryImportConversation, Message } from '../../types.js' */
 
-import { safeDateIso } from '../bullets/normalize.js';
+import { safeDateIso } from '../format/normalize.js';
 import { extractSessionsFromOAFastchatExport } from './oaFastchat.js';
 import { isChatGptExport, parseChatGptExport } from './chatgpt.js';
 import { isClaudeExport, parseClaudeExport } from './claude.js';

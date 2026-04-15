@@ -5,8 +5,8 @@
  * Format: array of conversation objects, each with a flat `chat_messages` array.
  * Messages have a `content` array of typed blocks (text, tool_use, tool_result, token_budget).
  */
-/** @import { ChatGptSession, Message } from '../types.js' */
-import { safeDateIso } from '../bullets/normalize.js';
+/** @import { ChatGptSession, Message } from '../../types.js' */
+import { safeDateIso } from '../format/normalize.js';
 
 const SKIP_CONTENT_TYPES = new Set([
     'tool_use',

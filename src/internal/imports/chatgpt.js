@@ -6,8 +6,8 @@
  *
  * Based on the OA Fastchat chatgptImporter.
  */
-/** @import { ChatGptSession } from '../types.js' */
-import { safeDateIso } from '../bullets/normalize.js';
+/** @import { ChatGptSession } from '../../types.js' */
+import { safeDateIso } from '../format/normalize.js';
 
 const SKIP_CONTENT_TYPES = new Set([
     'user_editable_context',

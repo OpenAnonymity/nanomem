@@ -14,7 +14,7 @@
  *   memory import notes.md --format markdown
  *   memory import notes-dir/ --format markdown
  */
-/** @import { Message, ChatGptSession } from '../types.js' */
+/** @import { Message, ChatGptSession } from '../../types.js' */
 
 /**
  * Parse one or more markdown documents into sessions for ingestion.
