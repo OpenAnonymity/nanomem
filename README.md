@@ -224,7 +224,7 @@ nanomem import my-notes.md --format markdown   # document mode (explicit)
 
 ## Demo
 
-<video src="assets/nanomem_demo_compressed.mp4" width="100%" controls></video>
+<video src="https://github.com/user-attachments/assets/fb59c332-2f93-415a-b514-571491bec565" width="100%" controls></video>
 
 ## Learn more
 
