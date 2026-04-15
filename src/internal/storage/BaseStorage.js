@@ -19,8 +19,8 @@
  *   ls(dirPath)     → {files: string[], dirs: string[]}
  *   getTree()      → string
  */
-/** @import { ExportRecord, ListResult, SearchResult, StorageMetadata } from '../types.js' */
-import { parseBullets, extractTitles, countBullets, normalizeFactText } from '../bullets/index.js';
+/** @import { ExportRecord, ListResult, SearchResult, StorageMetadata } from '../../types.js' */
+import { parseBullets, extractTitles, countBullets, normalizeFactText } from '../format/index.js';
 
 export class BaseStorage {
 

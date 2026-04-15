@@ -3,9 +3,9 @@
  *
  * Browser-only. Stores memory files in a separate 'oa-memory-fs' database.
  */
-/** @import { ExportRecord, StorageMetadata } from '../types.js' */
+/** @import { ExportRecord, StorageMetadata } from '../../types.js' */
 import { BaseStorage } from './BaseStorage.js';
-import { countBullets, extractTitles } from '../bullets/index.js';
+import { countBullets, extractTitles } from '../format/index.js';
 import { buildTree, createBootstrapRecords } from './schema.js';
 
 const DB_NAME = 'oa-memory-fs';

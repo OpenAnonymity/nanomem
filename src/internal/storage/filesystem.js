@@ -3,11 +3,11 @@
  *
  * Stores memory files as .md files on disk. Uses fs/promises (Node 18+).
  */
-/** @import { ExportRecord, StorageMetadata } from '../types.js' */
+/** @import { ExportRecord, StorageMetadata } from '../../types.js' */
 import { readdir, readFile, writeFile, unlink, mkdir, rm, stat } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { BaseStorage } from './BaseStorage.js';
-import { countBullets } from '../bullets/index.js';
+import { countBullets } from '../format/index.js';
 import { buildTree, createBootstrapRecords } from './schema.js';
 
 class FileSystemStorage extends BaseStorage {
