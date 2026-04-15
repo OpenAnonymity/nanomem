@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { isChatGptExport, parseChatGptExport } from '../../src/imports/chatgpt.js';
+import { isChatGptExport, parseChatGptExport } from '../../src/internal/imports/chatgpt.js';
 
 /**
  * Minimal ChatGPT export structure.

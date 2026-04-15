@@ -96,16 +96,9 @@ nanomem login --provider anthropic --api-key sk-ant-... --model claude-sonnet-4-
 
 Supported providers include OpenAI, Anthropic, Tinfoil, OpenRouter, and OpenAI-compatible endpoints via `--base-url`.
 
-When `provider` is `tinfoil`, nanomem now uses the Tinfoil SDK and fails
+When `provider` is `tinfoil`, nanomem uses the Tinfoil SDK and fails
 closed on enclave attestation verification before any inference request is
-sent. Browser consumers load a vendored SDK bundle, construct `TinfoilAI`,
-and require `await client.getVerificationDocument()` to report
-`securityVerified === true` before inference. The vendored bundle lives at
-`src/vendor/tinfoil.browser.js`; refresh it after SDK upgrades with:
-
-```bash
-npm run vendor:tinfoil
-```
+sent. The SDK is listed as a dependency and loaded lazily at runtime.
 
 ## How it works
 

@@ -6,16 +6,17 @@
  */
 /** @import { MemoryBank, MemoryBankConfig, MemoryBankLLMConfig, Message, IngestOptions, AugmentQueryResult, RetrievalResult, StorageBackend } from './types.js' */
 
-import { createOpenAIClient } from './llm/openai.js';
-import { createAnthropicClient } from './llm/anthropic.js';
-import { MemoryBulletIndex } from './bullets/bulletIndex.js';
-import { MemoryRetriever } from './engine/retriever.js';
-import { MemoryIngester } from './engine/ingester.js';
-import { MemoryCompactor } from './engine/compactor.js';
-import { InMemoryStorage } from './backends/ram.js';
-import { importData as importMemoryData } from './imports/importData.js';
-import { serialize, toZip } from './utils/portability.js';
-import { buildOmfExport, previewOmfImport, importOmf, parseOmfText, validateOmf } from './omf.js';
+import { createOpenAIClient } from './internal/llm-client/openai.js';
+import { createAnthropicClient } from './internal/llm-client/anthropic.js';
+import { createTinfoilClient } from './internal/llm-client/tinfoil.js';
+import { MemoryBulletIndex } from './internal/format/bulletIndex.js';
+import { MemoryRetriever } from './tools/retrieval.js';
+import { MemoryIngester } from './tools/ingestion.js';
+import { MemoryCompactor } from './tools/compaction.js';
+import { InMemoryStorage } from './internal/storage/ram.js';
+import { importData as importMemoryData } from './internal/imports/importData.js';
+import { serialize, toZip } from './internal/portability.js';
+import { buildOmfExport, previewOmfImport, importOmf, parseOmfText, validateOmf } from './internal/omf.js';
 
 /**
  * Remove review-only [[user_data]] markers before sending the final prompt to
@@ -164,10 +165,7 @@ function createBrowserLlmClient(llmConfig = /** @type {MemoryBankLLMConfig} */ (
         return createAnthropicClient({ apiKey, baseUrl, headers });
     }
     if (detectedProvider === 'tinfoil') {
-        throw new Error(
-            'createMemoryBank(browser): Tinfoil provider requires the Node.js entry (src/index.js). ' +
-            'Use provider "openai" with baseUrl "https://inference.tinfoil.sh/v1" for browser builds.'
-        );
+        return createTinfoilClient(llmConfig);
     }
     return createOpenAIClient({ apiKey, baseUrl, headers });
 }
@@ -188,7 +186,7 @@ function createBrowserBackend(storage) {
     const storageType = typeof storage === 'string' ? storage : 'ram';
     switch (storageType) {
         case 'indexeddb':
-            return asyncBackend(() => import('./backends/indexeddb.js').then((module) => new module.IndexedDBStorage()));
+            return asyncBackend(() => import('./internal/storage/indexeddb.js').then((module) => new module.IndexedDBStorage()));
         case 'filesystem':
             throw new Error('createMemoryBank(browser): filesystem storage is not available in the browser entrypoint.');
         case 'ram':
@@ -223,5 +221,5 @@ function asyncBackend(loader) {
     return /** @type {StorageBackend} */ (proxy);
 }
 
-export * from './bullets/index.js';
-export { buildOmfExport, previewOmfImport, importOmf, parseOmfText, validateOmf } from './omf.js';
+export * from './internal/format/index.js';
+export { buildOmfExport, previewOmfImport, importOmf, parseOmfText, validateOmf } from './internal/omf.js';

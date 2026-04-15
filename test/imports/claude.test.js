@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { isClaudeExport, parseClaudeExport } from '../../src/imports/claude.js';
+import { isClaudeExport, parseClaudeExport } from '../../src/internal/imports/claude.js';
 
 let _uuidCounter = 0;
 

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { trimRecentConversation } from '../../src/engine/recentConversation.js';
+import { trimRecentConversation } from '../../src/internal/recentConversation.js';
 
 describe('trimRecentConversation', () => {
     it('returns null for empty input', () => {

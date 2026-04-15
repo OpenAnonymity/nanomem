@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { validateOmf } from '../src/omf.js';
+import { validateOmf } from '../src/internal/omf.js';
 
 function makeDoc(overrides = {}) {
     return {

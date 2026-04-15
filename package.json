@@ -18,8 +18,7 @@
     },
     "scripts": {
         "test": "node --test test/**/*.test.js",
-        "vendor:tinfoil": "node scripts/vendor-tinfoil.mjs",
-        "prepublishOnly": "npm run vendor:tinfoil && npm run build:types",
+        "prepublishOnly": "npm run build:types",
         "build:types": "tsc",
         "prepack": "tsc"
     },
@@ -28,33 +27,33 @@
             "types": "./types/index.d.ts",
             "default": "./src/index.js"
         },
-        "./bullets": {
-            "types": "./types/bullets/index.d.ts",
-            "default": "./src/bullets/index.js"
+        "./format": {
+            "types": "./types/internal/format/index.d.ts",
+            "default": "./src/internal/format/index.js"
         },
-        "./backends": {
-            "types": "./types/backends/BaseStorage.d.ts",
-            "default": "./src/backends/BaseStorage.js"
+        "./storage": {
+            "types": "./types/internal/storage/BaseStorage.d.ts",
+            "default": "./src/internal/storage/BaseStorage.js"
         },
         "./utils": {
-            "types": "./types/utils/portability.d.ts",
-            "default": "./src/utils/portability.js"
+            "types": "./types/internal/portability.d.ts",
+            "default": "./src/internal/portability.js"
         },
         "./imports": {
-            "types": "./types/imports/index.d.ts",
-            "default": "./src/imports/index.js"
+            "types": "./types/internal/imports/index.d.ts",
+            "default": "./src/internal/imports/index.js"
         },
         "./llm": {
-            "types": "./types/llm/openai.d.ts",
-            "default": "./src/llm/openai.js"
+            "types": "./types/internal/llm-client/openai.d.ts",
+            "default": "./src/internal/llm-client/openai.js"
         },
         "./llm/openai": {
-            "types": "./types/llm/openai.d.ts",
-            "default": "./src/llm/openai.js"
+            "types": "./types/internal/llm-client/openai.d.ts",
+            "default": "./src/internal/llm-client/openai.js"
         },
         "./llm/anthropic": {
-            "types": "./types/llm/anthropic.d.ts",
-            "default": "./src/llm/anthropic.js"
+            "types": "./types/internal/llm-client/anthropic.d.ts",
+            "default": "./src/internal/llm-client/anthropic.js"
         }
     },
     "types": "./types/index.d.ts",
@@ -74,7 +73,6 @@
     "license": "MIT",
     "devDependencies": {
         "@types/node": "^25.5.2",
-        "esbuild": "^0.27.2",
         "typescript": "^6.0.2"
     },
     "dependencies": {

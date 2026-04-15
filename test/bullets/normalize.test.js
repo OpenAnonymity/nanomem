@@ -14,7 +14,7 @@ import {
     inferTierFromBullet,
     isExpiredBullet,
     ensureBulletMetadata,
-} from '../../src/bullets/normalize.js';
+} from '../../src/internal/format/normalize.js';
 
 describe('safeDateIso', () => {
     it('formats a valid date string to YYYY-MM-DD', () => {
