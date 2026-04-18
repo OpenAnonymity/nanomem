@@ -12,6 +12,10 @@
 
 `nanomem` turns chats, notes, and exports into a markdown memory system that an LLM can update and retrieve as facts evolve over time. The result stays inspectable, portable, and user-owned instead of disappearing into hidden vector state.
 
+<div align="center">
+<video src="https://github.com/user-attachments/assets/fb59c332-2f93-415a-b514-571491bec565" width="60%" controls></video>
+</div>
+
 ## Why it exists
 
 `nanomem` is for building memory that can last beyond a single chat session, model, or tool.
@@ -221,10 +225,6 @@ nanomem import my-notes.md --format markdown   # document mode (explicit)
 - `indexeddb` for browser storage
 - `ram` for testing or ephemeral usage
 - custom backend objects for your own storage layer
-
-## Demo
-
-<video src="https://github.com/user-attachments/assets/fb59c332-2f93-415a-b514-571491bec565" width="100%" controls></video>
 
 ## Learn more
 
