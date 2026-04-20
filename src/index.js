@@ -164,6 +164,9 @@ export function createMemoryBank(config = {}) {
         /** Compact all memory files (dedup, archive stale facts). */
         compact: () => compactor.compactAll(),
 
+        /** Archive any facts whose expires_at date has passed (no LLM, deterministic). */
+        pruneExpired: () => compactor.pruneExpired(),
+
         /**
          * Delete memory content matching a plain-text query.
          * @param {string} query

@@ -238,6 +238,12 @@ export async function compact(positionals, flags, mem) {
     return { status: 'compacted', filesChanged: stats?.filesChanged ?? 0, filesTotal: stats?.filesTotal ?? 0 };
 }
 
+export async function prune(positionals, flags, mem) {
+    await mem.init();
+    const stats = await mem.pruneExpired();
+    return { status: 'pruned', archived: stats?.archived ?? 0, filesChanged: stats?.filesChanged ?? 0 };
+}
+
 export async function ls(positionals, flags, mem) {
     await mem.init();
     return mem.storage.ls(positionals[0] || '');

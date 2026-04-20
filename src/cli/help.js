@@ -16,6 +16,7 @@ Commands:
     import <file|dir|->                     Import conversations or notes and extract facts
     retrieve <query> [--context <file>]     Retrieve relevant context for a query
     compact                                 Deduplicate and archive stale facts
+    prune                                   Archive facts whose expiry date has passed (fast, no LLM)
     export [--format txt|zip]               Export all memory to a file
 
   Storage:
@@ -54,6 +55,7 @@ export const COMMAND_HELP = {
     update: 'Usage: nanomem update <text>\n\nEdit existing facts from text. The LLM will only modify files that already exist — no new files are created.\nAccepts quoted text or piped stdin.\nRequires an LLM API key.',
     retrieve: 'Usage: nanomem retrieve <query> [--context <file>]\n\nRetrieve relevant memory context for a query.\nRequires an LLM API key.',
     compact: 'Usage: nanomem compact\n\nDeduplicate and archive stale facts across all memory files.\nRequires an LLM API key.',
+    prune: 'Usage: nanomem prune\n\nArchive any facts whose expires_at date has passed. Fast deterministic pass — no LLM required.',
     ls: 'Usage: nanomem ls [path]\n\nList files and directories in storage.',
     read: 'Usage: nanomem read <path>\n\nRead a file from storage.\nUse --render to format markdown files for terminal display.',
     write: 'Usage: nanomem write <path> [--content <text>]\n\nWrite content to a file. Reads from stdin if --content is not provided.',

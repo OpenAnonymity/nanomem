@@ -17,6 +17,7 @@
 import {
     compactBullets,
     inferTopicFromPath,
+    isExpiredBullet,
     parseBullets,
     todayIsoDate,
     nowIsoDateTime,
@@ -74,6 +75,53 @@ class MemoryCompactor {
             this._running = false;
             this._fileSummaries = [];
         }
+    }
+
+    async pruneExpired() {
+        await this._backend.init();
+        const allFiles = await this._backend.exportAll();
+        const realFiles = allFiles.filter(f => !f.path.endsWith('_tree.md'));
+
+        const today = todayIsoDate();
+        let totalArchived = 0;
+        let filesChanged = 0;
+
+        for (const file of realFiles) {
+            const raw = String(file.content || '').trim();
+            if (!raw) continue;
+
+            const bullets = parseBullets(raw);
+            if (bullets.length === 0) continue;
+
+            const toExpire = bullets.filter(b =>
+                b.section !== 'history' &&
+                b.status !== 'expired' &&
+                b.status !== 'superseded' &&
+                isExpiredBullet(b, today)
+            );
+            if (toExpire.length === 0) continue;
+
+            const expireLineIndexes = new Set(toExpire.map(b => b.lineIndex));
+            const marked = bullets.map(b =>
+                expireLineIndexes.has(b.lineIndex) ? { ...b, status: 'expired' } : b
+            );
+
+            const defaultTopic = inferTopicFromPath(file.path);
+            const compacted = compactBullets(marked, { defaultTopic });
+            const rendered = renderCompactedDocument(
+                compacted.working, compacted.longTerm, compacted.history,
+                { titleTopic: defaultTopic }
+            );
+
+            if (rendered.trim() === raw) continue;
+
+            await this._backend.write(file.path, rendered);
+            await this._bulletIndex.refreshPath(file.path);
+            totalArchived += toExpire.length;
+            filesChanged++;
+        }
+
+        return { archived: totalArchived, filesChanged };
     }
 
     async _compactFile(path, content) {

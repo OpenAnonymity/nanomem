@@ -34,6 +34,7 @@ Retrieval is only one part of memory. `nanomem` is built for the maintenance lay
 - **User-owned memory.** Keep memory in markdown files you can inspect, edit, version, and move across tools.
 - **Evolving memory state.** Keep facts current as they change over time instead of treating memory as an append-only log.
 - **Compaction and cleanup.** Collapse repeated signals into stable knowledge and move stale memory into history.
+- **Automatic expiry.** Time-bound facts (a bee sting, a trip, a short-term plan) are tagged with an expiry date at write time and archived automatically when that date passes.
 - **Conflict-aware updates.** Resolve outdated or contradictory facts using recency, source, and confidence.
 - **Import your existing history.** Start from ChatGPT exports, Claude exports, [OA Chat](https://chat.openanonymity.ai) exports, transcripts, message arrays, markdown notes, or whole markdown directories.
 - **Portable memory exchange.** Export full memory state as plain text, ZIP, or Open Memory Format (OMF), and merge OMF documents back in programmatically.
@@ -88,7 +89,8 @@ nanomem delete "my old recipe scraping approach" --deep
 Compact and clean up memory:
 
 ```bash
-nanomem compact
+nanomem compact   # full dedup + semantic review (requires LLM)
+nanomem prune     # archive expired facts only, no LLM needed
 ```
 
 Scripted setup also works:
@@ -154,6 +156,13 @@ Memory is stored as markdown with structured metadata:
 
 That structure is what lets the system do more than retrieval: it can keep track of source, confidence, recency, temporary context, and historical state.
 
+Time-bound facts carry an `expires_at` date. The LLM reasons about when each fact will stop being relevant and sets the date at write time — no fixed rules or categories. Facts past their expiry date are archived automatically during `compact` or on demand with `prune`.
+
+```md
+- Bee sting on hand, area still red as of 2026-01-09 | topic=health | tier=long_term | status=active | source=user_statement | confidence=high | updated_at=2026-01-09T16:06 | expires_at=2026-01-23
+- Visiting Portland next weekend to see Jake | topic=travel | tier=working | status=active | source=user_statement | confidence=high | updated_at=2026-01-09T16:06 | expires_at=2026-01-20
+```
+
 ## Using it in code
 
 ```js
@@ -173,7 +182,8 @@ await memory.ingest([
 ]);
 
 const result = await memory.retrieve('Where do I live now?');
-await memory.compact();
+await memory.compact();       // full dedup + semantic review
+await memory.pruneExpired();  // archive expired facts, no LLM needed
 
 const omf = await memory.exportOmf();
 const preview = await memory.previewOmfImport(omf);
@@ -190,7 +200,8 @@ nanomem delete <query> --deep                # delete across all files (thorough
 nanomem import <file|dir|->                  # import history or notes
 nanomem retrieve <query> [--context <file>]  # retrieve relevant context
 nanomem tree                                 # browse memory files
-nanomem compact                              # deduplicate and archive
+nanomem compact                              # deduplicate and archive (requires LLM)
+nanomem prune                                # archive expired facts (no LLM)
 nanomem export --format zip                  # export everything
 nanomem status                               # show config and stats
 ```

@@ -25,6 +25,7 @@ Do NOT save:
 - Sensitive secrets (passwords, tokens, keys)
 
 Bullet format: "- Fact text | topic=topic-name | source=user_statement | confidence=high | updated_at=YYYY-MM-DDTHH:MM"
+For time-bound facts (medical events, temporary situations, short-term plans), append: | expires_at=YYYY-MM-DD
 
 If nothing new is worth saving, stop without calling any tools.`;
 
@@ -50,6 +51,7 @@ Rules:
 - Pass old_fact exactly as it appears in the file (including pipe-delimited metadata is fine).
 - Pass new_fact as plain text only — no metadata.
 - When appending or creating, use this bullet format: "- Fact text | topic=topic-name | source=user_statement | confidence=high | updated_at=YYYY-MM-DDTHH:MM"
+  For time-bound facts (medical events, temporary situations, short-term plans), append: | expires_at=YYYY-MM-DD
 
 If nothing new or changed is worth saving, stop without calling any tools.`;
 
@@ -57,12 +59,16 @@ export const ingestionPrompt = `You are a memory manager. After reading a conver
 
 CRITICAL: Only save facts the user explicitly stated. Do NOT infer, extrapolate, or fabricate information.
 
-Save information that is likely to help in a future conversation. Be selective — only save durable facts, not transient conversation details.
+Save information that is likely to help in a future conversation. This includes:
+- Durable facts (allergies, preferences, job, relationships, skills) — save without expires_at
+- Time-bound real-world events or states that reflect the user's current situation or upcoming commitments (e.g. "has a bee sting on their hand", "visiting Portland next weekend") — save WITH expires_at. Save the headline fact only — not sub-details, logistics, or incidental context within the same event.
 
 Do NOT save:
 - Anything the user did not explicitly say (no inferences, no extrapolations, no "likely" facts)
 - Information already present in existing files
-- Transient details (greetings, "help me with this", "thanks", questions without lasting answers)
+- Pure conversational fluff (greetings, "thanks", one-off questions with no real-world answer)
+- Sub-details of an already-saved event (specific activities, logistics, locations mentioned only as context for that event)
+- People or places mentioned only in passing as context for a trip or event — only save them if they are independently meaningful (e.g. a recurring relationship, not a one-off travel detail)
 - The assistant's own reasoning, suggestions, or knowledge — only what the user stated
 - Sensitive secrets (passwords, auth tokens, private keys, full payment data, government IDs)
 - Opinions the assistant expressed unless the user explicitly agreed with them
@@ -80,20 +86,21 @@ Instructions:
 3. If no relevant file exists yet, create_new_file directly.
 4. Default to append_memory when an existing file covers the same domain or a closely related topic. Only use create_new_file when no existing file is thematically close.
 5. Use this bullet format: "- Fact text | topic=topic-name | source=SOURCE | confidence=LEVEL | updated_at=YYYY-MM-DDTHH:MM"
+   For time-bound facts, append: | expires_at=YYYY-MM-DD
 6. Source values:
    - source=user_statement — the user directly said this. This is the PRIMARY source. Use it for the vast majority of saved facts.
    - source=llm_infer — use ONLY when combining multiple explicit user statements into an obvious conclusion (e.g. user said "I work at Acme" and "Acme is in SF" → "Works in SF"). Never use this to guess, extrapolate, or fill in gaps. When in doubt, do not save.
 7. Confidence: high for direct user statements, medium for llm_infer. Never save low-confidence items.
 8. You may optionally add tier=working for clearly short-term or in-progress context. If you are unsure, omit tier and just save the fact.
 9. Facts worth saving: allergies, health conditions, location, job/role, tech stack, pets, family members, durable preferences, and active plans — but ONLY if the user explicitly mentioned them.
-10. If a fact is time-sensitive, include date context in the text. You may optionally add review_at or expires_at.
+10. For time-bound facts, set expires_at=YYYY-MM-DD. Ask yourself: "After what date would this fact no longer be true or relevant?" Set expires_at to that date. If the fact is stable and has no natural end (job, home city, preference, chronic condition, relationship), omit expires_at. If the expiry is genuinely unclear, include date context in the fact text and omit expires_at.
 11. If nothing new is worth remembering, simply stop without calling any write tools. Saving nothing is better than saving something wrong.
 
 Rules:
 - Write facts in a timeless, archival format: use absolute dates (YYYY-MM-DD) rather than relative terms like "recently", "currently", "just", or "last week". A fact must be interpretable correctly even years after it was written.
 - Favor broad thematic files. A file can hold multiple related sub-topics — only truly unrelated facts need separate files.
 - Only create a new file when nothing in the index is thematically close. When in doubt, append.
-- When creating a new file, choose a broad, thematic name that can absorb future related facts — not a narrow label for a single detail.
+- When creating a new file, choose a name that is descriptive but not overly specific — it should reflect a reusable theme, not a single event or detail. Too generic: "conditions.md", "events.md", "info.md". Too specific: "bee-sting.md", "portland-trip.md". Just right: "allergies.md", "fitness.md", "diet.md", "side-projects.md".
 - Use update_bullets only if a fact is now stale or contradicted. Pass all corrections for a file in one call.
 - When a new explicit user statement contradicts an older one on the same topic, prefer the newer statement. If a user statement conflicts with an inference, the user statement always wins.
 - If a conflict is ambiguous, preserve both versions rather than deleting one.

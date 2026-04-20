@@ -25,6 +25,7 @@ Do NOT save:
 - Sensitive secrets (passwords, tokens, keys)
 
 Bullet format: "- Fact text | topic=topic-name | source=document | confidence=high | updated_at=YYYY-MM-DDTHH:MM"
+For time-bound facts (temporary plans, short-term goals, events with a clear end date), append: | expires_at=YYYY-MM-DD
 
 If nothing new is worth saving, stop without calling any tools.`;
 

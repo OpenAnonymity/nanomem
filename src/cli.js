@@ -46,6 +46,7 @@ const COMMAND_MAP = {
     retrieve: commands.retrieve,
     import:   commands.importCmd,
     compact:  commands.compact,
+    prune:    commands.prune,
     tree:     commands.tree,
     ls:       commands.ls,
     read:     commands.read,
