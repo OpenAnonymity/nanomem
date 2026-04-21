@@ -44,6 +44,7 @@ const COMMAND_MAP = {
     login:    commands.login,
     init:     commands.init,
     retrieve: commands.retrieve,
+    'retrieve-adaptive': commands.retrieveAdaptive,
     import:   commands.importCmd,
     compact:  commands.compact,
     prune:    commands.prune,
@@ -118,11 +119,11 @@ async function main() {
         };
     }
 
-    // Wire progress for retrieve — surface fallback warnings to the user
-    if (commandName === 'retrieve' && !values.json && process.stderr.isTTY) {
+    // Wire progress for retrieve / retrieve-adaptive — surface fallback warnings to the user
+    if ((commandName === 'retrieve' || commandName === 'retrieve-adaptive') && !values.json && process.stderr.isTTY) {
         memOpts.onProgress = ({ stage, message }) => {
             if (stage === 'fallback') {
-                process.stderr.write(`Warning: ${message}\n`);
+                process.stderr.write(`  Warning: ${message}\n`);
             }
         };
     }
@@ -157,8 +158,8 @@ async function main() {
 
     // Spinner for operations that give no other feedback
     const useSpinner = !values.json && process.stderr.isTTY &&
-        (commandName === 'retrieve' || commandName === 'compact');
-    const spinner = useSpinner && commandName === 'retrieve'
+        (commandName === 'retrieve' || commandName === 'retrieve-adaptive' || commandName === 'compact');
+    const spinner = useSpinner && (commandName === 'retrieve' || commandName === 'retrieve-adaptive')
         ? createSpinner('searching memory…')
         : null;
 

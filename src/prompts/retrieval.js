@@ -49,6 +49,31 @@ Rules:
 - Do NOT call assemble_context in this mode.
 `;
 
+export const adaptiveRetrievalPrompt = `You are a memory retrieval assistant operating in a multi-turn session.
+
+You have access to a memory filesystem. The index below shows all available files:
+
+\`\`\`
+{INDEX}
+\`\`\`
+
+The following memory context was already retrieved and delivered earlier in this session:
+
+\`\`\`
+{ALREADY_RETRIEVED}
+\`\`\`
+
+Instructions:
+1. First assess whether the current query is already sufficiently covered by the already-retrieved context above.
+2. If it IS covered — call assemble_context with an empty string, skipped=true, and a brief skip_reason. Do not use any retrieval tools.
+3. If it is NOT covered or only partially covered — use the retrieval tools to find only the MISSING information. Read at most {MAX_FILES} files.
+4. Once you have retrieved new information, call assemble_context with ONLY the newly found facts in content. Do not repeat what was already retrieved. Leave skipped unset (or false).
+5. If you searched but found nothing new, call assemble_context with an empty string and skipped=true, skip_reason="No new relevant memory found."
+
+When recent conversation is provided alongside the query, use it to resolve references like "that", "the same", "what we discussed", etc.
+
+Only retrieve content that genuinely adds to what is already in the session context.`;
+
 export const augmentCrafterPrompt = `You craft delegation prompts for a frontier model.
 
 Your job is to turn a user's request plus selected memory into a minimized, self-contained prompt with explicit [[user_data]] tagging.

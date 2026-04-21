@@ -11,7 +11,7 @@
  *                                           rebuildTree, exportAll }
  *   Utilities  (portability): mem.serialize(), mem.toZip()
  */
-/** @import { LLMClient, MemoryBank, MemoryBankConfig, MemoryBankLLMConfig, Message, IngestOptions, RetrievalResult, AugmentQueryResult, StorageBackend } from './types.js' */
+/** @import { LLMClient, MemoryBank, MemoryBankConfig, MemoryBankLLMConfig, Message, IngestOptions, RetrievalResult, AdaptiveRetrievalResult, AugmentQueryResult, StorageBackend } from './types.js' */
 
 import { createOpenAIClient } from './internal/llm-client/openai.js';
 import { createAnthropicClient } from './internal/llm-client/anthropic.js';
@@ -92,6 +92,19 @@ export function createMemoryBank(config = {}) {
          * @returns {Promise<RetrievalResult | null>}
          */
         retrieve: (query, conversationText) => retrieval.retrieveForQuery(query, conversationText),
+
+        /**
+         * Adaptive retrieval for multi-turn sessions. Only fetches new memory if
+         * alreadyRetrievedContext does not already cover the current query.
+         * Returns AdaptiveRetrievalResult (never null on success) — check .skipped
+         * and .skipReason to know if retrieval was bypassed.
+         * @param {string} query
+         * @param {string} [alreadyRetrievedContext] memory already in the session
+         * @param {string} [conversationText] recent conversation for reference resolution
+         * @returns {Promise<AdaptiveRetrievalResult | null>}
+         */
+        retrieveAdaptive: (query, alreadyRetrievedContext, conversationText) =>
+            retrieval.retrieveAdaptively(query, alreadyRetrievedContext, conversationText),
 
         /**
          * Build a reviewable prompt that augments the user query with memory.

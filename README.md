@@ -77,6 +77,7 @@ Retrieve memory later:
 ```bash
 nanomem retrieve "what are my hobbies?"
 nanomem retrieve "what are my hobbies?" --render
+nanomem retrieve-adaptive "what deadlines do those projects have?" "$(nanomem retrieve 'what are my current projects?')"
 ```
 
 Delete facts from memory:
@@ -135,6 +136,7 @@ The core engine has three parts:
 
 - **Ingestion.** Extract durable facts from conversations or documents and organize them into topic files.
 - **Retrieval.** Navigate the memory filesystem and assemble relevant context for a query.
+- **Adaptive retrieval.** Reuse memory that was already retrieved earlier in a session, answer directly from it when possible, and only fetch missing facts when needed.
 - **Compaction.** Deduplicate repeated facts, keep current memory concise, and move stale or superseded facts into history.
 
 ## Memory format
@@ -199,6 +201,8 @@ nanomem delete <query>                       # delete facts matching a query
 nanomem delete <query> --deep                # delete across all files (thorough)
 nanomem import <file|dir|->                  # import history or notes
 nanomem retrieve <query> [--context <file>]  # retrieve relevant context
+nanomem retrieve-adaptive <query> [<already-retrieved-context>] [--context <file>]
+                                           # reuse prior retrieved context and only fetch missing memory
 nanomem tree                                 # browse memory files
 nanomem compact                              # deduplicate and archive (requires LLM)
 nanomem prune                                # archive expired facts (no LLM)
@@ -207,6 +211,34 @@ nanomem status                               # show config and stats
 ```
 
 For terminal use, `--render` will format markdown-heavy output like `read` and `retrieve` into a more readable ANSI-rendered view while leaving `--json` and piped output unchanged.
+
+## Multi-turn retrieval
+
+`nanomem retrieve` is the basic one-shot path: it searches memory and returns relevant context for a query.
+
+`nanomem retrieve-adaptive` is designed for multi-turn sessions where some memory was already retrieved earlier in the conversation. It takes the current query plus the already retrieved memory context and decides whether:
+
+- the existing context already answers the question
+- new retrieval is needed to fill in missing facts
+- nothing relevant is available beyond what is already in the session
+
+When the existing context is sufficient, `retrieve-adaptive` should answer directly from that context instead of retrieving again. When it is only partially sufficient, it should retrieve only the missing information.
+
+Examples:
+
+```bash
+# first turn
+nanomem retrieve "what are my current projects?"
+
+# follow-up that should be answerable from the prior retrieved context
+nanomem retrieve-adaptive "what deadlines do those projects have?" "$(nanomem retrieve 'what are my current projects?')"
+
+# pipe the earlier retrieval into adaptive retrieval instead of using command substitution
+nanomem retrieve "what are my current projects?" | \
+  nanomem retrieve-adaptive "what deadlines do those projects have?"
+```
+
+Use `--context <file>` with either retrieval command when you want recent conversation turns to help resolve references like "that", "them", or "those projects".
 
 ## Import formats
 
