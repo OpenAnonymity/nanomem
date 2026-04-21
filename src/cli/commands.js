@@ -143,7 +143,7 @@ export async function retrieve(positionals, flags, mem) {
 export async function importCmd(positionals, flags, mem, config, { showProgress, spinnerHolder } = {}) {
     const source = positionals[0];
     let conversations;
-    let extractionMode = 'conversation';
+    let mode = 'conversation';
 
     if (source === '-' || (!source && !process.stdin.isTTY)) {
         conversations = parseConversations(await readStdin(), flags);
@@ -153,16 +153,16 @@ export async function importCmd(positionals, flags, mem, config, { showProgress,
             const files = await readMarkdownDir(source);
             if (files.length === 0) throw new Error(`No .md files found in ${source}`);
             conversations = parseMarkdownFiles(files);
-            extractionMode = 'document';
+            mode = 'document';
         } else {
             conversations = parseConversations(await readFile(source, 'utf-8'), flags);
-            if (flags.format === 'markdown') extractionMode = 'document';
+            if (flags.format === 'markdown') mode = 'document';
         }
     } else {
         throw new Error('Usage: memory import <file|dir|->');
     }
 
-    return ingestConversations(conversations, extractionMode, mem, { showProgress, spinnerHolder, status: 'imported' });
+    return ingestConversations(conversations, mode, mem, { showProgress, spinnerHolder, status: 'imported' });
 }
 
 export async function add(positionals, flags, mem, config, { showProgress, spinnerHolder } = {}) {
@@ -181,7 +181,7 @@ export async function update(positionals, flags, mem, config, { showProgress, sp
     return ingestConversations(conversations, 'update', mem, { showProgress, spinnerHolder, status: 'updated', showDiff: true });
 }
 
-async function ingestConversations(conversations, extractionMode, mem, { showProgress, spinnerHolder, status, showDiff = false }) {
+async function ingestConversations(conversations, mode, mem, { showProgress, spinnerHolder, status, showDiff = false }) {
     await mem.init();
 
     const total = conversations.length;
@@ -207,7 +207,7 @@ async function ingestConversations(conversations, extractionMode, mem, { showPro
             if (spinnerHolder) spinnerHolder.current = spinner;
         }
 
-        const result = await mem.ingest(conv.messages, { updatedAt: conv.updatedAt, extractionMode });
+        const result = await mem.ingest(conv.messages, { updatedAt: conv.updatedAt, mode });
 
         if (spinnerHolder) spinnerHolder.current = null;
         if (showProgress) {

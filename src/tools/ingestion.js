@@ -136,8 +136,7 @@ class MemoryIngester {
             throw createAbortError();
         }
 
-        // Support both `mode` and legacy `extractionMode`
-        const mode = options.mode || options.extractionMode || 'conversation';
+        const mode = options.mode || 'conversation';
         const isDocument = mode === 'document';
         const conversationText = isDocument
             ? this._buildDocumentText(messages)

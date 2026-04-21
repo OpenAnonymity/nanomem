@@ -65,7 +65,6 @@ export async function importData(memoryBank, input, options = {}) {
             try {
                 const ingestResult = await memoryBank.ingest(item.messages, {
                     mode: item.mode || parsed.mode,
-                    extractionMode: item.mode || parsed.mode,
                     sessionTitle: title || undefined,
                     updatedAt: normalizeUpdatedAt(item.updatedAt) || undefined,
                     signal
