@@ -15,6 +15,8 @@ Commands:
     update <text>                           Edit existing facts from text (only modifies existing files)
     import <file|dir|->                     Import conversations or notes and extract facts
     retrieve <query> [--context <file>]     Retrieve relevant context for a query
+    retrieve-adaptive <query> [<already-retrieved-context>] [--context <file>]
+                                            Reuse prior retrieved context and only fetch missing memory
     compact                                 Deduplicate and archive stale facts
     prune                                   Archive facts whose expiry date has passed (fast, no LLM)
     export [--format txt|zip]               Export all memory to a file
@@ -46,6 +48,7 @@ Examples:
   nanomem import my-notes.md
   nanomem import ./notes/
   nanomem retrieve "what are my hobbies?"
+  nanomem retrieve-adaptive "what deadlines do those projects have?" "$(nanomem retrieve 'what are my current projects?')"
   nanomem status
   nanomem export --format zip
 `;
@@ -54,6 +57,26 @@ export const COMMAND_HELP = {
     add: 'Usage: nanomem add <text>\n\nAdd new facts from text. The LLM will create a new file or append to an existing one.\nAccepts quoted text or piped stdin.\nRequires an LLM API key.',
     update: 'Usage: nanomem update <text>\n\nEdit existing facts from text. The LLM will only modify files that already exist — no new files are created.\nAccepts quoted text or piped stdin.\nRequires an LLM API key.',
     retrieve: 'Usage: nanomem retrieve <query> [--context <file>]\n\nRetrieve relevant memory context for a query.\nRequires an LLM API key.',
+    'retrieve-adaptive': `Usage: nanomem retrieve-adaptive <query> [<already-retrieved-context>] [--context <file>]
+
+Adaptive retrieval for multi-turn sessions.
+
+Behavior:
+  - First checks whether the current query can already be answered from previously retrieved memory context
+  - If yes, returns a normal answer without fetching any new memory
+  - If not, retrieves only the missing information
+  - If nothing new is needed or found, the result may be empty with an explanation
+
+Inputs:
+  - <query>: the current user question
+  - <already-retrieved-context>: memory context already shown earlier in the session
+  - --context <file>: optional recent conversation transcript for resolving references like "that" or "those projects"
+
+Examples:
+  nanomem retrieve-adaptive "what deadlines do those projects have?" "$(nanomem retrieve 'what are my current projects?')"
+  nanomem retrieve "what are my current projects?" | nanomem retrieve-adaptive "what deadlines do those projects have?"
+
+Requires an LLM API key.`,
     compact: 'Usage: nanomem compact\n\nDeduplicate and archive stale facts across all memory files.\nRequires an LLM API key.',
     prune: 'Usage: nanomem prune\n\nArchive any facts whose expires_at date has passed. Fast deterministic pass — no LLM required.',
     ls: 'Usage: nanomem ls [path]\n\nList files and directories in storage.',

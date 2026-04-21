@@ -40,6 +40,9 @@ export function formatOutput(result, flags) {
 function formatHuman(result, flags) {
     if (result == null) return '';
     if (typeof result === 'string') return maybeRenderMarkdown(result, flags);
+    if (typeof result.displayText === 'string' && result.displayText.trim()) {
+        return maybeRenderMarkdown(result.displayText, flags);
+    }
 
     // retrieve → print assembled context directly
     if (result.assembledContext != null) {
@@ -134,6 +137,9 @@ function formatAction(result) {
                 ? section(green('✓ Memory updated'), [['Facts removed', result.deleteCalls]])
                 : dim('– Nothing matched');
         case 'skipped':
+            if (typeof result.reason === 'string' && result.reason.trim()) {
+                return dim(`– ${result.reason.trim()}`);
+            }
             return dim('– Nothing to extract (conversation too short)');
         case 'imported':
             return section(green('✓ Chat history imported'), [

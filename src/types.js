@@ -216,6 +216,15 @@
  */
 
 /**
+ * @typedef {object} AdaptiveRetrievalResult
+ * @property {{ path: string; content: string }[]} files
+ * @property {string[]} paths
+ * @property {string | null} assembledContext
+ * @property {boolean} skipped - true when existing context already covered the query
+ * @property {string} [skipReason] - explanation when skipped=true
+ */
+
+/**
  * @typedef {object} AugmentQueryResult
  * @property {{ path: string; content: string }[]} files
  * @property {string[]} paths
@@ -499,6 +508,7 @@
  * @typedef {object} MemoryBank
  * @property {() => Promise<void>} init
  * @property {(query: string, conversationText?: string) => Promise<RetrievalResult | null>} retrieve
+ * @property {(query: string, alreadyRetrievedContext?: string, conversationText?: string) => Promise<AdaptiveRetrievalResult | null>} retrieveAdaptive
  * @property {(query: string, conversationText?: string) => Promise<AugmentQueryResult | null>} augmentQuery
  * @property {(messages: Message[], options?: IngestOptions) => Promise<IngestResult>} ingest
  * @property {(input: string | unknown | MemoryImportConversation | MemoryImportConversation[] | Array<{ path: string, content: string }>, options?: ImportDataOptions) => Promise<ImportDataResult>} importData

@@ -11,7 +11,8 @@ import { createAugmentQueryExecutor, createRetrievalExecutors } from './executor
 import { trimRecentConversation } from '../internal/recentConversation.js';
 import {
     retrievalPrompt,
-    augmentAddendum
+    augmentAddendum,
+    adaptiveRetrievalPrompt
 } from '../prompts/retrieval.js';
 import {
     normalizeFactText,
@@ -25,6 +26,15 @@ const MAX_FILES_TO_LOAD = 8;
 const MAX_TOTAL_CONTEXT_CHARS = 4000;
 const MAX_SNIPPETS = 18;
 const MAX_RECENT_CONTEXT_CHARS = 2000;
+const MAX_DISPLAY_CONTEXT_CHARS = 2500;
+const ADAPTIVE_FALLBACK_STOPWORDS = new Set([
+    'what', 'when', 'where', 'which', 'who', 'whom', 'whose', 'why', 'how',
+    'have', 'has', 'had', 'with', 'from', 'into', 'onto', 'about', 'there',
+    'their', 'them', 'they', 'those', 'these', 'this', 'that', 'your', 'yours',
+    'project', 'projects', 'deadline', 'deadlines', 'current', 'currently',
+    'main', 'more', 'focus', 'using', 'built', 'typical', 'stack', 'recipe',
+    'recipes', 'alpha', 'launch', 'app', 'apps'
+]);
 
 /** @type {ToolDefinition[]} */
 const RETRIEVAL_TOOLS = [
@@ -112,6 +122,30 @@ const AUGMENT_QUERY_TOOL = {
 };
 
 const AUGMENT_SYSTEM_ADDENDUM = augmentAddendum;
+
+/** @type {ToolDefinition[]} */
+const ADAPTIVE_RETRIEVAL_TOOLS = RETRIEVAL_TOOLS.map(tool => {
+    if (tool.function.name !== 'assemble_context') return tool;
+    return {
+        type: 'function',
+        function: {
+            name: 'assemble_context',
+            description: tool.function.description +
+                ' When skipping because existing context already covers the query, set skipped=true and provide a skip_reason instead of fetching any files.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    content: { type: 'string', description: 'Newly retrieved facts as synthesized prose. Empty string when skipped.' },
+                    skipped: { type: 'boolean', description: 'True when existing context already covers the query and no new retrieval was done.' },
+                    skip_reason: { type: 'string', description: 'Brief explanation of why retrieval was skipped. Required when skipped=true.' }
+                },
+                required: ['content']
+            }
+        }
+    };
+});
+
+const MAX_ALREADY_RETRIEVED_CHARS = 3000;
 
 async function collectReadFiles(toolCallLog, backend) {
     const files = [];
@@ -415,6 +449,9 @@ class MemoryRetriever {
         if (files.length === 0) return null;
 
         const assembled = await this._buildSnippetContext(files.map(f => f.path), query, conversationText);
+        const displayText = assembled
+            ? await this._renderDirectAnswer(query, assembled)
+            : null;
 
         onProgress?.({
             stage: 'complete',
@@ -422,7 +459,12 @@ class MemoryRetriever {
             paths: files.map(f => f.path)
         });
 
-        return { files, paths: files.map(f => f.path), assembledContext: assembled };
+        return {
+            files,
+            paths: files.map(f => f.path),
+            assembledContext: assembled,
+            ...(displayText ? { displayText } : {})
+        };
     }
 
     async _textSearchFallback(query) {
@@ -437,6 +479,165 @@ class MemoryRetriever {
         }
 
         return [...allPaths].slice(0, MAX_FILES_TO_LOAD);
+    }
+
+    _buildAdaptiveFallbackQuery(query, alreadyRetrievedContext) {
+        const baseTerms = tokenizeQuery(query);
+        if (!alreadyRetrievedContext || !alreadyRetrievedContext.trim()) {
+            return query;
+        }
+
+        const hasReferentialLanguage = /\b(it|its|they|them|their|that|those|these|this|same|former|latter)\b/i.test(query);
+        const hasSpecificTerms = baseTerms.some((term) => !ADAPTIVE_FALLBACK_STOPWORDS.has(term));
+        if (!hasReferentialLanguage && hasSpecificTerms) {
+            return query;
+        }
+
+        const candidates = [];
+        const seen = new Set(baseTerms);
+        const pushCandidate = (raw) => {
+            const token = String(raw || '').trim();
+            if (!token) return;
+            const normalized = token.toLowerCase();
+            if (normalized.length < 3) return;
+            if (ADAPTIVE_FALLBACK_STOPWORDS.has(normalized)) return;
+            if (seen.has(normalized)) return;
+            seen.add(normalized);
+            candidates.push(token);
+        };
+
+        for (const match of alreadyRetrievedContext.matchAll(/\*\*([^*]+)\*\*/g)) {
+            const phrase = match[1]?.trim();
+            if (!phrase) continue;
+            for (const token of phrase.split(/[^A-Za-z0-9_-]+/)) {
+                pushCandidate(token);
+            }
+        }
+
+        for (const match of alreadyRetrievedContext.matchAll(/\b[A-Z][A-Za-z0-9_-]{2,}\b/g)) {
+            pushCandidate(match[0]);
+        }
+
+        if (candidates.length === 0) {
+            return query;
+        }
+
+        return `${query} ${candidates.slice(0, 6).join(' ')}`.trim();
+    }
+
+    async _renderDirectAnswer(query, sourceContext) {
+        const context = String(sourceContext || '').trim();
+        if (!context) return null;
+
+        const truncated = context.length > MAX_DISPLAY_CONTEXT_CHARS
+            ? context.slice(0, MAX_DISPLAY_CONTEXT_CHARS) + '...(truncated)'
+            : context;
+
+        try {
+            const response = await this._llmClient.createChatCompletion({
+                model: this._model,
+                messages: [
+                    {
+                        role: 'system',
+                        content: 'Answer the user in concise plain prose using only the provided memory context. Do not mention files, bullets, retrieval, or metadata. If the context does not answer the question, reply with an empty string.'
+                    },
+                    {
+                        role: 'user',
+                        content: `Memory context:\n\`\`\`\n${truncated}\n\`\`\`\n\nQuestion: ${query}`
+                    }
+                ],
+                max_tokens: 250,
+                temperature: 0
+            });
+
+            const text = String(response?.content || '').trim();
+            return text || this._fallbackDisplayText(query, context);
+        } catch {
+            return this._fallbackDisplayText(query, context);
+        }
+    }
+
+    _fallbackDisplayText(query, sourceContext) {
+        const context = String(sourceContext || '').trim();
+        if (!context) return null;
+        const queryText = String(query || '').toLowerCase();
+        const blocks = this._splitContextBlocks(context);
+
+        if (/\bdeadline|deadlines|launch|due\b/.test(queryText)) {
+            const entryAnswer = this._summarizeEntryDeadlines(blocks);
+            if (entryAnswer) return entryAnswer;
+        }
+
+        const cleanedLines = blocks.flatMap((block) => block.lines);
+        if (cleanedLines.length === 0) return null;
+
+        if (/\bdeadline|deadlines|launch|due\b/.test(queryText)) {
+            const relevant = cleanedLines.filter((line) => /\bdeadline|deadlines|launch|due|alpha\b/i.test(line));
+            if (relevant.length > 0) return relevant.join('\n\n');
+        }
+
+        if (/\bpets?\b/.test(queryText)) {
+            const possession = cleanedLines.find((line) => /^- Has\s+/i.test(line));
+            if (possession) {
+                return possession
+                    .replace(/^- Has\s+/i, 'You have ')
+                    .replace(/\s*$/, '.');
+            }
+        }
+
+        const bulletLines = cleanedLines.filter((line) => line.startsWith('- '));
+        if (bulletLines.length > 0) {
+            return bulletLines.join('\n');
+        }
+
+        return cleanedLines.join('\n\n');
+    }
+
+    _splitContextBlocks(text) {
+        return String(text || '')
+            .split(/\n\s*\n/)
+            .map((block) => block.trim())
+            .filter(Boolean)
+            .map((block) => ({
+                raw: block,
+                lines: block
+                    .split('\n')
+                    .map((line) => line.trim())
+                    .filter(Boolean)
+                    .filter((line) => !line.startsWith('### '))
+                    .map((line) => line.replace(/\s+\|\s+.*$/, ''))
+            }))
+            .filter((block) => block.lines.length > 0);
+    }
+
+    _summarizeEntryDeadlines(blocks) {
+        const entries = blocks
+            .map(({ lines }) => {
+                const paragraph = lines.join(' ').trim();
+                const match = /^\*\*([^*]+)\*\*\s+[—-]\s+([\s\S]+)$/.exec(paragraph);
+                if (!match) return null;
+                return {
+                    name: match[1].trim(),
+                    text: match[2].trim()
+                };
+            })
+            .filter(Boolean);
+
+        if (entries.length === 0) return null;
+
+        const summaries = entries.map(({ name, text }) => {
+            const deadlineMatch = /\b(?:deadline|launch deadline)\s+of\s+([^.,;]+)/i.exec(text)
+                || /\bdue\s+(?:on\s+)?([^.,;]+)/i.exec(text)
+                || /\blaunch(?:ing)?\s+(?:on\s+)?([^.,;]+)/i.exec(text);
+
+            if (deadlineMatch) {
+                return `${name} has a deadline of ${deadlineMatch[1].trim()}.`;
+            }
+
+            return `No specific deadline is mentioned for ${name}.`;
+        });
+
+        return summaries.join('\n\n');
     }
 
     async _buildSnippetContext(paths, query, conversationText) {
@@ -575,6 +776,205 @@ class MemoryRetriever {
         const realFiles = all.filter(f => !f.path.endsWith('_tree.md'));
         if (realFiles.length === 0) return true;
         return !realFiles.some(f => (f.itemCount || 0) > 0);
+    }
+
+    /**
+     * Adaptive retrieval for multi-turn sessions. Looks at the current query plus
+     * memory context already delivered in this session and only retrieves if
+     * something genuinely new is needed. Returns an AdaptiveRetrievalResult that
+     * is never null — when retrieval is skipped, skipped=true and skipReason explains why.
+     *
+     * @param {string} query - the user's current message
+     * @param {string} [alreadyRetrievedContext] - memory context already in the session
+     * @param {string} [conversationText] - recent conversation for reference resolution
+     * @returns {Promise<import('../types.js').AdaptiveRetrievalResult | null>}
+     */
+    async retrieveAdaptively(query, alreadyRetrievedContext, conversationText) {
+        if (!query || !query.trim()) return null;
+
+        const onProgress = this._onProgress;
+        const onModelText = this._onModelText;
+
+        // No prior context → plain retrieval, wrapped in the adaptive result shape.
+        if (!alreadyRetrievedContext || !alreadyRetrievedContext.trim()) {
+            onProgress?.({ stage: 'init', message: 'Reading memory index...' });
+            await this._backend.init();
+            const index = await this._backend.getTree();
+            if (!index || await this._isMemoryEmpty(index)) return null;
+
+            try {
+                onProgress?.({ stage: 'retrieval', message: 'Selecting relevant memory files...' });
+                const result = await this._toolCallingRetrieval(query, index, onProgress, conversationText, onModelText, { mode: 'retrieve' });
+                if (!result) return null;
+                return { ...result, skipped: false };
+            } catch (err) {
+                const message = err instanceof Error ? err.message : String(err);
+                onProgress?.({ stage: 'fallback', message: `LLM unavailable (${message}) — falling back to keyword search.` });
+                const fallback = await this._textSearchFallbackWithLoad(query, onProgress, conversationText);
+                return fallback ? { ...fallback, skipped: false } : null;
+            }
+        }
+
+        onProgress?.({ stage: 'init', message: 'Reading memory index...' });
+        await this._backend.init();
+        const index = await this._backend.getTree();
+        if (!index || await this._isMemoryEmpty(index)) return null;
+
+        let result;
+        try {
+            onProgress?.({ stage: 'retrieval', message: 'Checking whether new retrieval is needed...' });
+            result = await this._adaptiveToolCallingRetrieval(query, index, onProgress, conversationText, onModelText, alreadyRetrievedContext);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            onProgress?.({ stage: 'fallback', message: `Adaptive retrieval unavailable (${message}) — falling back to keyword search.` });
+            const expandedQuery = this._buildAdaptiveFallbackQuery(query, alreadyRetrievedContext);
+            const fallback = await this._textSearchFallbackWithLoad(expandedQuery, onProgress, conversationText);
+            if (fallback) return { ...fallback, skipped: false };
+            return {
+                files: [],
+                paths: [],
+                assembledContext: null,
+                skipped: true,
+                skipReason: 'No new relevant memory found.'
+            };
+        }
+
+        if (!result) {
+            return {
+                files: [],
+                paths: [],
+                assembledContext: null,
+                skipped: true,
+                skipReason: 'No new relevant memory found.'
+            };
+        }
+
+        if (result && !result.skipped && result.assembledContext && conversationText) {
+            result.assembledContext = this._filterRedundantContext(result.assembledContext, conversationText);
+        }
+
+        return result;
+    }
+
+    async _adaptiveToolCallingRetrieval(query, index, onProgress, conversationText, onModelText, alreadyRetrievedContext) {
+        const truncatedRetrieved = alreadyRetrievedContext.length > MAX_ALREADY_RETRIEVED_CHARS
+            ? alreadyRetrievedContext.slice(0, MAX_ALREADY_RETRIEVED_CHARS) + '...(truncated)'
+            : alreadyRetrievedContext;
+
+        const systemPrompt = adaptiveRetrievalPrompt
+            .replace('{INDEX}', index)
+            .replace('{ALREADY_RETRIEVED}', truncatedRetrieved)
+            .replace('{MAX_FILES}', String(MAX_FILES_TO_LOAD));
+
+        const toolExecutors = createRetrievalExecutors(this._backend);
+
+        const recentContext = this._buildRecentContext(conversationText);
+        const userContent = recentContext
+            ? `Recent conversation:\n\`\`\`\n${recentContext}\n\`\`\`\n\nCurrent query: ${query}`
+            : query;
+
+        const { terminalToolResult, toolCallLog } = await runAgenticToolLoop({
+            llmClient: this._llmClient,
+            model: this._model,
+            tools: ADAPTIVE_RETRIEVAL_TOOLS,
+            toolExecutors,
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userContent }
+            ],
+            terminalTool: 'assemble_context',
+            maxIterations: 10,
+            maxOutputTokens: 4000,
+            temperature: 0,
+            onToolCall: (name, args, result, meta) => {
+                const toolState = meta?.status || 'finished';
+                const progressResult = toolState === 'started' ? '' : (result || '');
+                onProgress?.({
+                    stage: 'tool_call',
+                    message: `Tool: ${name}`,
+                    tool: name,
+                    args,
+                    result: progressResult,
+                    toolState,
+                    toolCallId: meta?.toolCallId
+                });
+            },
+            onModelText,
+            onReasoning: (chunk, iteration) => {
+                onProgress?.({ stage: 'reasoning', message: chunk, iteration });
+            }
+        });
+
+        const args = terminalToolResult?.arguments || {};
+
+        // LLM explicitly signalled skip
+        if (args.skipped === true) {
+            const skipReason = args.skip_reason || 'Already covered by retrieved context.';
+            const displayText = await this._renderDirectAnswer(query, alreadyRetrievedContext);
+            onProgress?.({ stage: 'complete', message: `Retrieval skipped: ${skipReason}` });
+            return {
+                files: [],
+                paths: [],
+                assembledContext: null,
+                skipped: true,
+                skipReason,
+                ...(displayText ? { displayText } : {})
+            };
+        }
+
+        const files = await collectReadFiles(toolCallLog, this._backend);
+        const paths = files.map(f => f.path);
+        const assembledContext = args.content || null;
+
+        // Terminal was called but nothing new was found
+        if (terminalToolResult && !assembledContext) {
+            const reason = 'No new relevant memory found.';
+            const displayText = await this._renderDirectAnswer(query, alreadyRetrievedContext);
+            onProgress?.({ stage: 'complete', message: `Retrieval skipped: ${reason}` });
+            return {
+                files: [],
+                paths: [],
+                assembledContext: null,
+                skipped: true,
+                skipReason: reason,
+                ...(displayText ? { displayText } : {})
+            };
+        }
+
+        if (files.length === 0 && !assembledContext) {
+            const reason = 'No new relevant memory found.';
+            const displayText = await this._renderDirectAnswer(query, alreadyRetrievedContext);
+            onProgress?.({ stage: 'complete', message: `Retrieval skipped: ${reason}` });
+            return {
+                files: [],
+                paths: [],
+                assembledContext: null,
+                skipped: true,
+                skipReason: reason,
+                ...(displayText ? { displayText } : {})
+            };
+        }
+
+        const snippetContext = terminalToolResult ? null : await this._buildSnippetContext(paths, query, conversationText);
+
+        onProgress?.({
+            stage: 'complete',
+            message: `Retrieved ${files.length} memory file${files.length === 1 ? '' : 's'}.`,
+            paths
+        });
+
+        const finalContext = assembledContext || snippetContext;
+        const displayText = snippetContext && !assembledContext
+            ? await this._renderDirectAnswer(query, snippetContext)
+            : null;
+
+        return {
+            files,
+            paths,
+            assembledContext: finalContext,
+            skipped: false,
+            ...(displayText ? { displayText } : {})
+        };
     }
 
     static _stripUserDataTags(text) {

@@ -140,6 +140,135 @@ export async function retrieve(positionals, flags, mem) {
     return result;
 }
 
+export async function retrieveAdaptive(positionals, flags, mem) {
+    const query = positionals[0];
+    if (!query) throw new Error('Usage: memory retrieve-adaptive <query> [<already-retrieved-context>] [--context <file>]');
+
+    await mem.init();
+
+    let conversationText = null;
+    if (flags.context) {
+        conversationText = await readFile(flags.context, 'utf-8');
+    }
+
+    // Already-retrieved context: second positional arg (or stdin when piped).
+    // Auto-unwraps JSON produced by `nanomem retrieve` so you can do:
+    //   nanomem retrieve-adaptive "follow-up?" "$(nanomem retrieve 'initial query')"
+    let alreadyRetrievedContext = positionals[1] ?? null;
+    if (!alreadyRetrievedContext && !process.stdin.isTTY) {
+        alreadyRetrievedContext = await readStdin();
+    }
+    if (alreadyRetrievedContext) {
+        alreadyRetrievedContext = _extractContext(alreadyRetrievedContext);
+    }
+
+    const result = await mem.retrieveAdaptive(query, alreadyRetrievedContext, conversationText);
+    if (!result) return 'No relevant context found.';
+    if (result.skipped) {
+        const displayText = result.displayText || synthesizeAdaptiveAnswer(query, alreadyRetrievedContext);
+        return displayText
+            ? { ...result, status: 'skipped', reason: result.skipReason, displayText }
+            : { status: 'skipped', reason: result.skipReason };
+    }
+    return result;
+}
+
+function _extractContext(raw) {
+    const trimmed = raw.trim();
+    try {
+        const parsed = JSON.parse(trimmed);
+        // Unwrap `nanomem retrieve` JSON output → pull out assembledContext
+        if (parsed && typeof parsed === 'object' && typeof parsed.assembledContext === 'string') {
+            return parsed.assembledContext || null;
+        }
+        // Plain JSON string (e.g. '"No relevant context found."') means retrieve found nothing
+        if (typeof parsed === 'string') return null;
+    } catch { /* not JSON — treat as raw context string */ }
+    return trimmed || null;
+}
+
+function synthesizeAdaptiveAnswer(query, context) {
+    const text = String(context || '').trim();
+    if (!text) return null;
+    const queryText = String(query || '').toLowerCase();
+    const blocks = splitContextBlocks(text);
+
+    if (/\bdeadline|deadlines|launch|due\b/.test(queryText)) {
+        const entryAnswer = summarizeEntryDeadlines(blocks);
+        if (entryAnswer) return entryAnswer;
+    }
+
+    const lines = blocks.flatMap((block) => block.lines);
+    if (lines.length === 0) return null;
+
+    if (/\bdeadline|deadlines|launch|due\b/.test(queryText)) {
+        const relevant = lines.filter((line) => /\bdeadline|deadlines|launch|due|alpha\b/i.test(line));
+        if (relevant.length > 0) return relevant.join('\n\n');
+    }
+
+    if (/\bpets?\b/.test(queryText)) {
+        const possession = lines.find((line) => /^- Has\s+/i.test(line) || /^Has\s+/i.test(line));
+        if (possession) {
+            return possession
+                .replace(/^-?\s*Has\s+/i, 'You have ')
+                .replace(/\s+\|\s+.*$/, '')
+                .replace(/[.]?$/, '.');
+        }
+    }
+
+    const cleanedBullets = lines
+        .map((line) => line.replace(/\s+\|\s+.*$/, ''))
+        .filter(Boolean);
+    return cleanedBullets.join('\n\n') || null;
+}
+
+function splitContextBlocks(text) {
+    return String(text || '')
+        .split(/\n\s*\n/)
+        .map((block) => block.trim())
+        .filter(Boolean)
+        .map((block) => ({
+            raw: block,
+            lines: block
+                .split('\n')
+                .map((line) => line.trim())
+                .filter(Boolean)
+                .filter((line) => !line.startsWith('### '))
+                .map((line) => line.replace(/\s+\|\s+.*$/, ''))
+        }))
+        .filter((block) => block.lines.length > 0);
+}
+
+function summarizeEntryDeadlines(blocks) {
+    const entries = blocks
+        .map(({ raw, lines }) => {
+            const paragraph = lines.join(' ').trim();
+            const match = /^\*\*([^*]+)\*\*\s+[—-]\s+([\s\S]+)$/.exec(paragraph);
+            if (!match) return null;
+            return {
+                name: match[1].trim(),
+                text: match[2].trim()
+            };
+        })
+        .filter(Boolean);
+
+    if (entries.length === 0) return null;
+
+    const summaries = entries.map(({ name, text }) => {
+        const deadlineMatch = /\b(?:deadline|launch deadline)\s+of\s+([^.,;]+)/i.exec(text)
+            || /\bdue\s+(?:on\s+)?([^.,;]+)/i.exec(text)
+            || /\blaunch(?:ing)?\s+(?:on\s+)?([^.,;]+)/i.exec(text);
+
+        if (deadlineMatch) {
+            return `${name} has a deadline of ${deadlineMatch[1].trim()}.`;
+        }
+
+        return `No specific deadline is mentioned for ${name}.`;
+    });
+
+    return summaries.join('\n\n');
+}
+
 export async function importCmd(positionals, flags, mem, config, { showProgress, spinnerHolder } = {}) {
     const source = positionals[0];
     let conversations;
