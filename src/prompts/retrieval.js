@@ -23,9 +23,25 @@ Instructions:
 5. You MUST always finish by calling assemble_context — write a direct, synthesized answer in plain prose based on what you read. Do NOT paste raw bullet lists or file content. If the query is historical or comparative, reason over the facts and answer accordingly.
 6. If nothing is relevant, call assemble_context with an empty string.
 
+CONSERVATIVE DEFAULT — when in doubt, retrieve nothing:
+- Before opening any file, ask: "Would including personal memory give a meaningfully better answer to this specific query?" If not clearly yes, call assemble_context with an empty string immediately — no file reads needed.
+- Statements of current activity ("I'm studying X", "I started learning Y", "I just watched Z") do NOT need memory retrieval unless the user also asks a specific question that depends on personal context.
+- General knowledge questions, how-to questions, and topic explanations rarely benefit from personal memory.
+- If the only files you would read are loosely topical (same domain as the query, but the facts inside wouldn't change the answer), skip them.
+- Sparse or thin memory files (few facts, unrelated to the actual question) do not raise the answer quality — do not retrieve them.
+
 IMPORTANT — Domain-exhaustive retrieval:
 - When a query touches a domain (health, work, personal), prefer completeness over selectivity within that domain. File descriptions may be incomplete.
 - For family-related queries: check personal/family.md AND any health files about family members.
+
+IMPORTANT — Implied context: Many queries depend on unstated personal facts. Before reading files, ask yourself: "What personal background would a human assistant need to answer this well?" Then search for that too.
+Examples of implied needs:
+- Travel / flight / driving queries → user's home city or current location (search personal files for location, city, where they live)
+- Budget or cost questions → user's financial situation or income level
+- Restaurant or activity recommendations → user's dietary restrictions, preferences, or neighborhood
+- "Should I bring a jacket?" or weather questions → user's current location
+- Scheduling or timing questions → user's timezone or work schedule
+If the query implies a needed personal fact that isn't in the index path names, use retrieve_file to search for it (e.g. retrieve_file("location"), retrieve_file("city"), retrieve_file("home")).
 
 When recent conversation context is provided alongside the query, use it to resolve references like "that", "the same", "what we discussed", etc. The conversation shows what the user has been talking about recently.
 
@@ -70,6 +86,10 @@ Instructions:
 4. Once you have retrieved new information, call assemble_context with ONLY the newly found facts in content. Do not repeat what was already retrieved. Leave skipped unset (or false).
 5. If you searched but found nothing new, call assemble_context with an empty string and skipped=true, skip_reason="No new relevant memory found."
 
+Conservative default: Before retrieving anything new, ask "Would personal memory give a meaningfully better answer to this specific query?" If not clearly yes, call assemble_context with an empty string and skipped=true. Statements of current activity ("I'm studying X", "I started Y") and general knowledge questions almost never need memory retrieval.
+
+Implied context: When a query does warrant retrieval, consider what unstated personal facts it depends on. Travel/flight queries need the user's home city; cost questions may need financial context; recommendations need location or preferences. Retrieve those implied facts if they are missing from already-retrieved context.
+
 When recent conversation is provided alongside the query, use it to resolve references like "that", "the same", "what we discussed", etc.
 
 Only retrieve content that genuinely adds to what is already in the session context.`;
@@ -106,5 +126,11 @@ Common over-sharing patterns to avoid:
 - Do not include descriptive biography when the answer only needs concrete constraints, preferences, specs, or requirements.
 - Only include memory when it changes the answer: constraints, tradeoffs, personalization, or disambiguation.
 - Prefer concise, answer-shaping facts over broad user background.
+
+CONSERVATIVE DEFAULT — when memory does not help, omit it entirely:
+- If the retrieved memory does not pass the test "this specific fact prevents a wrong or meaningfully incomplete answer", do not include it.
+- Statements of current activity ("I'm studying X", "I'm working on Y") almost never need augmentation — reproduce the query as plain prose with no [[user_data]] tags.
+- If you would only be including memory because it is topically adjacent (same domain, but doesn't actually improve the answer), leave it out.
+- When in doubt, produce the user's query verbatim without any [[user_data]] tags. An un-augmented query is always better than a weakly-augmented one.
 
 The user will review the exact prompt before it is sent. Keep it useful, minimal, and explicit.`;
