@@ -234,6 +234,17 @@
  */
 
 /**
+ * @typedef {object} AdaptiveAugmentQueryResult
+ * @property {{ path: string; content: string }[]} files
+ * @property {string[]} paths
+ * @property {string | null} reviewPrompt
+ * @property {string | null} apiPrompt
+ * @property {string | null} assembledContext
+ * @property {boolean} skipped - true when existing context already covered the query
+ * @property {string} [skipReason] - explanation when skipped=true
+ */
+
+/**
  * @typedef {object} IngestOptions
  * @property {string} [updatedAt]
  * @property {'conversation' | 'document' | string} [mode] - Prompt set to use for extraction
@@ -510,6 +521,7 @@
  * @property {(query: string, conversationText?: string) => Promise<RetrievalResult | null>} retrieve
  * @property {(query: string, alreadyRetrievedContext?: string, conversationText?: string) => Promise<AdaptiveRetrievalResult | null>} retrieveAdaptive
  * @property {(query: string, conversationText?: string) => Promise<AugmentQueryResult | null>} augmentQuery
+ * @property {(query: string, alreadyRetrievedContext?: string, conversationText?: string) => Promise<AdaptiveAugmentQueryResult | null>} augmentQueryAdaptive
  * @property {(messages: Message[], options?: IngestOptions) => Promise<IngestResult>} ingest
  * @property {(input: string | unknown | MemoryImportConversation | MemoryImportConversation[] | Array<{ path: string, content: string }>, options?: ImportDataOptions) => Promise<ImportDataResult>} importData
  * @property {() => Promise<OmfDocument>} exportOmf

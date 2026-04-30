@@ -7,7 +7,7 @@
  */
 /** @import { LLMClient, Message, ProgressEvent, RetrievalResult, AugmentQueryResult, StorageBackend, ToolDefinition } from '../types.js' */
 import { runAgenticToolLoop } from '../internal/toolLoop.js';
-import { createAugmentQueryExecutor, createRetrievalExecutors } from './executors.js';
+import { craftAugmentedPromptFromFiles, createAugmentQueryExecutor, createRetrievalExecutors } from './executors.js';
 import { trimRecentConversation } from '../internal/recentConversation.js';
 import {
     retrievalPrompt,
@@ -27,6 +27,8 @@ const MAX_TOTAL_CONTEXT_CHARS = 4000;
 const MAX_SNIPPETS = 18;
 const MAX_RECENT_CONTEXT_CHARS = 2000;
 const MAX_DISPLAY_CONTEXT_CHARS = 2500;
+const REDUNDANT_CONTEXT_MIN_TOKENS = 4;
+const REDUNDANT_CONTEXT_OVERLAP_THRESHOLD = 0.82;
 const ADAPTIVE_FALLBACK_STOPWORDS = new Set([
     'what', 'when', 'where', 'which', 'who', 'whom', 'whose', 'why', 'how',
     'have', 'has', 'had', 'with', 'from', 'into', 'onto', 'about', 'there',
@@ -427,6 +429,99 @@ class MemoryRetriever {
         }
     }
 
+    /**
+     * Build a reviewable prompt for a multi-turn session, only crafting a prompt
+     * when adaptive retrieval finds memory not already delivered earlier.
+     *
+     * @param {string} query
+     * @param {string} [alreadyRetrievedContext]
+     * @param {string} [conversationText]
+     * @returns {Promise<import('../types.js').AdaptiveAugmentQueryResult | null>}
+     */
+    async augmentQueryAdaptively(query, alreadyRetrievedContext, conversationText) {
+        if (!query || !query.trim()) return null;
+
+        if (!alreadyRetrievedContext || !alreadyRetrievedContext.trim()) {
+            const result = await this.augmentQueryForPrompt(query, conversationText);
+            return result ? { ...result, skipped: false } : null;
+        }
+
+        const retrieval = await this.retrieveAdaptively(query, alreadyRetrievedContext, conversationText);
+        if (!retrieval) return null;
+        if (retrieval.skipped) {
+            return {
+                files: [],
+                paths: [],
+                reviewPrompt: null,
+                apiPrompt: null,
+                assembledContext: null,
+                skipped: true,
+                skipReason: retrieval.skipReason || 'Already covered by retrieved context.',
+                ...(retrieval.displayText ? { displayText: retrieval.displayText } : {})
+            };
+        }
+
+        const assembledContext = typeof retrieval.assembledContext === 'string'
+            ? retrieval.assembledContext.trim()
+            : '';
+        if (!assembledContext) {
+            return {
+                files: [],
+                paths: [],
+                reviewPrompt: null,
+                apiPrompt: null,
+                assembledContext: null,
+                skipped: true,
+                skipReason: 'No new relevant memory found.'
+            };
+        }
+
+        const paths = Array.isArray(retrieval.paths) ? retrieval.paths : [];
+        const syntheticPath = paths.length > 0
+            ? `adaptive/new-context-from-${paths.join('__').slice(0, 120)}`
+            : 'adaptive/new-context.md';
+        const crafted = await craftAugmentedPromptFromFiles({
+            llmClient: this._llmClient,
+            model: this._model,
+            query,
+            files: [{ path: syntheticPath, content: assembledContext }],
+            conversationText,
+            onProgress: (event) => {
+                if (!event?.stage || !event?.message) return;
+                this._onProgress?.({
+                    stage: event.stage,
+                    message: event.message
+                });
+            }
+        });
+
+        if (crafted.error) {
+            this._onProgress?.({ stage: 'fallback', message: `Adaptive prompt crafting unavailable (${crafted.error}).` });
+            return null;
+        }
+
+        if (crafted.noRelevantMemory || !crafted.reviewPrompt || !crafted.apiPrompt) {
+            return {
+                files: [],
+                paths: [],
+                reviewPrompt: null,
+                apiPrompt: null,
+                assembledContext: null,
+                skipped: true,
+                skipReason: 'No new memory context needed.'
+            };
+        }
+
+        return {
+            files: Array.isArray(retrieval.files) ? retrieval.files : [],
+            paths,
+            reviewPrompt: crafted.reviewPrompt,
+            apiPrompt: crafted.apiPrompt,
+            assembledContext,
+            skipped: false
+        };
+    }
+
     async _textSearchFallbackWithLoad(query, onProgress, conversationText) {
         const paths = await this._textSearchFallback(query);
         if (!paths || paths.length === 0) return null;
@@ -822,7 +917,7 @@ class MemoryRetriever {
 
         let result;
         try {
-            onProgress?.({ stage: 'retrieval', message: 'Checking whether new retrieval is needed...' });
+            onProgress?.({ stage: 'retrieval', message: 'Checking existing memory context...' });
             result = await this._adaptiveToolCallingRetrieval(query, index, onProgress, conversationText, onModelText, alreadyRetrievedContext);
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
@@ -964,6 +1059,20 @@ class MemoryRetriever {
         });
 
         const finalContext = assembledContext || snippetContext;
+        if (this._isContextRedundant(finalContext, alreadyRetrievedContext)) {
+            const skipReason = 'Already covered by retrieved context.';
+            const displayText = await this._renderDirectAnswer(query, alreadyRetrievedContext);
+            onProgress?.({ stage: 'complete', message: `Retrieval skipped: ${skipReason}` });
+            return {
+                files: [],
+                paths: [],
+                assembledContext: null,
+                skipped: true,
+                skipReason,
+                ...(displayText ? { displayText } : {})
+            };
+        }
+
         const displayText = snippetContext && !assembledContext
             ? await this._renderDirectAnswer(query, snippetContext)
             : null;
@@ -975,6 +1084,21 @@ class MemoryRetriever {
             skipped: false,
             ...(displayText ? { displayText } : {})
         };
+    }
+
+    _isContextRedundant(candidateContext, alreadyRetrievedContext) {
+        const candidateTokens = new Set(tokenizeQuery(candidateContext || ''));
+        const existingTokens = new Set(tokenizeQuery(alreadyRetrievedContext || ''));
+        if (candidateTokens.size < REDUNDANT_CONTEXT_MIN_TOKENS || existingTokens.size === 0) {
+            return false;
+        }
+
+        let overlap = 0;
+        for (const token of candidateTokens) {
+            if (existingTokens.has(token)) overlap += 1;
+        }
+
+        return overlap / candidateTokens.size >= REDUNDANT_CONTEXT_OVERLAP_THRESHOLD;
     }
 
     static _stripUserDataTags(text) {

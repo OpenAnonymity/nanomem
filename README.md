@@ -185,6 +185,11 @@ await memory.ingest([
 ]);
 
 const result = await memory.retrieve('Where do I live now?');
+const adaptivePrompt = await memory.augmentQueryAdaptive(
+  'What about spicier food?',
+  result?.assembledContext || '',
+  'User: food recs in sf?'
+);
 await memory.compact();       // full dedup + semantic review
 await memory.pruneExpired();  // archive expired facts, no LLM needed
 

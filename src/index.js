@@ -11,7 +11,7 @@
  *                                           rebuildTree, exportAll }
  *   Utilities  (portability): mem.serialize(), mem.toZip()
  */
-/** @import { LLMClient, MemoryBank, MemoryBankConfig, MemoryBankLLMConfig, Message, IngestOptions, RetrievalResult, AdaptiveRetrievalResult, AugmentQueryResult, StorageBackend } from './types.js' */
+/** @import { LLMClient, MemoryBank, MemoryBankConfig, MemoryBankLLMConfig, Message, IngestOptions, RetrievalResult, AdaptiveRetrievalResult, AugmentQueryResult, AdaptiveAugmentQueryResult, StorageBackend } from './types.js' */
 
 import { createOpenAIClient } from './internal/llm-client/openai.js';
 import { createAnthropicClient } from './internal/llm-client/anthropic.js';
@@ -113,6 +113,18 @@ export function createMemoryBank(config = {}) {
          * @returns {Promise<AugmentQueryResult | null>}
          */
         augmentQuery: (query, conversationText) => retrieval.augmentQueryForPrompt(query, conversationText),
+
+        /**
+         * Adaptive prompt augmentation for multi-turn sessions. Returns skipped=true
+         * when alreadyRetrievedContext is enough, otherwise crafts a prompt from
+         * only newly retrieved memory.
+         * @param {string} query
+         * @param {string} [alreadyRetrievedContext] memory already in the session
+         * @param {string} [conversationText]
+         * @returns {Promise<AdaptiveAugmentQueryResult | null>}
+         */
+        augmentQueryAdaptive: (query, alreadyRetrievedContext, conversationText) =>
+            retrieval.augmentQueryAdaptively(query, alreadyRetrievedContext, conversationText),
 
         /**
          * Ingest facts from a conversation into memory.

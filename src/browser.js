@@ -4,7 +4,7 @@
  * This mirrors createMemoryBank from index.js but excludes the filesystem
  * backend so browser bundlers do not try to resolve node:* imports.
  */
-/** @import { MemoryBank, MemoryBankConfig, MemoryBankLLMConfig, Message, IngestOptions, AugmentQueryResult, RetrievalResult, StorageBackend } from './types.js' */
+/** @import { MemoryBank, MemoryBankConfig, MemoryBankLLMConfig, Message, IngestOptions, AugmentQueryResult, AdaptiveAugmentQueryResult, RetrievalResult, AdaptiveRetrievalResult, StorageBackend } from './types.js' */
 
 import { createOpenAIClient } from './internal/llm-client/openai.js';
 import { createAnthropicClient } from './internal/llm-client/anthropic.js';
@@ -82,7 +82,11 @@ export function createMemoryBank(config = {}) {
     return {
         init: () => backend.init(),
         retrieve: (query, conversationText) => retrieval.retrieveForQuery(query, conversationText),
+        retrieveAdaptive: (query, alreadyRetrievedContext, conversationText) =>
+            retrieval.retrieveAdaptively(query, alreadyRetrievedContext, conversationText),
         augmentQuery: (query, conversationText) => retrieval.augmentQueryForPrompt(query, conversationText),
+        augmentQueryAdaptive: (query, alreadyRetrievedContext, conversationText) =>
+            retrieval.augmentQueryAdaptively(query, alreadyRetrievedContext, conversationText),
         ingest: (messages, options) => ingester.ingest(messages, options),
         importData: (input, options) => importMemoryData({
             init: () => backend.init(),

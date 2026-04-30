@@ -158,6 +158,129 @@ function normalizeQueryText(text) {
     return String(text || '').trim().replace(/\s+/g, ' ');
 }
 
+/**
+ * @param {object} options
+ * @param {LLMClient} options.llmClient
+ * @param {string} options.model
+ * @param {string} options.query
+ * @param {{ path: string; content: string }[]} options.files
+ * @param {string} [options.conversationText]
+ * @param {(event: { stage: 'loading', message: string, attempt?: number }) => void} [options.onProgress]
+ * @returns {Promise<{ reviewPrompt?: string, apiPrompt?: string, noRelevantMemory?: boolean, error?: string }>}
+ */
+export async function craftAugmentedPromptFromFiles({ llmClient, model, query, files, conversationText, onProgress }) {
+    const effectiveQuery = normalizeQueryText(query);
+    if (!effectiveQuery) {
+        return { error: 'augment_query requires the original user_query.' };
+    }
+
+    const selectedFiles = Array.isArray(files)
+        ? files.filter((file) => typeof file?.content === 'string' && file.content.trim())
+        : [];
+    if (selectedFiles.length === 0) {
+        return { noRelevantMemory: true };
+    }
+
+    let reviewPrompt = '';
+    let crafterError = '';
+    const messages = /** @type {import('../types.js').LLMMessage[]} */ ([
+        { role: 'system', content: AUGMENT_QUERY_EXECUTOR_SYSTEM_PROMPT },
+        {
+            role: 'user',
+            content: buildCrafterInput({
+                userQuery: query,
+                files: selectedFiles,
+                conversationText
+            })
+        }
+    ]);
+
+    for (let attempt = 1; attempt <= AUGMENT_CRAFTER_MAX_ATTEMPTS; attempt += 1) {
+        let response;
+        try {
+            onProgress?.({
+                stage: 'loading',
+                message: attempt === 1
+                    ? 'Crafting minimized prompt...'
+                    : `Retrying prompt crafting (${attempt}/${AUGMENT_CRAFTER_MAX_ATTEMPTS})...`,
+                attempt
+            });
+            if (typeof llmClient.streamChatCompletion === 'function') {
+                let emittedReasoningPhase = false;
+                let emittedOutputPhase = false;
+                response = /** @type {ChatCompletionResponse} */ (await llmClient.streamChatCompletion({
+                    model,
+                    messages,
+                    temperature: 0,
+                    onDelta: (chunk) => {
+                        if (!chunk || emittedOutputPhase) return;
+                        emittedOutputPhase = true;
+                        onProgress?.({
+                            stage: 'loading',
+                            message: 'Finalizing prompt...',
+                            attempt
+                        });
+                    },
+                    onReasoning: (chunk) => {
+                        if (!chunk || emittedReasoningPhase) return;
+                        emittedReasoningPhase = true;
+                        onProgress?.({
+                            stage: 'loading',
+                            message: 'Minimizing personal context...',
+                            attempt
+                        });
+                    }
+                }));
+            } else {
+                response = /** @type {ChatCompletionResponse} */ (await llmClient.createChatCompletion({
+                    model,
+                    messages,
+                    temperature: 0
+                }));
+            }
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            return { error: `augment_query prompt crafting failed: ${message}` };
+        }
+
+        try {
+            const parsed = parseCrafterJson(extractResponseText(response));
+            reviewPrompt = parsed.reviewPrompt;
+            if (!reviewPrompt) {
+                throw new Error('augment_query did not produce a reviewPrompt.');
+            }
+            crafterError = '';
+            break;
+        } catch (error) {
+            crafterError = error instanceof Error ? error.message : String(error);
+            if (attempt >= AUGMENT_CRAFTER_MAX_ATTEMPTS) {
+                break;
+            }
+            const delay = getCrafterRetryDelay(attempt - 1);
+            onProgress?.({
+                stage: 'loading',
+                message: `Prompt crafter retry ${attempt + 1}/${AUGMENT_CRAFTER_MAX_ATTEMPTS} after: ${crafterError}`,
+                attempt: attempt + 1
+            });
+            console.warn(`[nanomem/augment_query] prompt crafter attempt ${attempt}/${AUGMENT_CRAFTER_MAX_ATTEMPTS} failed: ${crafterError}. Retrying in ${Math.round(delay)}ms.`);
+            await sleep(delay);
+        }
+    }
+
+    if (crafterError) {
+        return { error: `${crafterError} (after ${AUGMENT_CRAFTER_MAX_ATTEMPTS} attempts)` };
+    }
+
+    if (!/\[\[user_data\]\]/.test(reviewPrompt)) {
+        return { noRelevantMemory: true };
+    }
+
+    return {
+        reviewPrompt,
+        apiPrompt: stripUserDataTags(reviewPrompt)
+    };
+}
+
 const MAX_READ_FILE_CHARS = 5000;
 const MAX_RETRIEVE_EXCERPT_CHARS = 1500;
 
@@ -336,108 +459,29 @@ export function createAugmentQueryExecutor({ backend, llmClient, model, query, c
             return JSON.stringify({ error: 'augment_query could not load any selected memory files.' });
         }
 
-        let reviewPrompt = '';
-        let crafterError = '';
-        const messages = /** @type {import('../types.js').LLMMessage[]} */ ([
-            { role: 'system', content: AUGMENT_QUERY_EXECUTOR_SYSTEM_PROMPT },
-            {
-                role: 'user',
-                content: buildCrafterInput({
-                    userQuery: effectiveQuery,
-                    files,
-                    conversationText
-                })
-            }
-        ]);
+        const crafted = await craftAugmentedPromptFromFiles({
+            llmClient,
+            model,
+            query: effectiveQuery,
+            files,
+            conversationText,
+            onProgress
+        });
 
-        for (let attempt = 1; attempt <= AUGMENT_CRAFTER_MAX_ATTEMPTS; attempt += 1) {
-            let response;
-            try {
-                onProgress?.({
-                    stage: 'loading',
-                    message: attempt === 1
-                        ? 'Crafting minimized prompt...'
-                        : `Retrying prompt crafting (${attempt}/${AUGMENT_CRAFTER_MAX_ATTEMPTS})...`,
-                    attempt
-                });
-                if (typeof llmClient.streamChatCompletion === 'function') {
-                    let emittedReasoningPhase = false;
-                    let emittedOutputPhase = false;
-                    response = /** @type {ChatCompletionResponse} */ (await llmClient.streamChatCompletion({
-                        model,
-                        messages,
-                        temperature: 0,
-                        onDelta: (chunk) => {
-                            if (!chunk || emittedOutputPhase) return;
-                            emittedOutputPhase = true;
-                            onProgress?.({
-                                stage: 'loading',
-                                message: 'Finalizing prompt...',
-                                attempt
-                            });
-                        },
-                        onReasoning: (chunk) => {
-                            if (!chunk || emittedReasoningPhase) return;
-                            emittedReasoningPhase = true;
-                            onProgress?.({
-                                stage: 'loading',
-                                message: 'Minimizing personal context...',
-                                attempt
-                            });
-                        }
-                    }));
-                } else {
-                    response = /** @type {ChatCompletionResponse} */ (await llmClient.createChatCompletion({
-                        model,
-                        messages,
-                        temperature: 0
-                    }));
-                }
-            } catch (error) {
-                const message = error instanceof Error ? error.message : String(error);
-                return JSON.stringify({ error: `augment_query prompt crafting failed: ${message}` });
-            }
-
-            try {
-                const parsed = parseCrafterJson(extractResponseText(response));
-                reviewPrompt = parsed.reviewPrompt;
-                if (!reviewPrompt) {
-                    throw new Error('augment_query did not produce a reviewPrompt.');
-                }
-                crafterError = '';
-                break;
-            } catch (error) {
-                crafterError = error instanceof Error ? error.message : String(error);
-                if (attempt >= AUGMENT_CRAFTER_MAX_ATTEMPTS) {
-                    break;
-                }
-                const delay = getCrafterRetryDelay(attempt - 1);
-                onProgress?.({
-                    stage: 'loading',
-                    message: `Prompt crafter retry ${attempt + 1}/${AUGMENT_CRAFTER_MAX_ATTEMPTS} after: ${crafterError}`,
-                    attempt: attempt + 1
-                });
-                console.warn(`[nanomem/augment_query] prompt crafter attempt ${attempt}/${AUGMENT_CRAFTER_MAX_ATTEMPTS} failed: ${crafterError}. Retrying in ${Math.round(delay)}ms.`);
-                await sleep(delay);
-            }
+        if (crafted.error) {
+            return JSON.stringify({ error: crafted.error });
         }
 
-        if (crafterError) {
-            return JSON.stringify({ error: `${crafterError} (after ${AUGMENT_CRAFTER_MAX_ATTEMPTS} attempts)` });
-        }
-
-        if (!/\[\[user_data\]\]/.test(reviewPrompt)) {
+        if (crafted.noRelevantMemory) {
             return JSON.stringify({
                 noRelevantMemory: true,
                 files: []
             });
         }
 
-        const apiPrompt = stripUserDataTags(reviewPrompt);
-
         return JSON.stringify({
-            reviewPrompt,
-            apiPrompt,
+            reviewPrompt: crafted.reviewPrompt,
+            apiPrompt: crafted.apiPrompt,
             files: files.map((file) => ({
                 path: file.path,
                 content: clipText(file.content, MAX_AUGMENT_FILE_CHARS)
