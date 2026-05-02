@@ -46,12 +46,11 @@ const MODELS = {
         { value: 'gemma4-31b', label: 'gemma4-31b', desc: 'Gemma4 31B' },
     ],
     openrouter: [
-        { value: 'openai/gpt-4o',                    label: 'openai/gpt-4o',                    desc: 'GPT-4o via OpenRouter' },
-        { value: 'anthropic/claude-sonnet-4-5',      label: 'anthropic/claude-sonnet-4-5',      desc: 'Claude Sonnet via OpenRouter' },
-        { value: 'google/gemini-2.5-flash',          label: 'google/gemini-2.5-flash',          desc: 'Gemini 2.5 Flash — fast & cheap' },
-        { value: 'moonshotai/kimi-k2.5',              label: 'moonshotai/kimi-k2.5',              desc: 'Kimi K2.5 via OpenRouter' },
-        { value: 'moonshotai/kimi-k2',               label: 'moonshotai/kimi-k2',               desc: 'Kimi K2 via OpenRouter' },
-        { value: 'deepseek/deepseek-r1-0528',        label: 'deepseek/deepseek-r1-0528',        desc: 'DeepSeek R1' },
+        { value: 'anthropic/claude-sonnet-4.6', label: 'anthropic/claude-sonnet-4.6', desc: 'Claude Sonnet 4.6 via OpenRouter' },
+        { value: 'anthropic/claude-opus-4.7', label: 'anthropic/claude-opus-4.7', desc: 'Claude Opus 4.7 via OpenRouter' },
+        { value: 'google/gemini-3-flash-preview', label: 'google/gemini-3-flash-preview', desc: 'Gemini 3 Flash Preview via OpenRouter' },
+        { value: 'moonshotai/kimi-k2.6', label: 'moonshotai/kimi-k2.6', desc: 'Kimi K2.6 via OpenRouter' },
+        { value: 'deepseek/deepseek-v3.2', label: 'deepseek/deepseek-v3.2', desc: 'DeepSeek V3.2 via OpenRouter' },
     ],
 };
 
