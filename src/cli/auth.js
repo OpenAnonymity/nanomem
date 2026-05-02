@@ -40,9 +40,10 @@ const MODELS = {
         { value: 'claude-opus-4-6', label: 'claude-opus-4-6', desc: 'Most capable' },
     ],
     tinfoil: [
-        { value: 'kimi-k2-5',        label: 'kimi-k2-5',        desc: 'Kimi K2.5' },
+        { value: 'kimi-k2-6',        label: 'kimi-k2-6',        desc: 'Kimi K2.6' },
         { value: 'gpt-oss-120b',     label: 'gpt-oss-120b',     desc: 'Open-source GPT 120B' },
-        { value: 'deepseek-r1-0528', label: 'deepseek-r1-0528', desc: 'DeepSeek R1' },
+        { value: 'deepseek-v4-pro', label: 'deepseek-v4-pro', desc: 'DeepSeek V4 Pro' },
+        { value: 'gemma4-31b', label: 'gemma4-31b', desc: 'Gemma4 31B' },
     ],
     openrouter: [
         { value: 'openai/gpt-4o',                    label: 'openai/gpt-4o',                    desc: 'GPT-4o via OpenRouter' },
