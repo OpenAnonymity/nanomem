@@ -1,13 +1,16 @@
 /**
  * Prompt set for memory retrieval and augmented query crafting.
  *
- * retrievalPrompt         — base retrieval: find and assemble relevant memory context.
- * augmentAddendum         — appended to retrievalPrompt when crafting an augmented prompt.
- * augmentCrafterPrompt    — second-pass LLM prompt that turns selected files into a
- *                           minimized, privacy-tagged prompt for a frontier model.
+ * buildRetrievalPrompt(level)         — retrieval prompt tuned to memory confidence level.
+ * buildAdaptiveRetrievalPrompt(level) — multi-turn retrieval prompt tuned to prior confidence.
+ * retrievalPrompt / adaptiveRetrievalPrompt — backward-compat aliases (medium/unknown level).
+ * augmentAddendum                     — appended when crafting an augmented prompt.
+ * augmentCrafterPrompt                — second-pass LLM prompt for privacy-minimized prompts.
  */
 
-export const retrievalPrompt = `You are a memory retrieval assistant. Your job is to find and assemble relevant personal context from the user's memory files to help answer their query.
+// ─── Shared sections ──────────────────────────────────────────────────────────
+
+const RETRIEVAL_PREAMBLE_BASE = `You are a memory retrieval assistant. Your job is to find and assemble relevant personal context from the user's memory files to help answer their query.
 
 You have access to a memory filesystem. The index below shows all available files:
 
@@ -19,24 +22,18 @@ Instructions:
 1. Look at the index above. If you can already see relevant file paths, use read_file directly to read them.
 2. Use retrieve_file only when you need to search by keyword (e.g. "cooking", "Stanford") — it searches file contents, not paths.
 3. Use list_directory to see ALL files in a directory when the query relates to a broad domain (e.g. list "health" for any medicine/health query).
-4. Read at most {MAX_FILES} files.
-5. You MUST always finish by calling assemble_context — write a direct, synthesized answer in plain prose based on what you read. Do NOT paste raw bullet lists or file content. If the query is historical or comparative, reason over the facts and answer accordingly.
-6. If nothing is relevant, call assemble_context with an empty string.
+4. Read at most {MAX_FILES} files.`;
 
-CONSERVATIVE DEFAULT — when in doubt, retrieve nothing:
-- Before opening any file, ask: "Would including personal memory give a meaningfully better answer to this specific query?" If not clearly yes, call assemble_context with an empty string immediately — no file reads needed.
-- Statements of current activity ("I'm studying X", "I started learning Y", "I just watched Z") do NOT need memory retrieval unless the user also asks a specific question that depends on personal context.
-- General knowledge questions, how-to questions, and topic explanations rarely benefit from personal memory.
-- If the only files you would read are loosely topical (same domain as the query, but the facts inside wouldn't change the answer), skip them.
-- Sparse or thin memory files (few facts, unrelated to the actual question) do not raise the answer quality — do not retrieve them.
-- IMPORTANT exception: If the query is underspecified and a personal fact would resolve a missing parameter, ambiguity, or decision variable, that DOES count as meaningfully improving the answer. In those cases, retrieve the missing personal context before deciding to skip.
-- Even in those cases, stay minimal: retrieve only the specific missing variable(s), not the whole surrounding domain. But do perform at least one targeted lookup for that missing variable before deciding to skip.
+const RETRIEVAL_TERMINAL_ASSEMBLE = `5. You MUST always finish by calling assemble_context — write a direct, synthesized answer in plain prose based on what you read. Do NOT paste raw bullet lists or file content. If the query is historical or comparative, reason over the facts and answer accordingly.
+6. If nothing is relevant, call assemble_context with an empty facts array.`;
 
-IMPORTANT — Domain-exhaustive retrieval:
+const RETRIEVAL_PREAMBLE = `${RETRIEVAL_PREAMBLE_BASE}\n${RETRIEVAL_TERMINAL_ASSEMBLE}`;
+
+const DOMAIN_EXHAUSTIVE = `IMPORTANT — Domain-exhaustive retrieval:
 - When a query touches a domain (health, work, personal), prefer completeness over selectivity within that domain. File descriptions may be incomplete.
-- For family-related queries: check personal/family.md AND any health files about family members.
+- For family-related queries: check personal/family.md AND any health files about family members.`;
 
-IMPORTANT — Implied context: Many queries depend on unstated personal facts. Before reading files, ask yourself: "What personal background would a human assistant need to answer this well?" Then search for that too.
+const IMPLIED_CONTEXT = `IMPORTANT — Implied context: Many queries depend on unstated personal facts. Before reading files, ask yourself: "What personal background would a human assistant need to answer this well?" Then search for that too.
 Examples of implied needs:
 - Travel / flight / driving queries → user's home city or current location (search personal files for location, city, where they live)
 - Budget or cost questions → user's financial situation or income level
@@ -60,11 +57,180 @@ Minimal implied-context retrieval rules:
 - If one retrieved file already gives the needed context, stop and answer.
 - Only expand to a second or third file if the first result is missing, ambiguous, or contradictory.
 - For implied-context retrieval, favor narrow searches like location, timezone, budget, dietary preference, or schedule over broad domain sweeps.
-- Do not treat "minimal" as "skip retrieval entirely." Minimal means one or two highly targeted reads, not zero reads.
+- Do not treat "minimal" as "skip retrieval entirely." Minimal means one or two highly targeted reads, not zero reads.`;
 
-When recent conversation context is provided alongside the query, use it to resolve references like "that", "the same", "what we discussed", etc. The conversation shows what the user has been talking about recently.
+const CONVERSATION_NOTE = `When recent conversation context is provided alongside the query, use it to resolve references like "that", "the same", "what we discussed", etc. The conversation shows what the user has been talking about recently.
 
 Only include content that genuinely helps answer this specific query. Do not include unrelated files from other domains.`;
+
+// ─── Per-level no-op guidance ─────────────────────────────────────────────────
+
+const NOOP_HIGH = `CONSERVATIVE DEFAULT — when in doubt, retrieve nothing:
+- Before opening any file, ask: "Would including personal memory give a meaningfully better answer to this specific query?" If not clearly yes, call assemble_context with an empty facts array immediately — no file reads needed.
+- Statements of current activity ("I'm studying X", "I started learning Y") do NOT need memory retrieval unless the user also asks a specific question that depends on personal context.
+- Pure general knowledge questions and topic explanations rarely benefit from personal memory.
+- If the only files you would read are loosely topical (same domain as the query, but the facts inside wouldn't change the answer), skip them.
+- Sparse or thin memory files do not raise answer quality — do not retrieve them.
+- RETRIEVE for queries about the user's own habits, routines, behaviors, decisions, or plans — even if phrased as "how do I" or "help me". Personal context materially changes the answer for these. Examples: "help me be more productive", "should I go full-time", "what should I eat", "how should I train".
+- IMPORTANT exception: If the query is underspecified and a personal fact would resolve a missing parameter, ambiguity, or decision variable, retrieve that specific fact before deciding to skip. Even then, stay minimal.`;
+
+const NOOP_MEDIUM = `CONSERVATIVE DEFAULT — lean toward no-op:
+- Before opening any file, ask: "Would this personal memory give a meaningfully better answer?" Because memory confidence is mixed, the bar is higher: only retrieve if a specific personal fact is clearly needed — not merely topically adjacent.
+- Pure general knowledge questions and topic explanations must be skipped.
+- If the best matching facts in any file are confidence=medium AND they are only tangentially relevant (would not materially resolve a specific gap in the answer), call assemble_context with an empty facts array. Do not surface weakly-relevant uncertain facts.
+- RETRIEVE for queries about the user's own habits, routines, behaviors, decisions, or plans — these benefit directly from personal context even under mixed memory confidence.
+- IMPORTANT exception: If the query is underspecified and a personal fact would resolve a missing parameter or ambiguity, retrieve that specific fact — but read at most 4 files and stop when you find it.`;
+
+const NOOP_LOW = `CONSERVATIVE DEFAULT — default to no-op:
+- Memory confidence is low. Only retrieve if the index shows a file whose path directly matches the query domain AND the query clearly depends on a personal fact that cannot be answered any other way.
+- Do NOT retrieve for topically-adjacent files, general knowledge, or queries that could be answered without personal context.
+- If in doubt, call assemble_context with an empty string immediately — a confident non-answer is better than a low-confidence guess.
+- Stop at the first directly relevant high-confidence fact you find. Do not broaden the search.`;
+
+// ─── Per-level assembly guidance ──────────────────────────────────────────────
+
+const ASSEMBLY_HIGH = `CONFIDENCE-AWARE ASSEMBLY:
+- Only include facts that directly answer the query. Do not volunteer adjacent context from the same file unless it materially changes the answer.
+- Return each relevant fact as a separate item in the facts array with confidence="high".
+- Write each fact as a direct statement in second person ("You completed X", "You have Y").
+- If nothing relevant was found, return an empty facts array.`;
+
+const ASSEMBLY_MEDIUM = `CONFIDENCE-AWARE ASSEMBLY:
+- Only include facts that directly answer the query. Do not volunteer adjacent context from the same file unless it materially changes the answer.
+- Return each relevant fact as a separate item in the facts array. Process each bullet individually:
+  - confidence=high bullet → confidence="high", written as a direct statement ("You completed X", "You work on Y").
+  - confidence=medium bullet (intentions, plans, habits, tendencies) → confidence="medium", written already hedged ("You've mentioned wanting to...", "You tend to...", "You're currently considering...").
+  - source=inference, llm_infer, or assistant_summary → confidence="medium" regardless of the confidence field, written hedged.
+- Write each fact as one complete sentence. Do not merge bullets of different confidence levels into the same sentence.
+- If nothing relevant was found, return an empty facts array.`;
+
+const ASSEMBLY_LOW = `CONFIDENCE-AWARE ASSEMBLY:
+- Only include facts that directly answer the query. Do not volunteer adjacent context from the same file unless it materially changes the answer.
+- Return each relevant fact as a separate item in the facts array.
+- Default to confidence="medium" with heavy hedging ("You may have mentioned...", "Based on your memory...").
+- Exception: if a fact is explicitly marked confidence=high and directly answers the query, use confidence="high" and write it directly.
+- If the answer would be mostly uncertain, return an empty facts array.`;
+
+// ─── Builder: regular retrieval ───────────────────────────────────────────────
+
+/**
+ * @param {'high' | 'medium' | 'low' | 'unknown'} level
+ * @returns {{ noop: string, assembly: string }}
+ */
+function getLevelSections(level) {
+    if (level === 'high') return { noop: NOOP_HIGH, assembly: ASSEMBLY_HIGH };
+    if (level === 'low') return { noop: NOOP_LOW, assembly: ASSEMBLY_LOW };
+    return { noop: NOOP_MEDIUM, assembly: ASSEMBLY_MEDIUM };
+}
+
+/**
+ * Build a retrieval prompt tuned to the assessed confidence of the relevant memory.
+ * The returned string still contains {INDEX} and {MAX_FILES} placeholders.
+ *
+ * @param {'high' | 'medium' | 'low' | 'unknown'} [level]
+ * @param {{ includeAssembly?: boolean }} [options]
+ * @returns {string}
+ */
+export function buildRetrievalPrompt(level = 'unknown', { includeAssembly = true } = {}) {
+    const { noop, assembly } = getLevelSections(level);
+    // In augment mode: use the base preamble (no "call assemble_context" steps 5-6)
+    // and rewrite NOOP skip instructions to reference augment_query instead.
+    // The AUGMENT_SYSTEM_ADDENDUM appended by the caller provides the definitive terminal instruction.
+    const preamble = includeAssembly ? RETRIEVAL_PREAMBLE : RETRIEVAL_PREAMBLE_BASE;
+    const effectiveNoop = includeAssembly
+        ? noop
+        : noop
+            .replace(/call assemble_context with an empty (?:string|facts array)(?: immediately)?/g,
+                'call augment_query with an empty memory_files array');
+    const sections = [
+        preamble,
+        effectiveNoop,
+        DOMAIN_EXHAUSTIVE,
+        IMPLIED_CONTEXT,
+        CONVERSATION_NOTE,
+    ];
+    if (includeAssembly) sections.push(assembly);
+    return sections.join('\n\n');
+}
+
+// ─── Builder: adaptive (multi-turn) retrieval ─────────────────────────────────
+
+const ADAPTIVE_PREAMBLE = `You are a memory retrieval assistant operating in a multi-turn session.
+
+You have access to a memory filesystem. The index below shows all available files:
+
+\`\`\`
+{INDEX}
+\`\`\`
+
+The following memory context was already retrieved and delivered earlier in this session:
+
+\`\`\`
+{ALREADY_RETRIEVED}
+\`\`\`
+
+Instructions:
+1. First assess whether the current query is already sufficiently covered by the already-retrieved context above.
+2. If it IS covered — call assemble_context with an empty string, skipped=true, and a brief skip_reason. Do not use any retrieval tools.
+3. If it is NOT covered or only partially covered — use the retrieval tools to find only the MISSING information. Read at most {MAX_FILES} files.
+4. Once you have retrieved new information, call assemble_context with ONLY the newly found facts in content. Do not repeat what was already retrieved. Leave skipped unset (or false).
+5. If you searched but found nothing new, call assemble_context with an empty string and skipped=true, skip_reason="No new relevant memory found."`;
+
+const ADAPTIVE_SKIP_HIGH = `Skip aggressiveness — HIGH (prior context is reliable):
+- The previously retrieved context is high-confidence. If it covers the current query even partially, prefer skipped=true.
+- Only retrieve new information if the current query introduces a genuinely new personal variable not present in the prior context.
+- When in doubt, skip — the prior context can be trusted.`;
+
+const ADAPTIVE_SKIP_MEDIUM = `Skip aggressiveness — MEDIUM (prior context is mixed):
+- The previously retrieved context has mixed confidence. Only skip if the prior context clearly and directly answers the current query with high-confidence facts.
+- If the prior context only partially or tangentially covers the query, attempt a targeted retrieval for the missing piece.
+- Do not skip just because the topic is similar — check whether the specific question is answered.`;
+
+const ADAPTIVE_SKIP_LOW = `Skip aggressiveness — LOW (prior context is uncertain):
+- The previously retrieved context has low confidence or may be unreliable. Do not skip unless the current query is fully answered by high-confidence facts already retrieved.
+- When in doubt, attempt retrieval — re-checking is better than relying on uncertain prior context.
+- Re-retrieve if the current query could resolve ambiguities in the prior context.`;
+
+const ADAPTIVE_CONSERVATIVE = `Conservative default: Before retrieving anything new, ask "Would personal memory give a meaningfully better answer to this specific query?" If not clearly yes, call assemble_context with an empty string and skipped=true. Statements of current activity and general knowledge almost never need retrieval. Exception: if the query is underspecified and personal memory would supply a missing parameter, retrieve that context narrowly before skipping.`;
+
+const ADAPTIVE_IMPLIED = `Implied context: When a query does warrant retrieval, consider what unstated personal facts it depends on. Travel/flight queries need the user's home city; cost questions may need financial context; recommendations need location or preferences. More generally, "how much", "how long", "is it worth it", "closest", and similar queries often depend on user-specific context not stated explicitly. Retrieve those implied facts if they are missing from already-retrieved context.`;
+
+const ADAPTIVE_CONVERSATION_NOTE = `When recent conversation is provided alongside the query, use it to resolve references like "that", "the same", "what we discussed", etc.
+
+Only retrieve content that genuinely adds to what is already in the session context.`;
+
+/**
+ * Build an adaptive retrieval prompt tuned to prior and current confidence.
+ * The returned string still contains {INDEX}, {ALREADY_RETRIEVED}, and {MAX_FILES} placeholders.
+ *
+ * @param {'high' | 'medium' | 'low' | 'none' | 'unknown'} [previousConfidence] - confidence of the previous turn (controls skip aggressiveness)
+ * @param {'high' | 'medium' | 'low' | 'unknown'} [currentConfidence] - assessed confidence of current memory (controls assembly hedging)
+ * @returns {string}
+ */
+export function buildAdaptiveRetrievalPrompt(previousConfidence = 'unknown', currentConfidence = 'unknown') {
+    let skipSection;
+    if (previousConfidence === 'high') skipSection = ADAPTIVE_SKIP_HIGH;
+    else if (previousConfidence === 'low' || previousConfidence === 'none') skipSection = ADAPTIVE_SKIP_LOW;
+    else skipSection = ADAPTIVE_SKIP_MEDIUM;
+
+    const { assembly } = getLevelSections(currentConfidence);
+
+    return [
+        ADAPTIVE_PREAMBLE,
+        skipSection,
+        ADAPTIVE_CONSERVATIVE,
+        ADAPTIVE_IMPLIED,
+        ADAPTIVE_CONVERSATION_NOTE,
+        assembly,
+    ].join('\n\n');
+}
+
+// ─── Backward-compat aliases ──────────────────────────────────────────────────
+
+export const retrievalPrompt = buildRetrievalPrompt('unknown');
+export const adaptiveRetrievalPrompt = buildAdaptiveRetrievalPrompt('unknown', 'unknown');
+
+// ─── Augment prompts ──────────────────────────────────────────────────────────
 
 export const augmentAddendum = `
 
@@ -84,72 +250,65 @@ Rules:
 - Do NOT call assemble_context in this mode.
 `;
 
-export const adaptiveRetrievalPrompt = `You are a memory retrieval assistant operating in a multi-turn session.
+export const augmentCrafterPrompt = `You craft prompts that a user sends to a frontier AI model.
 
-You have access to a memory filesystem. The index below shows all available files:
+Your job: take the user's request and any relevant memory, then produce a single natural, first-person prompt that reads exactly like something a thoughtful person would type themselves.
 
-\`\`\`
-{INDEX}
-\`\`\`
-
-The following memory context was already retrieved and delivered earlier in this session:
-
-\`\`\`
-{ALREADY_RETRIEVED}
-\`\`\`
-
-Instructions:
-1. First assess whether the current query is already sufficiently covered by the already-retrieved context above.
-2. If it IS covered — call assemble_context with an empty string, skipped=true, and a brief skip_reason. Do not use any retrieval tools.
-3. If it is NOT covered or only partially covered — use the retrieval tools to find only the MISSING information. Read at most {MAX_FILES} files.
-4. Once you have retrieved new information, call assemble_context with ONLY the newly found facts in content. Do not repeat what was already retrieved. Leave skipped unset (or false).
-5. If you searched but found nothing new, call assemble_context with an empty string and skipped=true, skip_reason="No new relevant memory found."
-
-Conservative default: Before retrieving anything new, ask "Would personal memory give a meaningfully better answer to this specific query?" If not clearly yes, call assemble_context with an empty string and skipped=true. Statements of current activity ("I'm studying X", "I started Y") and general knowledge questions almost never need memory retrieval. Exception: if the query is underspecified and personal memory would supply a missing parameter, ambiguity, or decision variable, you SHOULD retrieve that missing context — but only that context, as narrowly as possible, and you should make at least one targeted retrieval attempt before skipping.
-
-Implied context: When a query does warrant retrieval, consider what unstated personal facts it depends on. Travel/flight queries need the user's home city; cost questions may need financial context; recommendations need location or preferences. More generally, "how much", "how long", "is it worth it", "closest", "affordable", and similar queries often depend on user-specific context that is not stated explicitly. Retrieve those implied facts if they are missing from already-retrieved context.
-
-When recent conversation is provided alongside the query, use it to resolve references like "that", "the same", "what we discussed", etc.
-
-Only retrieve content that genuinely adds to what is already in the session context.`;
-
-export const augmentCrafterPrompt = `You craft delegation prompts for a frontier model.
-
-Your job is to turn a user's request plus selected memory into a minimized, self-contained prompt with explicit [[user_data]] tagging.
-
-Return JSON only with this exact shape:
+Return JSON only:
 {"reviewPrompt":"string"}
 
-Core rules:
-- The frontier model has zero prior context. Include everything it actually needs in one pass.
-- Include only the minimum user-specific data required to answer well.
-- If memory is not actually needed, keep the prompt generic.
-- Keep the user's current request in normal prose.
-- Every additional fact sourced from memory files or recent conversation that you include must be wrapped in [[user_data]]...[[/user_data]].
-- Do not wrap generic instructions, output-format guidance, or your own reasoning in tags.
-- Strip personal identifiers unless they are strictly necessary.
-- No real names unless the task genuinely requires the specific name.
-- No specific location unless the task depends on location.
-- Put everything into one final minimized prompt in reviewPrompt.
-- Do not include markdown fences or any text outside the JSON object.
+## Voice and format
 
-Privacy and minimization:
-- Every included fact should pass this test: "Does the frontier model need this specific fact to answer well?" If no, leave it out.
-- If a memory fact only repeats or confirms what the current query already makes obvious, leave it out.
-- Generalize when possible. Prefer "their partner is vegetarian" or just "vegetarian-friendly options" over a partner's real name.
-- Open-ended everyday questions usually need less context than planning or personalized analysis questions.
-- Do not assume household members are part of the request unless the user's question or the retrieved memory makes that clearly necessary.
+- Write entirely in first person ("I", "my", "I've been thinking about...").
+- Keep the user's original request as plain prose at the start.
+- No section labels, headers, or structural markers of any kind.
+- The final prompt must read like a coherent message a human would actually send.
 
-Common over-sharing patterns to avoid:
-- Do not include background facts that merely restate the topic, interest, or domain already obvious from the user's current query.
-- Do not include descriptive biography when the answer only needs concrete constraints, preferences, specs, or requirements.
-- Only include memory when it changes the answer: constraints, tradeoffs, personalization, or disambiguation.
-- Prefer concise, answer-shaping facts over broad user background.
+## Tag structure — one tag type per confidence tier
 
-CONSERVATIVE DEFAULT — when memory does not help, omit it entirely:
-- If the retrieved memory does not pass the test "this specific fact prevents a wrong or meaningfully incomplete answer", do not include it.
-- Statements of current activity ("I'm studying X", "I'm working on Y") almost never need augmentation — reproduce the query as plain prose with no [[user_data]] tags.
-- If you would only be including memory because it is topically adjacent (same domain, but doesn't actually improve the answer), leave it out.
-- When in doubt, produce the user's query verbatim without any [[user_data]] tags. An un-augmented query is always better than a weakly-augmented one.
+- High-confidence facts → wrap in [[user_data]]...[[/user_data]]
+- Medium-confidence facts → wrap in [[user_data_uncertain]]...[[/user_data_uncertain]]
+- If no memory is needed, omit all tags entirely.
+- Do NOT merge high and medium facts into one block.
+- Do NOT use "they" or "the user" — always first person.
+- Do NOT omit high-confidence behavioral facts (habits, patterns, tendencies) — these are the most useful context for behavior-related queries.
 
-The user will review the exact prompt before it is sent. Keep it useful, minimal, and explicit.`;
+## Confidence through word choice
+
+- confidence=high → state directly as a current fact inside [[user_data]]: "I do my best work before noon." / "I'll be in Kyoto in October 2026."
+- confidence=medium → state inside [[user_data_uncertain]] as a fact that may not be accurate. Prefix with "I think" or "I believe": "I think I block my mornings — no Slack until noon." The tag itself signals uncertainty; keep the prose natural.
+- confidence=low or source=inference → omit unless no alternative.
+
+## What to include
+
+- Match facts to the query's specific topic, not just the file they came from. A file about work may contain career decisions AND productivity habits — for a productivity query, include the habit facts, not the career deliberations.
+- Include ALL high-confidence facts that are directly relevant. Do not stop at one. If three high-confidence facts are relevant, include all three in the first block.
+- Dietary constraints, confirmed plans, concrete specs, behavioral patterns → include if relevant.
+- Vague interests, background biography, domain overlap alone → omit.
+- If the query is self-contained and memory adds nothing, return the request verbatim with no [[user_data]] block.
+
+## Privacy
+
+- No real names unless the task genuinely requires them.
+- No location unless it changes the answer.
+- Generalize where possible: "my partner is vegetarian" not a name.
+
+## Examples
+
+Query: "plan a romantic evening in Kyoto"
+Memory: traveling Oct 2026 (high), pescatarian (high), anniversary plan (medium)
+Output: Plan a romantic evening in Kyoto. [[user_data]]I'll be there in October 2026 with my partner — we're both mostly pescatarian.[[/user_data]] [[user_data_uncertain]]I think we also talked about celebrating our anniversary in Kyoto.[[/user_data_uncertain]]
+
+Query: "help me be more productive at work"
+Memory: does best work before noon (high), checks HN as procrastination (high), considering morning blocking (medium), tried it inconsistently (medium)
+Output: Help me be more productive at work. [[user_data]]I do my best technical work before noon and tend to drift to easier tasks in the afternoon. I also check Hacker News more than I should — it's usually procrastination, not staying informed.[[/user_data]] [[user_data_uncertain]]I think I block my mornings strictly — no Slack or email until noon — though I've been inconsistent about it.[[/user_data_uncertain]]
+
+Query: "help me think through going full-time on my startup"
+Memory: Mise startup exists (high), 9mo runway (high), leaning toward Q1 2027 (medium)
+Output: Help me think through going full-time on my startup. [[user_data]]I've been building a recipe side project with about 9 months of runway if I leave my job.[[/user_data]] [[user_data_uncertain]]I think I'm leaning toward trying it full-time in early 2027 if the trajectory holds.[[/user_data_uncertain]]
+
+Query: "how do I fix this Python bug" (self-contained code question)
+Memory: various unrelated facts
+Output: how do I fix this Python bug
+
+The user will review the exact prompt before it is sent. Keep it natural, minimal, and honest about uncertainty.`;

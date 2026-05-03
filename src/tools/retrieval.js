@@ -10,12 +10,14 @@ import { runAgenticToolLoop } from '../internal/toolLoop.js';
 import { craftAugmentedPromptFromFiles, createAugmentQueryExecutor, createRetrievalExecutors } from './executors.js';
 import { trimRecentConversation } from '../internal/recentConversation.js';
 import {
-    retrievalPrompt,
     augmentAddendum,
-    adaptiveRetrievalPrompt
+    buildRetrievalPrompt,
+    buildAdaptiveRetrievalPrompt,
 } from '../prompts/retrieval.js';
 import {
     normalizeFactText,
+    normalizeTier,
+    normalizeStatus,
     parseBullets,
     renderBullet,
     scoreBullet,
@@ -23,6 +25,7 @@ import {
 } from '../internal/format/index.js';
 
 const MAX_FILES_TO_LOAD = 8;
+const MAX_FILES_BY_LEVEL = { high: 8, medium: 6, low: 3, none: 6, unknown: 6 };
 const MAX_TOTAL_CONTEXT_CHARS = 4000;
 const MAX_SNIPPETS = 18;
 const MAX_RECENT_CONTEXT_CHARS = 2000;
@@ -86,19 +89,29 @@ const RETRIEVAL_TOOLS = [
         type: 'function',
         function: {
             name: 'assemble_context',
-            description: 'Synthesize and return the final answer to the user\'s query based on what you read. Do NOT paste raw file content — write a clear, direct answer in plain prose. You MUST call this when done, even if nothing relevant was found (pass an empty string).',
+            description: 'Return all facts relevant to the query. Each fact is a separate object labeled with its confidence level. You MUST call this when done, even if nothing was found (pass an empty array).',
             parameters: {
                 type: 'object',
                 properties: {
-                    content: { type: 'string', description: 'A synthesized, human-readable answer to the query derived from the memory files. Write prose, not raw bullet dumps. If nothing relevant was found, pass an empty string.' }
+                    facts: {
+                        type: 'array',
+                        description: 'One object per relevant fact. Empty array if nothing relevant was found.',
+                        items: {
+                            type: 'object',
+                            properties: {
+                                text: { type: 'string', description: 'The fact as one complete sentence in second person. High-confidence: direct statement. Medium-confidence: already hedged ("You\'ve mentioned...", "You tend to...").' },
+                                confidence: { type: 'string', enum: ['high', 'medium', 'low'], description: 'Confidence level matching the source bullet\'s confidence field.' }
+                            },
+                            required: ['text', 'confidence']
+                        }
+                    }
                 },
-                required: ['content']
+                required: ['facts']
             }
         }
     }
 ];
 
-const RETRIEVAL_SYSTEM_PROMPT = retrievalPrompt.replace('{MAX_FILES}', String(MAX_FILES_TO_LOAD));
 
 /** @type {ToolDefinition} */
 const AUGMENT_QUERY_TOOL = {
@@ -125,6 +138,8 @@ const AUGMENT_QUERY_TOOL = {
 
 const AUGMENT_SYSTEM_ADDENDUM = augmentAddendum;
 
+const MAX_ALREADY_RETRIEVED_CHARS = 3000;
+
 /** @type {ToolDefinition[]} */
 const ADAPTIVE_RETRIEVAL_TOOLS = RETRIEVAL_TOOLS.map(tool => {
     if (tool.function.name !== 'assemble_context') return tool;
@@ -137,17 +152,26 @@ const ADAPTIVE_RETRIEVAL_TOOLS = RETRIEVAL_TOOLS.map(tool => {
             parameters: {
                 type: 'object',
                 properties: {
-                    content: { type: 'string', description: 'Newly retrieved facts as synthesized prose. Empty string when skipped.' },
-                    skipped: { type: 'boolean', description: 'True when existing context already covers the query and no new retrieval was done.' },
-                    skip_reason: { type: 'string', description: 'Brief explanation of why retrieval was skipped. Required when skipped=true.' }
+                    facts: {
+                        type: 'array',
+                        description: 'Newly retrieved facts. Empty array when skipped or nothing new found.',
+                        items: {
+                            type: 'object',
+                            properties: {
+                                text: { type: 'string', description: 'The fact as one complete sentence. High-confidence: direct. Medium-confidence: already hedged.' },
+                                confidence: { type: 'string', enum: ['high', 'medium', 'low'], description: 'Confidence level matching the source bullet\'s confidence field.' }
+                            },
+                            required: ['text', 'confidence']
+                        }
+                    },
+                    skipped: { type: 'boolean', description: 'True when existing context already covers the query.' },
+                    skip_reason: { type: 'string', description: 'Required when skipped=true.' }
                 },
-                required: ['content']
+                required: ['facts']
             }
         }
     };
 });
-
-const MAX_ALREADY_RETRIEVED_CHARS = 3000;
 
 async function collectReadFiles(toolCallLog, backend) {
     const files = [];
@@ -231,8 +255,15 @@ class MemoryRetriever {
      */
     async _toolCallingRetrieval(query, index, onProgress, conversationText, onModelText, options = { mode: 'retrieve' }) {
         const isAugmentMode = options.mode === 'augment';
+
+        const queryTerms = tokenizeQuery(query);
+        const memoryConfidence = await this._assessConfidenceForQuery(queryTerms);
+        const maxFiles = MAX_FILES_BY_LEVEL[memoryConfidence] ?? MAX_FILES_TO_LOAD;
+
         const systemPrompt = (
-            RETRIEVAL_SYSTEM_PROMPT.replace('{INDEX}', index) +
+            buildRetrievalPrompt(memoryConfidence, { includeAssembly: !isAugmentMode })
+                .replace('{INDEX}', index)
+                .replace('{MAX_FILES}', String(maxFiles)) +
             (isAugmentMode ? AUGMENT_SYSTEM_ADDENDUM : '')
         );
         const toolExecutors = {
@@ -380,10 +411,35 @@ class MemoryRetriever {
         const paths = files.map(f => f.path);
 
         const terminalWasCalled = terminalToolResult != null;
-        const assembledContext = terminalToolResult?.arguments?.content || null;
+        const rawFacts = Array.isArray(terminalToolResult?.arguments?.facts)
+            ? terminalToolResult.arguments.facts.filter(f => f?.text && f?.confidence)
+            : [];
+
+        const highFacts = rawFacts.filter(f => f.confidence === 'high').map(f => f.text);
+        const mediumFacts = rawFacts.filter(f => f.confidence === 'medium' || f.confidence === 'low').map(f => f.text);
+        let highContent = highFacts.join(' ');
+        let mediumContent = mediumFacts.join(' ');
+        const assembledContext = (highContent && mediumContent)
+            ? `${highContent}\n\nLess certain: ${mediumContent}`
+            : (highContent || mediumContent || null);
+
+        let confidenceLevel = rawFacts.length === 0 ? 'none'
+            : mediumFacts.length > 0 ? 'medium'
+            : 'high';
+
+        // Deterministic cap: if LLM labeled everything high but medium bullets appear in the
+        // high prose, override confidence and move content to the medium bucket.
+        if (confidenceLevel === 'high' && paths.length > 0) {
+            const hasMedium = await this._hasRelevantActiveMediumBullets(paths, queryTerms, highContent);
+            if (hasMedium) {
+                confidenceLevel = 'medium';
+                mediumContent = highContent;
+                highContent = '';
+            }
+        }
 
         // LLM explicitly said nothing relevant — respect that, don't fall back to snippet context.
-        if (terminalWasCalled && !assembledContext) return null;
+        if (terminalWasCalled && rawFacts.length === 0) return null;
 
         if (files.length === 0 && !assembledContext) return null;
 
@@ -395,7 +451,14 @@ class MemoryRetriever {
             paths
         });
 
-        return { files, paths, assembledContext: assembledContext || snippetContext };
+        return {
+            files,
+            paths,
+            assembledContext: assembledContext || snippetContext,
+            ...(highContent ? { highConfidenceContext: highContent } : {}),
+            ...(mediumContent ? { mediumConfidenceContext: mediumContent } : {}),
+            ...(confidenceLevel !== 'none' ? { confidence: confidenceLevel } : { confidence: 'none' })
+        };
     }
 
     /**
@@ -476,6 +539,18 @@ class MemoryRetriever {
             };
         }
 
+        // Build a confidence-labeled context string so the crafter can apply
+        // different treatment to high-confidence facts vs. medium-confidence plans.
+        const highContent = typeof retrieval.highConfidenceContext === 'string'
+            ? retrieval.highConfidenceContext.trim()
+            : '';
+        const mediumContent = typeof retrieval.mediumConfidenceContext === 'string'
+            ? retrieval.mediumConfidenceContext.trim()
+            : '';
+        const crafterContent = (highContent && mediumContent)
+            ? `## Confirmed facts\n${highContent}\n\n## Uncertain context\n${mediumContent}`
+            : assembledContext;
+
         const paths = Array.isArray(retrieval.paths) ? retrieval.paths : [];
         const syntheticPath = paths.length > 0
             ? `adaptive/new-context-from-${paths.join('__').slice(0, 120)}`
@@ -484,7 +559,7 @@ class MemoryRetriever {
             llmClient: this._llmClient,
             model: this._model,
             query,
-            files: [{ path: syntheticPath, content: assembledContext }],
+            files: [{ path: syntheticPath, content: crafterContent }],
             conversationText,
             onProgress: (event) => {
                 if (!event?.stage || !event?.message) return;
@@ -518,7 +593,8 @@ class MemoryRetriever {
             reviewPrompt: crafted.reviewPrompt,
             apiPrompt: crafted.apiPrompt,
             assembledContext,
-            skipped: false
+            skipped: false,
+            ...(retrieval.confidence ? { confidence: retrieval.confidence } : {})
         };
     }
 
@@ -558,6 +634,7 @@ class MemoryRetriever {
             files,
             paths: files.map(f => f.path),
             assembledContext: assembled,
+            confidence: 'medium',
             ...(displayText ? { displayText } : {})
         };
     }
@@ -866,6 +943,83 @@ class MemoryRetriever {
         });
     }
 
+    /**
+     * Pre-retrieval confidence assessment. Searches for bullets relevant to the
+     * query and returns the dominant confidence level of the top matches.
+     * Used to select the appropriate retrieval prompt variant before the LLM runs.
+     *
+     * @param {string[]} queryTerms
+     * @returns {Promise<'high' | 'medium' | 'low' | 'unknown'>}
+     */
+    async _assessConfidenceForQuery(queryTerms) {
+        if (!queryTerms || queryTerms.length === 0) return 'unknown';
+
+        // Find candidate paths via keyword search (cheap — uses existing index).
+        const candidatePaths = new Set();
+        for (const term of queryTerms.slice(0, 3)) {
+            try {
+                const results = await this._backend.search(term);
+                for (const r of results) candidatePaths.add(r.path);
+            } catch {
+                // search failure is non-fatal
+            }
+        }
+        if (candidatePaths.size === 0) return 'unknown';
+
+        // Load bullets for candidate paths from the bullet index.
+        const paths = [...candidatePaths].slice(0, 5);
+        await this._bulletIndex.init();
+        for (const path of paths) {
+            if (!this._bulletIndex.getBulletsForPaths([path]).length) {
+                await this._bulletIndex.refreshPath(path);
+            }
+        }
+
+        const items = this._bulletIndex.getBulletsForPaths(paths);
+        if (items.length === 0) return 'unknown';
+
+        // Exclude history/superseded/expired bullets — they are past facts and inflate
+        // the high-confidence count without reflecting current memory quality.
+        const activeItems = items.filter(item => {
+            const tier = normalizeTier(item.bullet?.tier || item.bullet?.section || 'long_term');
+            const status = normalizeStatus(item.bullet?.status || 'active');
+            return tier !== 'history' && status !== 'superseded' && status !== 'expired';
+        });
+        const candidateItems = activeItems.length >= 3 ? activeItems : items;
+
+        // Score bullets by text/topic match only — no confidence weight — to avoid
+        // the circularity of high-confidence bullets floating to the top and making
+        // the distribution assessment self-fulfilling.
+        const relevant = candidateItems
+            .map(item => {
+                const text = String(item.bullet?.text || '').toLowerCase();
+                const topic = String(item.bullet?.topic || '').toLowerCase();
+                let score = 0;
+                for (const term of queryTerms) {
+                    if (!term) continue;
+                    if (text.includes(term)) score += 2;
+                    if (topic.includes(term)) score += 1;
+                }
+                return { bullet: item.bullet, score };
+            })
+            .filter(item => item.score > 0)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 10);
+
+        const pool = relevant.length > 0 ? relevant : candidateItems.slice(0, 10);
+        const counts = { high: 0, medium: 0, low: 0 };
+        for (const { bullet } of pool) {
+            const conf = bullet.confidence;
+            if (conf === 'high' || conf === 'medium' || conf === 'low') counts[conf]++;
+        }
+
+        const total = counts.high + counts.medium + counts.low;
+        if (total === 0) return 'unknown';
+        if (counts.high / total >= 0.75) return 'high';
+        if ((counts.high + counts.medium) / total >= 0.4) return 'medium';
+        return 'low';
+    }
+
     async _isMemoryEmpty(index) {
         const all = await this._backend.exportAll();
         const realFiles = all.filter(f => !f.path.endsWith('_tree.md'));
@@ -882,9 +1036,10 @@ class MemoryRetriever {
      * @param {string} query - the user's current message
      * @param {string} [alreadyRetrievedContext] - memory context already in the session
      * @param {string} [conversationText] - recent conversation for reference resolution
+     * @param {'high' | 'medium' | 'low' | 'none'} [previousConfidence] - confidence of the previous retrieval turn
      * @returns {Promise<import('../types.js').AdaptiveRetrievalResult | null>}
      */
-    async retrieveAdaptively(query, alreadyRetrievedContext, conversationText) {
+    async retrieveAdaptively(query, alreadyRetrievedContext, conversationText, previousConfidence) {
         if (!query || !query.trim()) return null;
 
         const onProgress = this._onProgress;
@@ -917,8 +1072,8 @@ class MemoryRetriever {
 
         let result;
         try {
-            onProgress?.({ stage: 'retrieval', message: 'Checking existing memory context...' });
-            result = await this._adaptiveToolCallingRetrieval(query, index, onProgress, conversationText, onModelText, alreadyRetrievedContext);
+            onProgress?.({ stage: 'retrieval', message: 'Checking whether new retrieval is needed...' });
+            result = await this._adaptiveToolCallingRetrieval(query, index, onProgress, conversationText, onModelText, alreadyRetrievedContext, previousConfidence);
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             onProgress?.({ stage: 'fallback', message: `Adaptive retrieval unavailable (${message}) — falling back to keyword search.` });
@@ -951,15 +1106,19 @@ class MemoryRetriever {
         return result;
     }
 
-    async _adaptiveToolCallingRetrieval(query, index, onProgress, conversationText, onModelText, alreadyRetrievedContext) {
+    async _adaptiveToolCallingRetrieval(query, index, onProgress, conversationText, onModelText, alreadyRetrievedContext, previousConfidence) {
         const truncatedRetrieved = alreadyRetrievedContext.length > MAX_ALREADY_RETRIEVED_CHARS
             ? alreadyRetrievedContext.slice(0, MAX_ALREADY_RETRIEVED_CHARS) + '...(truncated)'
             : alreadyRetrievedContext;
 
-        const systemPrompt = adaptiveRetrievalPrompt
+        const queryTerms = tokenizeQuery(query);
+        const currentMemoryConfidence = await this._assessConfidenceForQuery(queryTerms);
+        const maxFiles = MAX_FILES_BY_LEVEL[currentMemoryConfidence] ?? MAX_FILES_TO_LOAD;
+
+        const systemPrompt = buildAdaptiveRetrievalPrompt(previousConfidence, currentMemoryConfidence)
             .replace('{INDEX}', index)
             .replace('{ALREADY_RETRIEVED}', truncatedRetrieved)
-            .replace('{MAX_FILES}', String(MAX_FILES_TO_LOAD));
+            .replace('{MAX_FILES}', String(maxFiles));
 
         const toolExecutors = createRetrievalExecutors(this._backend, { query });
 
@@ -1019,10 +1178,34 @@ class MemoryRetriever {
 
         const files = await collectReadFiles(toolCallLog, this._backend);
         const paths = files.map(f => f.path);
-        const assembledContext = args.content || null;
+
+        const rawFacts = Array.isArray(args?.facts)
+            ? args.facts.filter(f => f?.text && f?.confidence)
+            : [];
+        const highFacts = rawFacts.filter(f => f.confidence === 'high').map(f => f.text);
+        const mediumFacts = rawFacts.filter(f => f.confidence === 'medium' || f.confidence === 'low').map(f => f.text);
+        let highContent = highFacts.join(' ');
+        let mediumContent = mediumFacts.join(' ');
+        const assembledContext = (highContent && mediumContent)
+            ? `${highContent}\n\nLess certain: ${mediumContent}`
+            : (highContent || mediumContent || null);
+
+        let confidenceLevel = rawFacts.length === 0 ? 'none'
+            : mediumFacts.length > 0 ? 'medium'
+            : 'high';
+
+        // Deterministic cap: same as in _toolCallingRetrieval.
+        if (confidenceLevel === 'high' && paths.length > 0) {
+            const hasMedium = await this._hasRelevantActiveMediumBullets(paths, queryTerms, highContent);
+            if (hasMedium) {
+                confidenceLevel = 'medium';
+                mediumContent = highContent;
+                highContent = '';
+            }
+        }
 
         // Terminal was called but nothing new was found
-        if (terminalToolResult && !assembledContext) {
+        if (terminalToolResult && rawFacts.length === 0) {
             const reason = 'No new relevant memory found.';
             const displayText = await this._renderDirectAnswer(query, alreadyRetrievedContext);
             onProgress?.({ stage: 'complete', message: `Retrieval skipped: ${reason}` });
@@ -1082,8 +1265,79 @@ class MemoryRetriever {
             paths,
             assembledContext: finalContext,
             skipped: false,
+            ...(highContent ? { highConfidenceContext: highContent } : {}),
+            ...(mediumContent ? { mediumConfidenceContext: mediumContent } : {}),
+            ...(confidenceLevel ? { confidence: confidenceLevel } : {}),
             ...(displayText ? { displayText } : {})
         };
+    }
+
+    /**
+     * Returns true if any active, non-history bullet in the given paths has
+     * confidence=medium AND was actually used in the assembled answer.
+     *
+     * Two-stage check:
+     *   1. Query relevance — bullet text/topic must match at least one query term.
+     *   2. Assembly presence — bullet tokens must have >=35% overlap with the
+     *      assembled context tokens, confirming the LLM used that bullet.
+     *      Falls back to query-match-only when no assembled context is available.
+     *
+     * @param {string[]} paths
+     * @param {string[]} queryTerms
+     * @param {string | null} [assembledContext]
+     * @returns {Promise<boolean>}
+     */
+    async _hasRelevantActiveMediumBullets(paths, queryTerms, assembledContext) {
+        if (!paths || paths.length === 0 || !queryTerms || queryTerms.length === 0) return false;
+
+        await this._bulletIndex.init();
+        for (const path of paths) {
+            if (!this._bulletIndex.getBulletsForPaths([path]).length) {
+                await this._bulletIndex.refreshPath(path);
+            }
+        }
+
+        const items = this._bulletIndex.getBulletsForPaths(paths);
+        const contextTokens = assembledContext
+            ? new Set(tokenizeQuery(assembledContext))
+            : null;
+
+        for (const item of items) {
+            const { bullet } = item;
+            if (bullet.confidence !== 'medium') continue;
+
+            const tier = normalizeTier(bullet.tier || bullet.section || 'long_term');
+            const status = normalizeStatus(bullet.status || 'active');
+            if (tier === 'history' || status === 'superseded' || status === 'expired') continue;
+
+            const text = String(bullet.text || '').toLowerCase();
+            const topic = String(bullet.topic || '').toLowerCase();
+
+            // Stage 1: query relevance
+            let queryMatch = false;
+            for (const term of queryTerms) {
+                if (!term) continue;
+                if (text.includes(term) || topic.includes(term)) { queryMatch = true; break; }
+            }
+            if (!queryMatch) continue;
+
+            // Stage 2: assembly presence — only cap if the bullet content actually
+            // appears in the assembled answer (i.e. the LLM used it).
+            // Exclude query terms from the overlap check: they appear in every relevant
+            // result by definition and are not evidence that a specific bullet was used.
+            if (contextTokens && contextTokens.size > 0) {
+                const queryTermSet = new Set(queryTerms);
+                const bulletTokens = tokenizeQuery(text).filter(t => !queryTermSet.has(t));
+                if (bulletTokens.length === 0) continue;
+                const matchCount = bulletTokens.filter(t => contextTokens.has(t)).length;
+                if (matchCount / bulletTokens.length >= 0.35) return true;
+            } else {
+                // No assembled context — fall back to query match alone.
+                return true;
+            }
+        }
+
+        return false;
     }
 
     _isContextRedundant(candidateContext, alreadyRetrievedContext) {
@@ -1103,7 +1357,11 @@ class MemoryRetriever {
 
     static _stripUserDataTags(text) {
         if (!text) return text;
-        return text.replace(/\[\[user_data\]\]/g, '').replace(/\[\[\/user_data\]\]/g, '');
+        return text
+            .replace(/\[\[user_data\]\]/g, '')
+            .replace(/\[\[\/user_data\]\]/g, '')
+            .replace(/\[\[user_data_uncertain\]\]/g, '(less certain: ')
+            .replace(/\[\[\/user_data_uncertain\]\]/g, ')');
     }
 }
 

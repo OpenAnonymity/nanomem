@@ -103,8 +103,8 @@ export function createMemoryBank(config = {}) {
          * @param {string} [conversationText] recent conversation for reference resolution
          * @returns {Promise<AdaptiveRetrievalResult | null>}
          */
-        retrieveAdaptive: (query, alreadyRetrievedContext, conversationText) =>
-            retrieval.retrieveAdaptively(query, alreadyRetrievedContext, conversationText),
+        retrieveAdaptive: (query, alreadyRetrievedContext, conversationText, previousConfidence) =>
+            retrieval.retrieveAdaptively(query, alreadyRetrievedContext, conversationText, previousConfidence),
 
         /**
          * Build a reviewable prompt that augments the user query with memory.

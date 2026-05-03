@@ -24,7 +24,8 @@ Do NOT save:
 - Transient details (greetings, one-off questions with no lasting answer)
 - Sensitive secrets (passwords, tokens, keys)
 
-Bullet format: "- Fact text | topic=topic-name | source=user_statement | confidence=high | updated_at=YYYY-MM-DDTHH:MM"
+Bullet format: "- Fact text | topic=topic-name | source=user_statement | confidence=high|medium | updated_at=YYYY-MM-DDTHH:MM"
+Use confidence=high for direct factual claims; confidence=medium for intentions, habits, or tendencies.
 For time-bound facts (medical events, temporary situations, short-term plans), append: | expires_at=YYYY-MM-DD
 
 If nothing new is worth saving, stop without calling any tools.`;
@@ -50,7 +51,8 @@ Rules:
 - Do not touch any other bullets in the file.
 - Pass old_fact exactly as it appears in the file (including pipe-delimited metadata is fine).
 - Pass new_fact as plain text only — no metadata.
-- When appending or creating, use this bullet format: "- Fact text | topic=topic-name | source=user_statement | confidence=high | updated_at=YYYY-MM-DDTHH:MM"
+- When appending or creating, use this bullet format: "- Fact text | topic=topic-name | source=user_statement | confidence=high|medium | updated_at=YYYY-MM-DDTHH:MM"
+  Use confidence=high for direct factual claims; confidence=medium for intentions, habits, or tendencies.
   For time-bound facts (medical events, temporary situations, short-term plans), append: | expires_at=YYYY-MM-DD
 
 If nothing new or changed is worth saving, stop without calling any tools.`;
@@ -90,7 +92,10 @@ Instructions:
 6. Source values:
    - source=user_statement — the user directly said this. This is the PRIMARY source. Use it for the vast majority of saved facts.
    - source=llm_infer — use ONLY when combining multiple explicit user statements into an obvious conclusion (e.g. user said "I work at Acme" and "Acme is in SF" → "Works in SF"). Never use this to guess, extrapolate, or fill in gaps. When in doubt, do not save.
-7. Confidence: high for direct user statements, medium for llm_infer. Never save low-confidence items.
+7. Confidence:
+   - high: the user made a specific, direct, first-person factual claim that you would confidently state as true without hedging ("I have asthma", "I work at Stripe", "My cat is named Luna", "I'm allergic to penicillin"). If a fact is stable, concrete, and explicitly asserted, use high.
+   - medium: intent or plan ("I want to...", "I'm thinking about...", "I'm considering..."), habit or tendency ("I usually...", "I tend to..."), or any llm_infer conclusion that combines multiple statements. When in doubt between high and medium, use medium.
+   - Never save low-confidence items.
 8. You may optionally add tier=working for clearly short-term or in-progress context. If you are unsure, omit tier and just save the fact.
 9. Facts worth saving: allergies, health conditions, location, job/role, tech stack, pets, family members, durable preferences, and active plans — but ONLY if the user explicitly mentioned them.
 10. For time-bound facts, set expires_at=YYYY-MM-DD. Ask yourself: "After what date would this fact no longer be true or relevant?" Set expires_at to that date. If the fact is stable and has no natural end (job, home city, preference, chronic condition, relationship), omit expires_at. If the expiry is genuinely unclear, include date context in the fact text and omit expires_at.
