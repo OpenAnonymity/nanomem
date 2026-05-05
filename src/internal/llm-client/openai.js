@@ -52,7 +52,7 @@ export function createOpenAIClient({ apiKey, baseUrl = 'https://api.openai.com/v
 
     async function createChatCompletion({ model, messages, tools, max_tokens, temperature, signal }) {
         const body = { model, messages, temperature };
-        if (max_tokens != null) body.max_tokens = max_tokens;
+        if (max_tokens != null) body.max_completion_tokens = max_tokens;
         if (tools && tools.length > 0) body.tools = tools;
 
         const response = await fetchWithRetry(`${base}/chat/completions`, buildRequestInit(body, signal), 'chat completion request', signal);
@@ -85,7 +85,7 @@ export function createOpenAIClient({ apiKey, baseUrl = 'https://api.openai.com/v
 
     async function streamChatCompletion({ model, messages, tools, max_tokens, temperature, signal, onDelta, onReasoning }) {
         const body = { model, messages, temperature, stream: true };
-        if (max_tokens != null) body.max_tokens = max_tokens;
+        if (max_tokens != null) body.max_completion_tokens = max_tokens;
         if (tools && tools.length > 0) body.tools = tools;
 
         return withRetry(async (attempt) => {
