@@ -57,12 +57,12 @@ const RETRIEVAL_TOOLS = [
     {
         type: 'function',
         function: {
-            name: 'retrieve_file',
-            description: 'Search memory files by keyword. Returns matching file paths with relevant excerpts of the matching lines. Use read_file instead if you already know the file path.',
+            name: 'search_memory',
+            description: 'Search memory by keyword. Returns matching files with their file paths AND the matching bullet lines from each file (lines include stored metadata like tier and updated_at). The bullet lines are usually all you need to answer the query — but if you want to see the full file, you can pass the returned path to read_file. Use ONE short keyword per call (e.g. "yoga", "Berkeley", "cooking") — call search_memory again with a different keyword if you need more.',
             parameters: {
                 type: 'object',
                 properties: {
-                    query: { type: 'string', description: 'Keyword or short phrase to search for (e.g. "yoga", "Berkeley", "cooking"). Short keywords work best.' }
+                    query: { type: 'string', description: 'Single short keyword to search for (e.g. "yoga", "Berkeley", "cooking"). Multi-word phrases are matched as literal substrings, so prefer one keyword at a time and call again for additional terms.' }
                 },
                 required: ['query']
             }
@@ -236,7 +236,7 @@ class MemoryRetriever {
             (isAugmentMode ? AUGMENT_SYSTEM_ADDENDUM : '')
         );
         const toolExecutors = {
-            ...createRetrievalExecutors(this._backend, { query }),
+            ...createRetrievalExecutors(this._backend),
             ...(isAugmentMode ? {
                 augment_query: createAugmentQueryExecutor({
                     backend: this._backend,
@@ -961,7 +961,7 @@ class MemoryRetriever {
             .replace('{ALREADY_RETRIEVED}', truncatedRetrieved)
             .replace('{MAX_FILES}', String(MAX_FILES_TO_LOAD));
 
-        const toolExecutors = createRetrievalExecutors(this._backend, { query });
+        const toolExecutors = createRetrievalExecutors(this._backend);
 
         const recentContext = this._buildRecentContext(conversationText);
         const userContent = recentContext

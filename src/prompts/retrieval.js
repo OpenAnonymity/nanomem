@@ -17,7 +17,7 @@ You have access to a memory filesystem. The index below shows all available file
 
 Instructions:
 1. Look at the index above. If you can already see relevant file paths, use read_file directly to read them.
-2. Use retrieve_file only when you need to search by keyword (e.g. "cooking", "Stanford") — it searches file contents, not paths.
+2. Use search_memory when you need to search by keyword (e.g. "cooking", "Stanford"). It returns each matching file's path AND the matching bullet lines, so you usually do NOT need a follow-up read_file. Use ONE short keyword per call; call search_memory again with a different keyword if you need more.
 3. Use list_directory to see ALL files in a directory when the query relates to a broad domain (e.g. list "health" for any medicine/health query).
 4. Read at most {MAX_FILES} files.
 5. You MUST always finish by calling assemble_context — write a direct, synthesized answer in plain prose based on what you read. Do NOT paste raw bullet lists or file content. If the query is historical or comparative, reason over the facts and answer accordingly.
@@ -43,7 +43,7 @@ Examples of implied needs:
 - Restaurant or activity recommendations → user's dietary restrictions, preferences, or neighborhood
 - "Should I bring a jacket?" or weather questions → user's current location
 - Scheduling or timing questions → user's timezone or work schedule
-If the query implies a needed personal fact that isn't in the index path names, use retrieve_file to search for it (e.g. retrieve_file("location"), retrieve_file("city"), retrieve_file("home")).
+If the query implies a needed personal fact that isn't in the index path names, use search_memory to search for it (e.g. search_memory("location"), search_memory("city"), search_memory("home")).
 
 Queries that often need implied context even when not stated explicitly:
 - price, cost, fare, budget, affordability, "how much" → location, region, travel origin, household size, or financial context
