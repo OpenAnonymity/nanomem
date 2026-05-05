@@ -200,20 +200,17 @@ const ADAPTIVE_CONVERSATION_NOTE = `When recent conversation is provided alongsi
 Only retrieve content that genuinely adds to what is already in the session context.`;
 
 /**
- * Build an adaptive retrieval prompt tuned to prior and current confidence.
+ * Build an adaptive retrieval prompt tuned to prior confidence.
  * The returned string still contains {INDEX}, {ALREADY_RETRIEVED}, and {MAX_FILES} placeholders.
  *
  * @param {'high' | 'medium' | 'low' | 'none' | 'unknown'} [previousConfidence] - confidence of the previous turn (controls skip aggressiveness)
- * @param {'high' | 'medium' | 'low' | 'unknown'} [currentConfidence] - assessed confidence of current memory (controls assembly hedging)
  * @returns {string}
  */
-export function buildAdaptiveRetrievalPrompt(previousConfidence = 'unknown', currentConfidence = 'unknown') {
+export function buildAdaptiveRetrievalPrompt(previousConfidence = 'unknown') {
     let skipSection;
     if (previousConfidence === 'high') skipSection = ADAPTIVE_SKIP_HIGH;
     else if (previousConfidence === 'low' || previousConfidence === 'none') skipSection = ADAPTIVE_SKIP_LOW;
     else skipSection = ADAPTIVE_SKIP_MEDIUM;
-
-    const { assembly } = getLevelSections(currentConfidence);
 
     return [
         ADAPTIVE_PREAMBLE,
@@ -221,14 +218,14 @@ export function buildAdaptiveRetrievalPrompt(previousConfidence = 'unknown', cur
         ADAPTIVE_CONSERVATIVE,
         ADAPTIVE_IMPLIED,
         ADAPTIVE_CONVERSATION_NOTE,
-        assembly,
+        ASSEMBLY_MEDIUM,
     ].join('\n\n');
 }
 
 // ─── Backward-compat aliases ──────────────────────────────────────────────────
 
 export const retrievalPrompt = buildRetrievalPrompt('unknown');
-export const adaptiveRetrievalPrompt = buildAdaptiveRetrievalPrompt('unknown', 'unknown');
+export const adaptiveRetrievalPrompt = buildAdaptiveRetrievalPrompt('unknown');
 
 // ─── Augment prompts ──────────────────────────────────────────────────────────
 

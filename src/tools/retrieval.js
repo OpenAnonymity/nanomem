@@ -16,8 +16,6 @@ import {
 } from '../prompts/retrieval.js';
 import {
     normalizeFactText,
-    normalizeTier,
-    normalizeStatus,
     parseBullets,
     renderBullet,
     scoreBullet,
@@ -25,7 +23,6 @@ import {
 } from '../internal/format/index.js';
 
 const MAX_FILES_TO_LOAD = 8;
-const MAX_FILES_BY_LEVEL = { high: 8, medium: 6, low: 3, none: 6, unknown: 6 };
 const MAX_TOTAL_CONTEXT_CHARS = 4000;
 const MAX_SNIPPETS = 18;
 const MAX_RECENT_CONTEXT_CHARS = 2000;
@@ -256,14 +253,10 @@ class MemoryRetriever {
     async _toolCallingRetrieval(query, index, onProgress, conversationText, onModelText, options = { mode: 'retrieve' }) {
         const isAugmentMode = options.mode === 'augment';
 
-        const queryTerms = tokenizeQuery(query);
-        const memoryConfidence = await this._assessConfidenceForQuery(queryTerms);
-        const maxFiles = MAX_FILES_BY_LEVEL[memoryConfidence] ?? MAX_FILES_TO_LOAD;
-
         const systemPrompt = (
-            buildRetrievalPrompt(memoryConfidence, { includeAssembly: !isAugmentMode })
+            buildRetrievalPrompt(undefined, { includeAssembly: !isAugmentMode })
                 .replace('{INDEX}', index)
-                .replace('{MAX_FILES}', String(maxFiles)) +
+                .replace('{MAX_FILES}', String(MAX_FILES_TO_LOAD)) +
             (isAugmentMode ? AUGMENT_SYSTEM_ADDENDUM : '')
         );
         const toolExecutors = {
@@ -426,17 +419,6 @@ class MemoryRetriever {
         let confidenceLevel = rawFacts.length === 0 ? 'none'
             : mediumFacts.length > 0 ? 'medium'
             : 'high';
-
-        // Deterministic cap: if LLM labeled everything high but medium bullets appear in the
-        // high prose, override confidence and move content to the medium bucket.
-        if (confidenceLevel === 'high' && paths.length > 0) {
-            const hasMedium = await this._hasRelevantActiveMediumBullets(paths, queryTerms, highContent);
-            if (hasMedium) {
-                confidenceLevel = 'medium';
-                mediumContent = highContent;
-                highContent = '';
-            }
-        }
 
         // LLM explicitly said nothing relevant — respect that, don't fall back to snippet context.
         if (terminalWasCalled && rawFacts.length === 0) return null;
@@ -943,83 +925,6 @@ class MemoryRetriever {
         });
     }
 
-    /**
-     * Pre-retrieval confidence assessment. Searches for bullets relevant to the
-     * query and returns the dominant confidence level of the top matches.
-     * Used to select the appropriate retrieval prompt variant before the LLM runs.
-     *
-     * @param {string[]} queryTerms
-     * @returns {Promise<'high' | 'medium' | 'low' | 'unknown'>}
-     */
-    async _assessConfidenceForQuery(queryTerms) {
-        if (!queryTerms || queryTerms.length === 0) return 'unknown';
-
-        // Find candidate paths via keyword search (cheap — uses existing index).
-        const candidatePaths = new Set();
-        for (const term of queryTerms.slice(0, 3)) {
-            try {
-                const results = await this._backend.search(term);
-                for (const r of results) candidatePaths.add(r.path);
-            } catch {
-                // search failure is non-fatal
-            }
-        }
-        if (candidatePaths.size === 0) return 'unknown';
-
-        // Load bullets for candidate paths from the bullet index.
-        const paths = [...candidatePaths].slice(0, 5);
-        await this._bulletIndex.init();
-        for (const path of paths) {
-            if (!this._bulletIndex.getBulletsForPaths([path]).length) {
-                await this._bulletIndex.refreshPath(path);
-            }
-        }
-
-        const items = this._bulletIndex.getBulletsForPaths(paths);
-        if (items.length === 0) return 'unknown';
-
-        // Exclude history/superseded/expired bullets — they are past facts and inflate
-        // the high-confidence count without reflecting current memory quality.
-        const activeItems = items.filter(item => {
-            const tier = normalizeTier(item.bullet?.tier || item.bullet?.section || 'long_term');
-            const status = normalizeStatus(item.bullet?.status || 'active');
-            return tier !== 'history' && status !== 'superseded' && status !== 'expired';
-        });
-        const candidateItems = activeItems.length >= 3 ? activeItems : items;
-
-        // Score bullets by text/topic match only — no confidence weight — to avoid
-        // the circularity of high-confidence bullets floating to the top and making
-        // the distribution assessment self-fulfilling.
-        const relevant = candidateItems
-            .map(item => {
-                const text = String(item.bullet?.text || '').toLowerCase();
-                const topic = String(item.bullet?.topic || '').toLowerCase();
-                let score = 0;
-                for (const term of queryTerms) {
-                    if (!term) continue;
-                    if (text.includes(term)) score += 2;
-                    if (topic.includes(term)) score += 1;
-                }
-                return { bullet: item.bullet, score };
-            })
-            .filter(item => item.score > 0)
-            .sort((a, b) => b.score - a.score)
-            .slice(0, 10);
-
-        const pool = relevant.length > 0 ? relevant : candidateItems.slice(0, 10);
-        const counts = { high: 0, medium: 0, low: 0 };
-        for (const { bullet } of pool) {
-            const conf = bullet.confidence;
-            if (conf === 'high' || conf === 'medium' || conf === 'low') counts[conf]++;
-        }
-
-        const total = counts.high + counts.medium + counts.low;
-        if (total === 0) return 'unknown';
-        if (counts.high / total >= 0.75) return 'high';
-        if ((counts.high + counts.medium) / total >= 0.4) return 'medium';
-        return 'low';
-    }
-
     async _isMemoryEmpty(index) {
         const all = await this._backend.exportAll();
         const realFiles = all.filter(f => !f.path.endsWith('_tree.md'));
@@ -1111,14 +1016,10 @@ class MemoryRetriever {
             ? alreadyRetrievedContext.slice(0, MAX_ALREADY_RETRIEVED_CHARS) + '...(truncated)'
             : alreadyRetrievedContext;
 
-        const queryTerms = tokenizeQuery(query);
-        const currentMemoryConfidence = await this._assessConfidenceForQuery(queryTerms);
-        const maxFiles = MAX_FILES_BY_LEVEL[currentMemoryConfidence] ?? MAX_FILES_TO_LOAD;
-
-        const systemPrompt = buildAdaptiveRetrievalPrompt(previousConfidence, currentMemoryConfidence)
+        const systemPrompt = buildAdaptiveRetrievalPrompt(previousConfidence)
             .replace('{INDEX}', index)
             .replace('{ALREADY_RETRIEVED}', truncatedRetrieved)
-            .replace('{MAX_FILES}', String(maxFiles));
+            .replace('{MAX_FILES}', String(MAX_FILES_TO_LOAD));
 
         const toolExecutors = createRetrievalExecutors(this._backend, { query });
 
@@ -1194,16 +1095,6 @@ class MemoryRetriever {
             : mediumFacts.length > 0 ? 'medium'
             : 'high';
 
-        // Deterministic cap: same as in _toolCallingRetrieval.
-        if (confidenceLevel === 'high' && paths.length > 0) {
-            const hasMedium = await this._hasRelevantActiveMediumBullets(paths, queryTerms, highContent);
-            if (hasMedium) {
-                confidenceLevel = 'medium';
-                mediumContent = highContent;
-                highContent = '';
-            }
-        }
-
         // Terminal was called but nothing new was found
         if (terminalToolResult && rawFacts.length === 0) {
             const reason = 'No new relevant memory found.';
@@ -1270,74 +1161,6 @@ class MemoryRetriever {
             ...(confidenceLevel ? { confidence: confidenceLevel } : {}),
             ...(displayText ? { displayText } : {})
         };
-    }
-
-    /**
-     * Returns true if any active, non-history bullet in the given paths has
-     * confidence=medium AND was actually used in the assembled answer.
-     *
-     * Two-stage check:
-     *   1. Query relevance — bullet text/topic must match at least one query term.
-     *   2. Assembly presence — bullet tokens must have >=35% overlap with the
-     *      assembled context tokens, confirming the LLM used that bullet.
-     *      Falls back to query-match-only when no assembled context is available.
-     *
-     * @param {string[]} paths
-     * @param {string[]} queryTerms
-     * @param {string | null} [assembledContext]
-     * @returns {Promise<boolean>}
-     */
-    async _hasRelevantActiveMediumBullets(paths, queryTerms, assembledContext) {
-        if (!paths || paths.length === 0 || !queryTerms || queryTerms.length === 0) return false;
-
-        await this._bulletIndex.init();
-        for (const path of paths) {
-            if (!this._bulletIndex.getBulletsForPaths([path]).length) {
-                await this._bulletIndex.refreshPath(path);
-            }
-        }
-
-        const items = this._bulletIndex.getBulletsForPaths(paths);
-        const contextTokens = assembledContext
-            ? new Set(tokenizeQuery(assembledContext))
-            : null;
-
-        for (const item of items) {
-            const { bullet } = item;
-            if (bullet.confidence !== 'medium') continue;
-
-            const tier = normalizeTier(bullet.tier || bullet.section || 'long_term');
-            const status = normalizeStatus(bullet.status || 'active');
-            if (tier === 'history' || status === 'superseded' || status === 'expired') continue;
-
-            const text = String(bullet.text || '').toLowerCase();
-            const topic = String(bullet.topic || '').toLowerCase();
-
-            // Stage 1: query relevance
-            let queryMatch = false;
-            for (const term of queryTerms) {
-                if (!term) continue;
-                if (text.includes(term) || topic.includes(term)) { queryMatch = true; break; }
-            }
-            if (!queryMatch) continue;
-
-            // Stage 2: assembly presence — only cap if the bullet content actually
-            // appears in the assembled answer (i.e. the LLM used it).
-            // Exclude query terms from the overlap check: they appear in every relevant
-            // result by definition and are not evidence that a specific bullet was used.
-            if (contextTokens && contextTokens.size > 0) {
-                const queryTermSet = new Set(queryTerms);
-                const bulletTokens = tokenizeQuery(text).filter(t => !queryTermSet.has(t));
-                if (bulletTokens.length === 0) continue;
-                const matchCount = bulletTokens.filter(t => contextTokens.has(t)).length;
-                if (matchCount / bulletTokens.length >= 0.35) return true;
-            } else {
-                // No assembled context — fall back to query match alone.
-                return true;
-            }
-        }
-
-        return false;
     }
 
     _isContextRedundant(candidateContext, alreadyRetrievedContext) {
