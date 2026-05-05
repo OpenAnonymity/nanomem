@@ -9,6 +9,7 @@
 import { runAgenticToolLoop } from '../internal/toolLoop.js';
 import { craftAugmentedPromptFromFiles, createAugmentQueryExecutor, createRetrievalExecutors } from './executors.js';
 import { trimRecentConversation } from '../internal/recentConversation.js';
+import { TOOL_OUTPUT_TOKENS, TOOL_LOOP_ITERATIONS, DIRECT_LLM_OUTPUT_TOKENS } from '../internal/limits.js';
 import {
     retrievalPrompt,
     augmentAddendum,
@@ -276,8 +277,8 @@ class MemoryRetriever {
                 { role: 'user', content: userContent }
             ],
             terminalTool: isAugmentMode ? 'augment_query' : 'assemble_context',
-            maxIterations: isAugmentMode ? 12 : 10,
-            maxOutputTokens: 4000,
+            maxIterations: isAugmentMode ? TOOL_LOOP_ITERATIONS.retrievalAugment : TOOL_LOOP_ITERATIONS.retrieval,
+            maxOutputTokens: isAugmentMode ? TOOL_OUTPUT_TOKENS.retrievalAugment : TOOL_OUTPUT_TOKENS.retrieval,
             temperature: 0,
             executeTerminalTool: isAugmentMode,
             onToolCall: (name, args, result, meta) => {
@@ -641,7 +642,7 @@ class MemoryRetriever {
                         content: `Memory context:\n\`\`\`\n${truncated}\n\`\`\`\n\nQuestion: ${query}`
                     }
                 ],
-                max_tokens: 250,
+                max_tokens: DIRECT_LLM_OUTPUT_TOKENS.retrievalDirectAnswer,
                 temperature: 0
             });
 
@@ -978,8 +979,8 @@ class MemoryRetriever {
                 { role: 'user', content: userContent }
             ],
             terminalTool: 'assemble_context',
-            maxIterations: 10,
-            maxOutputTokens: 4000,
+            maxIterations: TOOL_LOOP_ITERATIONS.retrieval,
+            maxOutputTokens: TOOL_OUTPUT_TOKENS.retrieval,
             temperature: 0,
             onToolCall: (name, args, result, meta) => {
                 const toolState = meta?.status || 'finished';

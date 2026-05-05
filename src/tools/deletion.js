@@ -13,6 +13,7 @@
 import { runAgenticToolLoop } from '../internal/toolLoop.js';
 import { createDeletionExecutors } from './executors.js';
 import { resolvePromptSet } from '../prompts/index.js';
+import { TOOL_OUTPUT_TOKENS, TOOL_LOOP_ITERATIONS } from '../internal/limits.js';
 
 /** Tools used in default (index-guided) delete mode. */
 const DELETION_TOOLS = [
@@ -121,7 +122,7 @@ export class MemoryDeleter {
             .replace('{QUERY}', query)
             .replace('{INDEX}', index);
 
-        return this._runDeletionLoop(query, systemPrompt, DELETION_TOOLS, 8);
+        return this._runDeletionLoop(query, systemPrompt, DELETION_TOOLS, TOOL_LOOP_ITERATIONS.deletion);
     }
 
     async _deepDelete(query, isDocument) {
@@ -146,7 +147,7 @@ export class MemoryDeleter {
             .replace('{FILE_LIST}', fileList);
 
         // Each file needs a read + potentially multiple deletes; allow enough iterations.
-        const maxIterations = Math.max(30, paths.length * 3);
+        const maxIterations = Math.max(TOOL_LOOP_ITERATIONS.deletionDeepFloor, paths.length * 3);
 
         return this._runDeletionLoop(query, systemPrompt, DEEP_DELETION_TOOLS, maxIterations);
     }
@@ -171,7 +172,7 @@ export class MemoryDeleter {
                     { role: 'user', content: query }
                 ],
                 maxIterations,
-                maxOutputTokens: 2000,
+                maxOutputTokens: TOOL_OUTPUT_TOKENS.deletion,
                 temperature: 0,
                 onToolCall: (name, args, result) => {
                     onToolCall?.(name, args, result);

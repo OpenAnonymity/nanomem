@@ -132,7 +132,8 @@ export async function runAgenticToolLoop(options) {
                 args = typeof tc.function?.arguments === 'string'
                     ? JSON.parse(tc.function.arguments)
                     : (tc.function?.arguments || {});
-            } catch {
+            } catch (err) {
+                console.warn(`[tool-loop] failed to parse args for ${toolName}: ${err.message}. Raw: ${String(tc.function?.arguments).slice(0, 200)}`);
                 args = {};
             }
 
