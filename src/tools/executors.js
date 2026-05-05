@@ -29,38 +29,6 @@ const MAX_AUGMENT_RECENT_CONTEXT_CHARS = 3000;
 const AUGMENT_CRAFTER_MAX_ATTEMPTS = 3;
 const AUGMENT_CRAFTER_RETRY_BASE_DELAY_MS = 350;
 
-function normalizeLookupPath(value, { stripExtension = false } = {}) {
-    let normalized = String(value || '')
-        .trim()
-        .replace(/\\/g, '/')
-        .replace(/^\.\//, '')
-        .replace(/^\/+/, '')
-        .replace(/\/+/g, '/');
-
-    if (stripExtension) {
-        normalized = normalized.replace(/\.md$/i, '');
-    }
-
-    if (typeof normalized.normalize === 'function') {
-        normalized = normalized.normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
-    }
-
-    return normalizeFactText(normalized.replace(/[\/_]/g, ' '));
-}
-
-function pathMatchesQuery(path, query) {
-    const rawPath = String(path || '');
-    const rawQuery = String(query || '').trim().toLowerCase();
-    if (!rawPath || !rawQuery) return false;
-    if (rawPath.toLowerCase().includes(rawQuery)) return true;
-
-    const normalizedQuery = normalizeFactText(rawQuery);
-    if (!normalizedQuery) return false;
-
-    return normalizeLookupPath(rawPath).includes(normalizedQuery)
-        || normalizeLookupPath(rawPath, { stripExtension: true }).includes(normalizedQuery);
-}
-
 const AUGMENT_QUERY_EXECUTOR_SYSTEM_PROMPT = augmentCrafterPrompt;
 
 function clipText(value, limit) {
@@ -281,118 +249,29 @@ export async function craftAugmentedPromptFromFiles({ llmClient, model, query, f
     };
 }
 
-const MAX_READ_FILE_CHARS = 5000;
-const MAX_RETRIEVE_EXCERPT_CHARS = 1500;
-
-function queryTerms(text) {
-    const stopwords = new Set([
-        'a', 'an', 'and', 'are', 'as', 'at', 'be', 'but', 'by', 'did', 'do', 'does',
-        'for', 'from', 'had', 'has', 'have', 'help', 'how', 'i', 'if', 'in', 'into',
-        'is', 'it', 'its', 'me', 'my', 'of', 'on', 'or', 'so', 'that', 'the', 'their',
-        'them', 'they', 'this', 'to', 'use', 'was', 'what', 'when', 'where', 'which',
-        'who', 'why', 'with', 'would', 'you', 'your'
-    ]);
-    return normalizeFactText(String(text || '').toLowerCase())
-        .split(/\s+/)
-        .map((part) => part.trim())
-        .filter((part) => part.length >= 3 && !stopwords.has(part));
-}
-
-/**
- * Extract lines from content that match any query term, preserving section headers.
- * Returns a compact, focused excerpt rather than the full file.
- */
-function excerptMatchingLines(content, query, maxChars = MAX_RETRIEVE_EXCERPT_CHARS) {
-    const text = String(content || '');
-    const terms = queryTerms(query);
-    if (terms.length === 0) return '';
-
-    const lines = text.split('\n');
-    const blocks = [];
-    let currentSection = '';
-    const seenSections = new Set();
-    let totalChars = 0;
-
-    for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        if (trimmed.startsWith('#')) {
-            currentSection = trimmed;
-            continue;
-        }
-
-        const normalized = normalizeFactText(line.toLowerCase());
-        if (!terms.some(term => normalized.includes(term))) continue;
-
-        const block = [];
-        if (currentSection && !seenSections.has(currentSection)) {
-            block.push(currentSection);
-        }
-        block.push(line);
-        const blockStr = block.join('\n');
-
-        if (totalChars + blockStr.length + 1 > maxChars) break;
-
-        if (currentSection) seenSections.add(currentSection);
-        blocks.push(blockStr);
-        totalChars += blockStr.length + 1;
-    }
-
-    return blocks.join('\n');
-}
-
-function clipReadContent(content, query = '') {
-    const text = String(content || '');
-    if (text.length <= MAX_READ_FILE_CHARS) return text;
-
-    if (query) {
-        const excerpt = excerptMatchingLines(text, query, MAX_READ_FILE_CHARS);
-        if (excerpt) return `...(selected relevant excerpts)\n${excerpt}\n...(truncated)`;
-    }
-
-    return text.slice(0, MAX_READ_FILE_CHARS) + '...(truncated)';
-}
+const MAX_READ_FILE_CHARS = 10000;
+const MAX_SEARCH_RESULT_FILES = 5;
+const MAX_SEARCH_LINES_PER_FILE = 8;
 
 /**
  * Build tool executors for the retrieval (read) flow.
  * @param {StorageBackend} backend
- * @param {{ query?: string }} [options]
  */
-export function createRetrievalExecutors(backend, options = {}) {
-    const activeQuery = typeof options?.query === 'string' ? options.query : '';
+export function createRetrievalExecutors(backend) {
     return {
         list_directory: async ({ dir_path }) => {
             const { files, dirs } = await backend.ls(dir_path || '');
             return JSON.stringify({ files, dirs });
         },
-        retrieve_file: async ({ query }) => {
-            const terms = queryTerms(query);
-            const searchTerms = terms.length > 0 ? terms.slice(0, 3) : [query.trim()].filter(Boolean);
+        search_memory: async ({ query }) => {
+            const trimmed = String(query || '').trim();
+            if (!trimmed) return JSON.stringify({ results: [], count: 0 });
 
-            const allFiles = await backend.exportAll();
-            const contentFiles = allFiles
-                .filter((f) => typeof f?.path === 'string' && typeof f?.content === 'string')
-                .filter((f) => !f.path.endsWith('_tree.md'));
-
-            const seen = new Set();
-            const matched = [];
-            for (const file of contentFiles) {
-                const pathMatch = pathMatchesQuery(file.path, query);
-                const contentMatch = searchTerms.some((term) =>
-                    normalizeFactText(file.content.toLowerCase()).includes(term)
-                );
-                if ((pathMatch || contentMatch) && !seen.has(file.path)) {
-                    seen.add(file.path);
-                    matched.push(file);
-                }
-            }
-
-            const results = matched.slice(0, 5).map((file) => {
-                const excerpts = terms.length > 0
-                    ? excerptMatchingLines(file.content, query, MAX_RETRIEVE_EXCERPT_CHARS)
-                    : null;
-                return { path: file.path, excerpts: excerpts || null };
-            });
+            const hits = await backend.search(trimmed);
+            const results = hits.slice(0, MAX_SEARCH_RESULT_FILES).map(({ path, lines }) => ({
+                path,
+                lines: lines.slice(0, MAX_SEARCH_LINES_PER_FILE)
+            }));
 
             return JSON.stringify({ results, count: results.length });
         },
@@ -402,7 +281,9 @@ export function createRetrievalExecutors(backend, options = {}) {
                 : null;
             const content = await backend.read(resolvedPath || path);
             if (content === null) return JSON.stringify({ error: `File not found: ${path}` });
-            return clipReadContent(content, activeQuery);
+            return content.length > MAX_READ_FILE_CHARS
+                ? content.slice(0, MAX_READ_FILE_CHARS) + '...(truncated)'
+                : content;
         }
     };
 }

@@ -24,6 +24,7 @@ import {
     renderCompactedDocument
 } from '../internal/format/index.js';
 import { compactionPrompt, semanticReviewPrompt } from '../prompts/compaction.js';
+import { DIRECT_LLM_OUTPUT_TOKENS } from '../internal/limits.js';
 
 
 const MAX_FILE_CHARS = 8000;
@@ -193,7 +194,7 @@ class MemoryCompactor {
             const response = await this._llmClient.createChatCompletion({
                 model: this._model,
                 messages: [{ role: 'user', content: prompt }],
-                max_tokens: 6000,
+                max_tokens: DIRECT_LLM_OUTPUT_TOKENS.compactionSemanticReview,
                 temperature: 0,
             });
             responseText = response.content || '';
@@ -228,7 +229,7 @@ class MemoryCompactor {
         const response = await this._llmClient.createChatCompletion({
             model: this._model,
             messages: [{ role: 'user', content: prompt }],
-            max_tokens: 1800,
+            max_tokens: DIRECT_LLM_OUTPUT_TOKENS.compactionRewrite,
             temperature: 0,
         });
 

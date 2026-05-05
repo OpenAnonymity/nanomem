@@ -8,6 +8,7 @@
 import { runAgenticToolLoop } from '../internal/toolLoop.js';
 import { createExtractionExecutors } from './executors.js';
 import { resolvePromptSet } from '../prompts/index.js';
+import { TOOL_OUTPUT_TOKENS, TOOL_LOOP_ITERATIONS } from '../internal/limits.js';
 import {
     compactBullets,
     ensureBulletMetadata,
@@ -175,8 +176,8 @@ class MemoryIngester {
                     { role: 'system', content: systemPrompt },
                     { role: 'user', content: userMessage }
                 ],
-                maxIterations: 12,
-                maxOutputTokens: 4000,
+                maxIterations: TOOL_LOOP_ITERATIONS.ingestion,
+                maxOutputTokens: TOOL_OUTPUT_TOKENS.ingestion,
                 temperature: 0,
                 signal,
                 onToolCall: (name, args, result, meta) => {
