@@ -1,9 +1,9 @@
 /**
  * Prompt set for memory retrieval and augmented query crafting.
  *
- * buildRetrievalPrompt(level)         — retrieval prompt tuned to memory confidence level.
+ * buildRetrievalPrompt()              — base retrieval prompt.
  * buildAdaptiveRetrievalPrompt(level) — multi-turn retrieval prompt tuned to prior confidence.
- * retrievalPrompt / adaptiveRetrievalPrompt — backward-compat aliases (medium/unknown level).
+ * retrievalPrompt / adaptiveRetrievalPrompt — backward-compat aliases.
  * augmentAddendum                     — appended when crafting an augmented prompt.
  * augmentCrafterPrompt                — second-pass LLM prompt for privacy-minimized prompts.
  */
@@ -63,9 +63,9 @@ const CONVERSATION_NOTE = `When recent conversation context is provided alongsid
 
 Only include content that genuinely helps answer this specific query. Do not include unrelated files from other domains.`;
 
-// ─── Per-level no-op guidance ─────────────────────────────────────────────────
+// ─── Retrieval guidance ────────────────────────────────────────────────────────
 
-const NOOP_HIGH = `CONSERVATIVE DEFAULT — when in doubt, retrieve nothing:
+const RETRIEVAL_NOOP = `CONSERVATIVE DEFAULT — lean toward no-op:
 - Before opening any file, ask: "Would including personal memory give a meaningfully better answer to this specific query?" If not clearly yes, call assemble_context with an empty facts array immediately — no file reads needed.
 - Statements of current activity ("I'm studying X", "I started learning Y") do NOT need memory retrieval unless the user also asks a specific question that depends on personal context.
 - Pure general knowledge questions and topic explanations rarely benefit from personal memory.
@@ -74,28 +74,7 @@ const NOOP_HIGH = `CONSERVATIVE DEFAULT — when in doubt, retrieve nothing:
 - RETRIEVE for queries about the user's own habits, routines, behaviors, decisions, or plans — even if phrased as "how do I" or "help me". Personal context materially changes the answer for these. Examples: "help me be more productive", "should I go full-time", "what should I eat", "how should I train".
 - IMPORTANT exception: If the query is underspecified and a personal fact would resolve a missing parameter, ambiguity, or decision variable, retrieve that specific fact before deciding to skip. Even then, stay minimal.`;
 
-const NOOP_MEDIUM = `CONSERVATIVE DEFAULT — lean toward no-op:
-- Before opening any file, ask: "Would this personal memory give a meaningfully better answer?" Because memory confidence is mixed, the bar is higher: only retrieve if a specific personal fact is clearly needed — not merely topically adjacent.
-- Pure general knowledge questions and topic explanations must be skipped.
-- If the best matching facts in any file are confidence=medium AND they are only tangentially relevant (would not materially resolve a specific gap in the answer), call assemble_context with an empty facts array. Do not surface weakly-relevant uncertain facts.
-- RETRIEVE for queries about the user's own habits, routines, behaviors, decisions, or plans — these benefit directly from personal context even under mixed memory confidence.
-- IMPORTANT exception: If the query is underspecified and a personal fact would resolve a missing parameter or ambiguity, retrieve that specific fact — but read at most 4 files and stop when you find it.`;
-
-const NOOP_LOW = `CONSERVATIVE DEFAULT — default to no-op:
-- Memory confidence is low. Only retrieve if the index shows a file whose path directly matches the query domain AND the query clearly depends on a personal fact that cannot be answered any other way.
-- Do NOT retrieve for topically-adjacent files, general knowledge, or queries that could be answered without personal context.
-- If in doubt, call assemble_context with an empty string immediately — a confident non-answer is better than a low-confidence guess.
-- Stop at the first directly relevant high-confidence fact you find. Do not broaden the search.`;
-
-// ─── Per-level assembly guidance ──────────────────────────────────────────────
-
-const ASSEMBLY_HIGH = `CONFIDENCE-AWARE ASSEMBLY:
-- Only include facts that directly answer the query. Do not volunteer adjacent context from the same file unless it materially changes the answer.
-- Return each relevant fact as a separate item in the facts array with confidence="high".
-- Write each fact as a direct statement in second person ("You completed X", "You have Y").
-- If nothing relevant was found, return an empty facts array.`;
-
-const ASSEMBLY_MEDIUM = `CONFIDENCE-AWARE ASSEMBLY:
+const RETRIEVAL_ASSEMBLY = `CONFIDENCE-AWARE ASSEMBLY:
 - Only include facts that directly answer the query. Do not volunteer adjacent context from the same file unless it materially changes the answer.
 - Return each relevant fact as a separate item in the facts array. Process each bullet individually:
   - confidence=high bullet → confidence="high", written as a direct statement ("You completed X", "You work on Y").
@@ -104,42 +83,21 @@ const ASSEMBLY_MEDIUM = `CONFIDENCE-AWARE ASSEMBLY:
 - Write each fact as one complete sentence. Do not merge bullets of different confidence levels into the same sentence.
 - If nothing relevant was found, return an empty facts array.`;
 
-const ASSEMBLY_LOW = `CONFIDENCE-AWARE ASSEMBLY:
-- Only include facts that directly answer the query. Do not volunteer adjacent context from the same file unless it materially changes the answer.
-- Return each relevant fact as a separate item in the facts array.
-- Default to confidence="medium" with heavy hedging ("You may have mentioned...", "Based on your memory...").
-- Exception: if a fact is explicitly marked confidence=high and directly answers the query, use confidence="high" and write it directly.
-- If the answer would be mostly uncertain, return an empty facts array.`;
-
-// ─── Builder: regular retrieval ───────────────────────────────────────────────
-
 /**
- * @param {'high' | 'medium' | 'low' | 'unknown'} level
- * @returns {{ noop: string, assembly: string }}
- */
-function getLevelSections(level) {
-    if (level === 'high') return { noop: NOOP_HIGH, assembly: ASSEMBLY_HIGH };
-    if (level === 'low') return { noop: NOOP_LOW, assembly: ASSEMBLY_LOW };
-    return { noop: NOOP_MEDIUM, assembly: ASSEMBLY_MEDIUM };
-}
-
-/**
- * Build a retrieval prompt tuned to the assessed confidence of the relevant memory.
+ * Build the base retrieval prompt.
  * The returned string still contains {INDEX} and {MAX_FILES} placeholders.
  *
- * @param {'high' | 'medium' | 'low' | 'unknown'} [level]
  * @param {{ includeAssembly?: boolean }} [options]
  * @returns {string}
  */
-export function buildRetrievalPrompt(level = 'unknown', { includeAssembly = true } = {}) {
-    const { noop, assembly } = getLevelSections(level);
+export function buildRetrievalPrompt(_level = 'unknown', { includeAssembly = true } = {}) {
     // In augment mode: use the base preamble (no "call assemble_context" steps 5-6)
     // and rewrite NOOP skip instructions to reference augment_query instead.
     // The AUGMENT_SYSTEM_ADDENDUM appended by the caller provides the definitive terminal instruction.
     const preamble = includeAssembly ? RETRIEVAL_PREAMBLE : RETRIEVAL_PREAMBLE_BASE;
     const effectiveNoop = includeAssembly
-        ? noop
-        : noop
+        ? RETRIEVAL_NOOP
+        : RETRIEVAL_NOOP
             .replace(/call assemble_context with an empty (?:string|facts array)(?: immediately)?/g,
                 'call augment_query with an empty memory_files array');
     const sections = [
@@ -149,7 +107,7 @@ export function buildRetrievalPrompt(level = 'unknown', { includeAssembly = true
         IMPLIED_CONTEXT,
         CONVERSATION_NOTE,
     ];
-    if (includeAssembly) sections.push(assembly);
+    if (includeAssembly) sections.push(RETRIEVAL_ASSEMBLY);
     return sections.join('\n\n');
 }
 
@@ -171,10 +129,10 @@ The following memory context was already retrieved and delivered earlier in this
 
 Instructions:
 1. First assess whether the current query is already sufficiently covered by the already-retrieved context above.
-2. If it IS covered — call assemble_context with an empty string, skipped=true, and a brief skip_reason. Do not use any retrieval tools.
+2. If it IS covered — call assemble_context with an empty facts array, skipped=true, and a brief skip_reason. Do not use any retrieval tools.
 3. If it is NOT covered or only partially covered — use the retrieval tools to find only the MISSING information. Read at most {MAX_FILES} files.
-4. Once you have retrieved new information, call assemble_context with ONLY the newly found facts in content. Do not repeat what was already retrieved. Leave skipped unset (or false).
-5. If you searched but found nothing new, call assemble_context with an empty string and skipped=true, skip_reason="No new relevant memory found."`;
+4. Once you have retrieved new information, call assemble_context with ONLY the newly found facts in the facts array. Do not repeat what was already retrieved. Leave skipped unset (or false).
+5. If you searched but found nothing new, call assemble_context with an empty facts array and skipped=true, skip_reason="No new relevant memory found."`;
 
 const ADAPTIVE_SKIP_HIGH = `Skip aggressiveness — HIGH (prior context is reliable):
 - The previously retrieved context is high-confidence. If it covers the current query even partially, prefer skipped=true.
@@ -218,7 +176,7 @@ export function buildAdaptiveRetrievalPrompt(previousConfidence = 'unknown') {
         ADAPTIVE_CONSERVATIVE,
         ADAPTIVE_IMPLIED,
         ADAPTIVE_CONVERSATION_NOTE,
-        ASSEMBLY_MEDIUM,
+        RETRIEVAL_ASSEMBLY,
     ].join('\n\n');
 }
 
