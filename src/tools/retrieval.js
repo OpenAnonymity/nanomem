@@ -10,9 +10,9 @@ import { runAgenticToolLoop } from '../internal/toolLoop.js';
 import { craftAugmentedPromptFromFiles, createAugmentQueryExecutor, createRetrievalExecutors } from './executors.js';
 import { trimRecentConversation } from '../internal/recentConversation.js';
 import {
-    retrievalPrompt,
     augmentAddendum,
-    adaptiveRetrievalPrompt
+    buildRetrievalPrompt,
+    buildAdaptiveRetrievalPrompt,
 } from '../prompts/retrieval.js';
 import {
     normalizeFactText,
@@ -86,19 +86,29 @@ const RETRIEVAL_TOOLS = [
         type: 'function',
         function: {
             name: 'assemble_context',
-            description: 'Synthesize and return the final answer to the user\'s query based on what you read. Do NOT paste raw file content — write a clear, direct answer in plain prose. You MUST call this when done, even if nothing relevant was found (pass an empty string).',
+            description: 'Return all facts relevant to the query. Each fact is a separate object labeled with its confidence level. You MUST call this when done, even if nothing was found (pass an empty array).',
             parameters: {
                 type: 'object',
                 properties: {
-                    content: { type: 'string', description: 'A synthesized, human-readable answer to the query derived from the memory files. Write prose, not raw bullet dumps. If nothing relevant was found, pass an empty string.' }
+                    facts: {
+                        type: 'array',
+                        description: 'One object per relevant fact. Empty array if nothing relevant was found.',
+                        items: {
+                            type: 'object',
+                            properties: {
+                                text: { type: 'string', description: 'The fact as one complete sentence in second person. High-confidence: direct statement. Medium-confidence: already hedged ("You\'ve mentioned...", "You tend to...").' },
+                                confidence: { type: 'string', enum: ['high', 'medium', 'low'], description: 'Confidence level matching the source bullet\'s confidence field.' }
+                            },
+                            required: ['text', 'confidence']
+                        }
+                    }
                 },
-                required: ['content']
+                required: ['facts']
             }
         }
     }
 ];
 
-const RETRIEVAL_SYSTEM_PROMPT = retrievalPrompt.replace('{MAX_FILES}', String(MAX_FILES_TO_LOAD));
 
 /** @type {ToolDefinition} */
 const AUGMENT_QUERY_TOOL = {
@@ -125,6 +135,8 @@ const AUGMENT_QUERY_TOOL = {
 
 const AUGMENT_SYSTEM_ADDENDUM = augmentAddendum;
 
+const MAX_ALREADY_RETRIEVED_CHARS = 3000;
+
 /** @type {ToolDefinition[]} */
 const ADAPTIVE_RETRIEVAL_TOOLS = RETRIEVAL_TOOLS.map(tool => {
     if (tool.function.name !== 'assemble_context') return tool;
@@ -137,17 +149,26 @@ const ADAPTIVE_RETRIEVAL_TOOLS = RETRIEVAL_TOOLS.map(tool => {
             parameters: {
                 type: 'object',
                 properties: {
-                    content: { type: 'string', description: 'Newly retrieved facts as synthesized prose. Empty string when skipped.' },
-                    skipped: { type: 'boolean', description: 'True when existing context already covers the query and no new retrieval was done.' },
-                    skip_reason: { type: 'string', description: 'Brief explanation of why retrieval was skipped. Required when skipped=true.' }
+                    facts: {
+                        type: 'array',
+                        description: 'Newly retrieved facts. Empty array when skipped or nothing new found.',
+                        items: {
+                            type: 'object',
+                            properties: {
+                                text: { type: 'string', description: 'The fact as one complete sentence. High-confidence: direct. Medium-confidence: already hedged.' },
+                                confidence: { type: 'string', enum: ['high', 'medium', 'low'], description: 'Confidence level matching the source bullet\'s confidence field.' }
+                            },
+                            required: ['text', 'confidence']
+                        }
+                    },
+                    skipped: { type: 'boolean', description: 'True when existing context already covers the query.' },
+                    skip_reason: { type: 'string', description: 'Required when skipped=true.' }
                 },
-                required: ['content']
+                required: ['facts']
             }
         }
     };
 });
-
-const MAX_ALREADY_RETRIEVED_CHARS = 3000;
 
 async function collectReadFiles(toolCallLog, backend) {
     const files = [];
@@ -231,8 +252,11 @@ class MemoryRetriever {
      */
     async _toolCallingRetrieval(query, index, onProgress, conversationText, onModelText, options = { mode: 'retrieve' }) {
         const isAugmentMode = options.mode === 'augment';
+
         const systemPrompt = (
-            RETRIEVAL_SYSTEM_PROMPT.replace('{INDEX}', index) +
+            buildRetrievalPrompt(undefined, { includeAssembly: !isAugmentMode })
+                .replace('{INDEX}', index)
+                .replace('{MAX_FILES}', String(MAX_FILES_TO_LOAD)) +
             (isAugmentMode ? AUGMENT_SYSTEM_ADDENDUM : '')
         );
         const toolExecutors = {
@@ -380,10 +404,24 @@ class MemoryRetriever {
         const paths = files.map(f => f.path);
 
         const terminalWasCalled = terminalToolResult != null;
-        const assembledContext = terminalToolResult?.arguments?.content || null;
+        const rawFacts = Array.isArray(terminalToolResult?.arguments?.facts)
+            ? terminalToolResult.arguments.facts.filter(f => f?.text && f?.confidence)
+            : [];
+
+        const highFacts = rawFacts.filter(f => f.confidence === 'high').map(f => f.text);
+        const mediumFacts = rawFacts.filter(f => f.confidence === 'medium' || f.confidence === 'low').map(f => f.text);
+        let highContent = highFacts.join(' ');
+        let mediumContent = mediumFacts.join(' ');
+        const assembledContext = (highContent && mediumContent)
+            ? `${highContent}\n\nLess certain: ${mediumContent}`
+            : (highContent || mediumContent || null);
+
+        let confidenceLevel = rawFacts.length === 0 ? 'none'
+            : mediumFacts.length > 0 ? 'medium'
+            : 'high';
 
         // LLM explicitly said nothing relevant — respect that, don't fall back to snippet context.
-        if (terminalWasCalled && !assembledContext) return null;
+        if (terminalWasCalled && rawFacts.length === 0) return null;
 
         if (files.length === 0 && !assembledContext) return null;
 
@@ -395,7 +433,14 @@ class MemoryRetriever {
             paths
         });
 
-        return { files, paths, assembledContext: assembledContext || snippetContext };
+        return {
+            files,
+            paths,
+            assembledContext: assembledContext || snippetContext,
+            ...(highContent ? { highConfidenceContext: highContent } : {}),
+            ...(mediumContent ? { mediumConfidenceContext: mediumContent } : {}),
+            ...(confidenceLevel !== 'none' ? { confidence: confidenceLevel } : { confidence: 'none' })
+        };
     }
 
     /**
@@ -476,6 +521,18 @@ class MemoryRetriever {
             };
         }
 
+        // Build a confidence-labeled context string so the crafter can apply
+        // different treatment to high-confidence facts vs. medium-confidence plans.
+        const highContent = typeof retrieval.highConfidenceContext === 'string'
+            ? retrieval.highConfidenceContext.trim()
+            : '';
+        const mediumContent = typeof retrieval.mediumConfidenceContext === 'string'
+            ? retrieval.mediumConfidenceContext.trim()
+            : '';
+        const crafterContent = (highContent && mediumContent)
+            ? `## Confirmed facts\n${highContent}\n\n## Uncertain context\n${mediumContent}`
+            : assembledContext;
+
         const paths = Array.isArray(retrieval.paths) ? retrieval.paths : [];
         const syntheticPath = paths.length > 0
             ? `adaptive/new-context-from-${paths.join('__').slice(0, 120)}`
@@ -484,7 +541,7 @@ class MemoryRetriever {
             llmClient: this._llmClient,
             model: this._model,
             query,
-            files: [{ path: syntheticPath, content: assembledContext }],
+            files: [{ path: syntheticPath, content: crafterContent }],
             conversationText,
             onProgress: (event) => {
                 if (!event?.stage || !event?.message) return;
@@ -518,7 +575,8 @@ class MemoryRetriever {
             reviewPrompt: crafted.reviewPrompt,
             apiPrompt: crafted.apiPrompt,
             assembledContext,
-            skipped: false
+            skipped: false,
+            ...(retrieval.confidence ? { confidence: retrieval.confidence } : {})
         };
     }
 
@@ -558,6 +616,7 @@ class MemoryRetriever {
             files,
             paths: files.map(f => f.path),
             assembledContext: assembled,
+            confidence: 'medium',
             ...(displayText ? { displayText } : {})
         };
     }
@@ -882,9 +941,10 @@ class MemoryRetriever {
      * @param {string} query - the user's current message
      * @param {string} [alreadyRetrievedContext] - memory context already in the session
      * @param {string} [conversationText] - recent conversation for reference resolution
+     * @param {'high' | 'medium' | 'low' | 'none'} [previousConfidence] - confidence of the previous retrieval turn
      * @returns {Promise<import('../types.js').AdaptiveRetrievalResult | null>}
      */
-    async retrieveAdaptively(query, alreadyRetrievedContext, conversationText) {
+    async retrieveAdaptively(query, alreadyRetrievedContext, conversationText, previousConfidence) {
         if (!query || !query.trim()) return null;
 
         const onProgress = this._onProgress;
@@ -917,8 +977,8 @@ class MemoryRetriever {
 
         let result;
         try {
-            onProgress?.({ stage: 'retrieval', message: 'Checking existing memory context...' });
-            result = await this._adaptiveToolCallingRetrieval(query, index, onProgress, conversationText, onModelText, alreadyRetrievedContext);
+            onProgress?.({ stage: 'retrieval', message: 'Checking whether new retrieval is needed...' });
+            result = await this._adaptiveToolCallingRetrieval(query, index, onProgress, conversationText, onModelText, alreadyRetrievedContext, previousConfidence);
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             onProgress?.({ stage: 'fallback', message: `Adaptive retrieval unavailable (${message}) — falling back to keyword search.` });
@@ -951,12 +1011,12 @@ class MemoryRetriever {
         return result;
     }
 
-    async _adaptiveToolCallingRetrieval(query, index, onProgress, conversationText, onModelText, alreadyRetrievedContext) {
+    async _adaptiveToolCallingRetrieval(query, index, onProgress, conversationText, onModelText, alreadyRetrievedContext, previousConfidence) {
         const truncatedRetrieved = alreadyRetrievedContext.length > MAX_ALREADY_RETRIEVED_CHARS
             ? alreadyRetrievedContext.slice(0, MAX_ALREADY_RETRIEVED_CHARS) + '...(truncated)'
             : alreadyRetrievedContext;
 
-        const systemPrompt = adaptiveRetrievalPrompt
+        const systemPrompt = buildAdaptiveRetrievalPrompt(previousConfidence)
             .replace('{INDEX}', index)
             .replace('{ALREADY_RETRIEVED}', truncatedRetrieved)
             .replace('{MAX_FILES}', String(MAX_FILES_TO_LOAD));
@@ -1019,10 +1079,24 @@ class MemoryRetriever {
 
         const files = await collectReadFiles(toolCallLog, this._backend);
         const paths = files.map(f => f.path);
-        const assembledContext = args.content || null;
+
+        const rawFacts = Array.isArray(args?.facts)
+            ? args.facts.filter(f => f?.text && f?.confidence)
+            : [];
+        const highFacts = rawFacts.filter(f => f.confidence === 'high').map(f => f.text);
+        const mediumFacts = rawFacts.filter(f => f.confidence === 'medium' || f.confidence === 'low').map(f => f.text);
+        let highContent = highFacts.join(' ');
+        let mediumContent = mediumFacts.join(' ');
+        const assembledContext = (highContent && mediumContent)
+            ? `${highContent}\n\nLess certain: ${mediumContent}`
+            : (highContent || mediumContent || null);
+
+        let confidenceLevel = rawFacts.length === 0 ? 'none'
+            : mediumFacts.length > 0 ? 'medium'
+            : 'high';
 
         // Terminal was called but nothing new was found
-        if (terminalToolResult && !assembledContext) {
+        if (terminalToolResult && rawFacts.length === 0) {
             const reason = 'No new relevant memory found.';
             const displayText = await this._renderDirectAnswer(query, alreadyRetrievedContext);
             onProgress?.({ stage: 'complete', message: `Retrieval skipped: ${reason}` });
@@ -1082,6 +1156,9 @@ class MemoryRetriever {
             paths,
             assembledContext: finalContext,
             skipped: false,
+            ...(highContent ? { highConfidenceContext: highContent } : {}),
+            ...(mediumContent ? { mediumConfidenceContext: mediumContent } : {}),
+            ...(confidenceLevel ? { confidence: confidenceLevel } : {}),
             ...(displayText ? { displayText } : {})
         };
     }
@@ -1103,7 +1180,11 @@ class MemoryRetriever {
 
     static _stripUserDataTags(text) {
         if (!text) return text;
-        return text.replace(/\[\[user_data\]\]/g, '').replace(/\[\[\/user_data\]\]/g, '');
+        return text
+            .replace(/\[\[user_data\]\]/g, '')
+            .replace(/\[\[\/user_data\]\]/g, '')
+            .replace(/\[\[user_data_uncertain\]\]/g, '(less certain: ')
+            .replace(/\[\[\/user_data_uncertain\]\]/g, ')');
     }
 }
 

@@ -113,7 +113,10 @@ describe('retrieveAdaptively', () => {
                                 function: {
                                     name: 'assemble_context',
                                     arguments: JSON.stringify({
-                                        content: 'The user has a severe peanut allergy.'
+                                        facts: [{
+                                            text: 'You have a severe peanut allergy.',
+                                            confidence: 'high'
+                                        }]
                                     })
                                 }
                             }]
@@ -137,7 +140,7 @@ describe('retrieveAdaptively', () => {
         );
 
         assert.equal(result.skipped, false);
-        assert.equal(result.assembledContext, 'The user has a severe peanut allergy.');
+        assert.equal(result.assembledContext, 'You have a severe peanut allergy.');
         assert.match(result.reviewPrompt, /severe peanut allergy/);
         assert.equal(
             result.apiPrompt,

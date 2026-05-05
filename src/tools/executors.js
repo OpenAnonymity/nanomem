@@ -271,7 +271,7 @@ export async function craftAugmentedPromptFromFiles({ llmClient, model, query, f
         return { error: `${crafterError} (after ${AUGMENT_CRAFTER_MAX_ATTEMPTS} attempts)` };
     }
 
-    if (!/\[\[user_data\]\]/.test(reviewPrompt)) {
+    if (!/\[\[user_data(?:_uncertain)?\]\]/.test(reviewPrompt)) {
         return { noRelevantMemory: true };
     }
 
@@ -459,11 +459,18 @@ export function createAugmentQueryExecutor({ backend, llmClient, model, query, c
             return JSON.stringify({ error: 'augment_query could not load any selected memory files.' });
         }
 
+        // Pre-filter each file to only bullets relevant to the query so the crafter
+        // sees focused signal rather than the full file with unrelated bullets.
+        const crafterFiles = files.map(file => {
+            const filtered = filterBulletsForCrafter(file.content, effectiveQuery);
+            return filtered ? { path: file.path, content: filtered } : file;
+        });
+
         const crafted = await craftAugmentedPromptFromFiles({
             llmClient,
             model,
             query: effectiveQuery,
-            files,
+            files: crafterFiles,
             conversationText,
             onProgress
         });
@@ -706,8 +713,49 @@ function trimRecentContext(conversationText) {
     });
 }
 
+/**
+ * Filter a memory file's bullets down to only those relevant to the query.
+ * Returns a compact string of "- text | confidence=X" lines, or null if
+ * the file has no parseable bullets or no relevant ones.
+ *
+ * This prevents the crafter from drowning in a large file of unrelated bullets
+ * and picking just one (or the wrong) fact.
+ */
+function filterBulletsForCrafter(content, query) {
+    const bullets = parseBullets(content);
+    if (bullets.length === 0) return null;
+
+    const tokens = queryTerms(query);
+
+    const active = bullets.filter(b => {
+        const tier = String(b.tier || b.section || 'long_term').toLowerCase();
+        const status = String(b.status || 'active').toLowerCase();
+        return tier !== 'history' && status !== 'superseded' && status !== 'expired';
+    });
+    if (active.length === 0) return null;
+
+    const scored = active.map(b => {
+        const text = String(b.text || '').toLowerCase();
+        const topic = String(b.topic || '').toLowerCase();
+        let score = 0;
+        for (const t of tokens) {
+            if (text.includes(t)) score += 2;
+            if (topic.includes(t)) score += 1;
+        }
+        return { bullet: b, score };
+    }).filter(x => x.score > 0).sort((a, b) => b.score - a.score);
+
+    if (scored.length === 0) return null;
+
+    return scored.slice(0, 20)
+        .map(x => `- ${x.bullet.text} | confidence=${x.bullet.confidence}`)
+        .join('\n');
+}
+
 function stripUserDataTags(text) {
     return String(text ?? '')
         .replace(/\[\[user_data\]\]/g, '')
-        .replace(/\[\[\/user_data\]\]/g, '');
+        .replace(/\[\[\/user_data\]\]/g, '')
+        .replace(/\[\[user_data_uncertain\]\]/g, '(less certain: ')
+        .replace(/\[\[\/user_data_uncertain\]\]/g, ')');
 }
