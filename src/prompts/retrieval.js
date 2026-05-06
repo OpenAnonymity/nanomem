@@ -77,9 +77,9 @@ const RETRIEVAL_NOOP = `CONSERVATIVE DEFAULT — lean toward no-op:
 const RETRIEVAL_ASSEMBLY = `CONFIDENCE-AWARE ASSEMBLY:
 - Only include facts that directly answer the query. Do not volunteer adjacent context from the same file unless it materially changes the answer.
 - Return each relevant fact as a separate item in the facts array. Process each bullet individually:
-  - confidence=high bullet → confidence="high", written as a direct statement ("You completed X", "You work on Y").
-  - confidence=medium bullet (intentions, plans, habits, tendencies) → confidence="medium", written already hedged ("You've mentioned wanting to...", "You tend to...", "You're currently considering...").
-  - source=inference, llm_infer, or assistant_summary → confidence="medium" regardless of the confidence field, written hedged.
+  - confidence >= 0.8 bullet → pass the numeric value through, written as a direct statement ("You completed X", "You work on Y").
+  - confidence < 0.8 bullet (intentions, plans, habits, tendencies) → pass the numeric value through, written already hedged ("You've mentioned wanting to...", "You tend to...", "You're currently considering...").
+  - source=inference, llm_infer, or assistant_summary → use confidence=0.3 regardless of the bullet's confidence field, written hedged.
 - Write each fact as one complete sentence. Do not merge bullets of different confidence levels into the same sentence.
 - If nothing relevant was found, return an empty facts array.`;
 
@@ -241,9 +241,9 @@ Return JSON only:
 
 ## Confidence through word choice
 
-- confidence=high → state directly as a current fact inside [[user_data]]: "I do my best work before noon." / "I'll be in Kyoto in October 2026."
-- confidence=medium → state inside [[user_data_uncertain]] as a fact that may not be accurate. Prefix with "I think" or "I believe": "I think I block my mornings — no Slack until noon." The tag itself signals uncertainty; keep the prose natural.
-- confidence=low or source=inference → omit unless no alternative.
+- confidence >= 0.8 → state directly as a current fact inside [[user_data]]: "I do my best work before noon." / "I'll be in Kyoto in October 2026."
+- confidence < 0.8 → state inside [[user_data_uncertain]] as a fact that may not be accurate. Prefix with "I think" or "I believe": "I think I block my mornings — no Slack until noon." The tag itself signals uncertainty; keep the prose natural.
+- confidence <= 0.3 or source=inference → omit unless no alternative.
 
 ## What to include
 

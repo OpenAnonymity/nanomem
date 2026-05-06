@@ -103,8 +103,7 @@ function compareBulletStrength(a, b) {
     const srcDiff = (srcRank[aSource] ?? 0) - (srcRank[bSource] ?? 0);
     if (srcDiff !== 0) return srcDiff;
 
-    const confRank = { low: 0, medium: 1, high: 2 };
-    const confDiff = (confRank[aConf] ?? 1) - (confRank[bConf] ?? 1);
+    const confDiff = (typeof aConf === 'number' ? aConf : 0.5) - (typeof bConf === 'number' ? bConf : 0.5);
     if (confDiff !== 0) return confDiff;
 
     return String(a?.updatedAt || '').localeCompare(String(b?.updatedAt || ''));

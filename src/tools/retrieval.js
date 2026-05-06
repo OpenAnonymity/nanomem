@@ -86,7 +86,7 @@ const RETRIEVAL_TOOLS = [
         type: 'function',
         function: {
             name: 'assemble_context',
-            description: 'Return all facts relevant to the query. Each fact is a separate object labeled with its confidence level. You MUST call this when done, even if nothing was found (pass an empty array).',
+            description: 'Return all facts relevant to the query. Each fact is a separate object labeled with its confidence score. You MUST call this when done, even if nothing was found (pass an empty array).',
             parameters: {
                 type: 'object',
                 properties: {
@@ -96,8 +96,8 @@ const RETRIEVAL_TOOLS = [
                         items: {
                             type: 'object',
                             properties: {
-                                text: { type: 'string', description: 'The fact as one complete sentence in second person. High-confidence: direct statement. Medium-confidence: already hedged ("You\'ve mentioned...", "You tend to...").' },
-                                confidence: { type: 'string', enum: ['high', 'medium', 'low'], description: 'Confidence level matching the source bullet\'s confidence field.' }
+                                text: { type: 'string', description: 'The fact as one complete sentence in second person. Confidence >= 0.8: direct statement. Confidence < 0.8: already hedged ("You\'ve mentioned...", "You tend to...").' },
+                                confidence: { type: 'number', description: 'The confidence score from the source bullet (0–1). Pass it through unchanged.' }
                             },
                             required: ['text', 'confidence']
                         }
@@ -155,8 +155,8 @@ const ADAPTIVE_RETRIEVAL_TOOLS = RETRIEVAL_TOOLS.map(tool => {
                         items: {
                             type: 'object',
                             properties: {
-                                text: { type: 'string', description: 'The fact as one complete sentence. High-confidence: direct. Medium-confidence: already hedged.' },
-                                confidence: { type: 'string', enum: ['high', 'medium', 'low'], description: 'Confidence level matching the source bullet\'s confidence field.' }
+                                text: { type: 'string', description: 'The fact as one complete sentence. Confidence >= 0.8: direct. Confidence < 0.8: already hedged.' },
+                                confidence: { type: 'number', description: 'The confidence score from the source bullet (0–1). Pass it through unchanged.' }
                             },
                             required: ['text', 'confidence']
                         }
@@ -408,8 +408,8 @@ class MemoryRetriever {
             ? terminalToolResult.arguments.facts.filter(f => f?.text && f?.confidence)
             : [];
 
-        const highFacts = rawFacts.filter(f => f.confidence === 'high').map(f => f.text);
-        const mediumFacts = rawFacts.filter(f => f.confidence === 'medium' || f.confidence === 'low').map(f => f.text);
+        const highFacts = rawFacts.filter(f => f.confidence >= 0.8).map(f => f.text);
+        const mediumFacts = rawFacts.filter(f => f.confidence < 0.8).map(f => f.text);
         let highContent = highFacts.join(' ');
         let mediumContent = mediumFacts.join(' ');
         const assembledContext = (highContent && mediumContent)
@@ -1083,8 +1083,8 @@ class MemoryRetriever {
         const rawFacts = Array.isArray(args?.facts)
             ? args.facts.filter(f => f?.text && f?.confidence)
             : [];
-        const highFacts = rawFacts.filter(f => f.confidence === 'high').map(f => f.text);
-        const mediumFacts = rawFacts.filter(f => f.confidence === 'medium' || f.confidence === 'low').map(f => f.text);
+        const highFacts = rawFacts.filter(f => f.confidence >= 0.8).map(f => f.text);
+        const mediumFacts = rawFacts.filter(f => f.confidence < 0.8).map(f => f.text);
         let highContent = highFacts.join(' ');
         let mediumContent = mediumFacts.join(' ');
         const assembledContext = (highContent && mediumContent)
