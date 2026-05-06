@@ -30,7 +30,7 @@ let tinfoilModulePromise = null;
  * Load TinfoilAI class. If a pre-loaded module is provided (e.g. a browser
  * bundle), use it directly. Otherwise fall back to `import('tinfoil')`.
  *
- * @param {object} [providedModule] — pre-loaded tinfoil module (must export TinfoilAI)
+ * @param {object} [providedModule] pre-loaded tinfoil module (must export TinfoilAI)
  */
 async function loadTinfoilAI(providedModule) {
     if (providedModule) {

@@ -138,6 +138,7 @@ export function createMemoryBank(config = {}) {
             }, doc, options);
         },
         compact: () => compactor.compactAll(),
+        pruneExpired: () => compactor.pruneExpired(),
         storage: {
             read: (path) => backend.read(path),
             resolvePath: (path) => backend.resolvePath ? backend.resolvePath(path) : Promise.resolve(null),

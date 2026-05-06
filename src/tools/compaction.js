@@ -103,8 +103,9 @@ class MemoryCompactor {
             if (toExpire.length === 0) continue;
 
             const expireLineIndexes = new Set(toExpire.map(b => b.lineIndex));
+            /** @type {import('../types.js').Bullet[]} */
             const marked = bullets.map(b =>
-                expireLineIndexes.has(b.lineIndex) ? { ...b, status: 'expired' } : b
+                expireLineIndexes.has(b.lineIndex) ? { ...b, status: /** @type {'expired'} */ ('expired') } : b
             );
 
             const defaultTopic = inferTopicFromPath(file.path);

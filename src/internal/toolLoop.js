@@ -8,6 +8,9 @@
  * uses non-streaming requests for reliable tool call parsing.
  */
 /** @import { ToolLoopOptions, ToolLoopResult, ChatCompletionResponse, ToolCall, LLMMessage } from '../types.js' */
+/**
+ * @typedef {Error & { isUserAbort?: boolean }} AbortableError
+ */
 
 const DEFAULT_MAX_ITERATIONS = 10;
 const DEFAULT_MAX_OUTPUT_TOKENS = 500;
@@ -233,7 +236,7 @@ export async function runAgenticToolLoop(options) {
 }
 
 function createAbortError() {
-    const error = new Error('Tool loop aborted.');
+    const error = /** @type {AbortableError} */ (new Error('Tool loop aborted.'));
     error.name = 'AbortError';
     error.isUserAbort = true;
     return error;

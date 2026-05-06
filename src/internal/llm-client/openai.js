@@ -275,8 +275,14 @@ function getRetryDelay(attempt, retryAfterMs = null) {
     return Math.min(exponential + jitter, MAX_DELAY_MS);
 }
 
+/**
+ * @param {number} ms
+ * @param {AbortSignal | null} [signal]
+ * @returns {Promise<void>}
+ */
 function sleep(ms, signal = null) {
-    return new Promise((resolve, reject) => {
+    const abortSignal = signal;
+    return /** @type {Promise<void>} */ (new Promise((resolve, reject) => {
         const timeoutId = setTimeout(() => {
             cleanup();
             resolve();
@@ -284,20 +290,24 @@ function sleep(ms, signal = null) {
 
         const cleanup = () => {
             clearTimeout(timeoutId);
-            signal?.removeEventListener?.('abort', onAbort);
+            if (abortSignal) {
+                abortSignal.removeEventListener('abort', onAbort);
+            }
         };
         const onAbort = () => {
             cleanup();
             reject(createAbortError('OpenAI API request aborted.'));
         };
 
-        if (signal?.aborted) {
+        if (abortSignal?.aborted) {
             onAbort();
             return;
         }
 
-        signal?.addEventListener?.('abort', onAbort, { once: true });
-    });
+        if (abortSignal) {
+            abortSignal.addEventListener('abort', onAbort, { once: true });
+        }
+    }));
 }
 
 async function createHttpError(response, attempt = 1) {

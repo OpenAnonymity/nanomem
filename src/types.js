@@ -65,6 +65,7 @@
 /**
  * @typedef {object} CompactBulletsOptions
  * @property {string} [today]
+ * @property {string} [now]
  * @property {number} [maxActivePerTopic]
  * @property {string} [defaultTopic]
  */
@@ -220,6 +221,7 @@
  * @property {{ path: string; content: string }[]} files
  * @property {string[]} paths
  * @property {string | null} assembledContext
+ * @property {string} [displayText]
  * @property {boolean} skipped - true when existing context already covered the query
  * @property {string} [skipReason] - explanation when skipped=true
  */
@@ -240,6 +242,7 @@
  * @property {string | null} reviewPrompt
  * @property {string | null} apiPrompt
  * @property {string | null} assembledContext
+ * @property {string} [displayText]
  * @property {boolean} skipped - true when existing context already covered the query
  * @property {string} [skipReason] - explanation when skipped=true
  */
@@ -360,6 +363,7 @@
  * @property {string} [configRepo]
  * @property {string} [attestationBundleURL]
  * @property {'ehbp' | 'tls'} [transport]
+ * @property {Record<string, any>} [tinfoilModule]
  */
 
 /**
@@ -528,6 +532,7 @@
  * @property {(doc: OmfDocument, options?: OmfImportOptions) => Promise<OmfImportPreview>} previewOmfImport
  * @property {(doc: OmfDocument, options?: OmfImportOptions) => Promise<OmfImportResult>} importOmf
  * @property {() => Promise<{filesChanged: number, filesTotal: number} | undefined>} compact
+ * @property {() => Promise<{archived: number, filesChanged: number}>} pruneExpired
  * @property {(query: string, options?: {deep?: boolean, mode?: string}) => Promise<{status: string, deleteCalls: number, writes: Array<any>}>} [deleteContent]
  * @property {StorageFacade} storage
  * @property {() => Promise<string>} serialize
