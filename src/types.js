@@ -20,7 +20,7 @@
  */
 
 /**
- * @typedef {'high' | 'medium' | 'low'} Confidence
+ * @typedef {number} Confidence - float in [0, 1] representing certainty; 1.0 = fully certain, 0.0 = no confidence
  */
 
 /**
@@ -213,7 +213,10 @@
  * @typedef {object} RetrievalResult
  * @property {{ path: string; content: string }[]} files
  * @property {string[]} paths
- * @property {string | null} assembledContext
+ * @property {string | null} assembledContext - full answer (high + medium combined, for backward compat)
+ * @property {string} [highConfidenceContext] - facts from confidence=high bullets, stated directly
+ * @property {string} [mediumConfidenceContext] - plans, intentions, habits (confidence=medium), hedged
+ * @property {'high' | 'medium' | 'low' | 'none'} [confidence] - overall reliability; derived from whether mediumConfidenceContext is populated
  */
 
 /**
@@ -224,6 +227,7 @@
  * @property {string} [displayText]
  * @property {boolean} skipped - true when existing context already covered the query
  * @property {string} [skipReason] - explanation when skipped=true
+ * @property {'high' | 'medium' | 'low' | 'none'} [confidence] - overall reliability of newly retrieved facts
  */
 
 /**
@@ -233,6 +237,7 @@
  * @property {string} reviewPrompt
  * @property {string} apiPrompt
  * @property {string | null} assembledContext
+ * @property {'high' | 'medium' | 'low' | 'none'} [confidence]
  */
 
 /**
@@ -245,6 +250,7 @@
  * @property {string} [displayText]
  * @property {boolean} skipped - true when existing context already covered the query
  * @property {string} [skipReason] - explanation when skipped=true
+ * @property {'high' | 'medium' | 'low' | 'none'} [confidence]
  */
 
 /**
@@ -523,7 +529,7 @@
  * @typedef {object} MemoryBank
  * @property {() => Promise<void>} init
  * @property {(query: string, conversationText?: string) => Promise<RetrievalResult | null>} retrieve
- * @property {(query: string, alreadyRetrievedContext?: string, conversationText?: string) => Promise<AdaptiveRetrievalResult | null>} retrieveAdaptive
+ * @property {(query: string, alreadyRetrievedContext?: string, conversationText?: string, previousConfidence?: 'high' | 'medium' | 'low' | 'none') => Promise<AdaptiveRetrievalResult | null>} retrieveAdaptive
  * @property {(query: string, conversationText?: string) => Promise<AugmentQueryResult | null>} augmentQuery
  * @property {(query: string, alreadyRetrievedContext?: string, conversationText?: string) => Promise<AdaptiveAugmentQueryResult | null>} augmentQueryAdaptive
  * @property {(messages: Message[], options?: IngestOptions) => Promise<IngestResult>} ingest
