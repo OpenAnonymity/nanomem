@@ -25,7 +25,14 @@ Do NOT save:
 - Sensitive secrets (passwords, tokens, keys)
 
 Bullet format: "- Fact text | topic=topic-name | source=user_statement | confidence=SCORE | updated_at=YYYY-MM-DDTHH:MM"
-Set confidence to a float from 0 to 1 reflecting how certain you are this fact is accurate and stable (e.g. near 1.0 for explicit first-person factual claims, lower for intentions, habits, or tendencies).
+Set confidence score based on how safe it would be for the agent to use this memory later. Choose one only:
+- 0.9: certain - the user explicitly stated this, the meaning is clear, and it is likely durable.
+- 0.8: high - the user clearly stated this, but it may be somewhat contextual or change over time.
+- 0.6: medium - the memory is plausible but contains ambiguity, hedging, future intent, or light inference.
+- 0.4: low - the memory is weakly supported, inferred, transient, or should only be used with caution.
+
+Do not invent arbitrary numeric values. Do not save memories below 0.4 confidence.
+Prefer not saving over saving weak or transient details.
 For time-bound facts (medical events, temporary situations, short-term plans), append: | expires_at=YYYY-MM-DD
 
 If nothing new is worth saving, stop without calling any tools.`;
@@ -52,7 +59,12 @@ Rules:
 - Pass old_fact exactly as it appears in the file (including pipe-delimited metadata is fine).
 - Pass new_fact as plain text only — no metadata.
 - When appending or creating, use this bullet format: "- Fact text | topic=topic-name | source=user_statement | confidence=SCORE | updated_at=YYYY-MM-DDTHH:MM"
-  Set confidence to a float from 0 to 1 reflecting your certainty (near 1.0 for explicit factual claims; lower for intentions, habits, or tendencies).
+  Set confidence score based on how safe it would be for the agent to use this memory later. Choose one only:
+  - 0.9: certain - the user explicitly stated this, the meaning is clear, and it is likely durable.
+  - 0.8: high - the user clearly stated this, but it may be somewhat contextual or change over time.
+  - 0.6: medium - the memory is plausible but contains ambiguity, hedging, future intent, or light inference.
+  - 0.4: low - the memory is weakly supported, inferred, transient, or should only be used with caution.
+  Do not invent arbitrary numeric values. Do not save memories below 0.4 confidence. Prefer not saving over saving weak or transient details.
   For time-bound facts (medical events, temporary situations, short-term plans), append: | expires_at=YYYY-MM-DD
 
 If nothing new or changed is worth saving, stop without calling any tools.`;
@@ -88,15 +100,16 @@ Instructions:
 3. Before calling append_memory or update_bullets on an existing file, use read_file to check its current bullets. This prevents re-saving facts that are already there. Skip reads only when creating a new file.
 4. If no relevant file exists yet, create_new_file directly.
 5. Use this bullet format: "- Fact text | topic=topic-name | source=SOURCE | confidence=SCORE | updated_at=YYYY-MM-DDTHH:MM"
-   Set confidence to a float from 0 to 1 (your own assessment; do not use labels like "high" or "medium").
    For time-bound facts, append: | expires_at=YYYY-MM-DD
 6. Source values:
    - source=user_statement — the user directly said this. This is the PRIMARY source. Use it for the vast majority of saved facts.
    - source=llm_infer — use ONLY when combining multiple explicit user statements into an obvious conclusion (e.g. user said "I work at Acme" and "Acme is in SF" → "Works in SF"). Never use this to guess, extrapolate, or fill in gaps. When in doubt, do not save.
-7. Confidence: assign a float from 0 to 1 reflecting how certain you are this fact is accurate and stable.
-   - Near 1.0: the user made a specific, direct, first-person factual claim you would state without hedging ("I have asthma", "I work at Stripe", "My cat is named Luna"). Stable, concrete, explicitly asserted facts score highest.
-   - Mid-range (e.g. 0.5–0.8): intent or plan ("I want to...", "I'm thinking about..."), habit or tendency ("I usually...", "I tend to..."), or any llm_infer conclusion. When unsure, stay in this range rather than going near 1.0.
-   - Do not save facts you would score below ~0.4.
+7. Set confidence score based on how safe it would be for the agent to use this memory later. Choose one only:
+   - 0.9: certain - the user explicitly stated this, the meaning is clear, and it is likely durable.
+   - 0.8: high - the user clearly stated this, but it may be somewhat contextual or change over time.
+   - 0.6: medium - the memory is plausible but contains ambiguity, hedging, future intent, or light inference.
+   - 0.4: low - the memory is weakly supported, inferred, transient, or should only be used with caution.
+   Do not invent arbitrary numeric values. Do not save memories below 0.4 confidence. Prefer not saving over saving weak or transient details.
 8. You may optionally add tier=working for clearly short-term or in-progress context. If you are unsure, omit tier and just save the fact.
 9. Facts worth saving: allergies, health conditions, location, job/role, tech stack, pets, family members, durable preferences, and active plans — but ONLY if the user explicitly mentioned them.
 10. For time-bound facts, set expires_at=YYYY-MM-DD. Ask yourself: "After what date would this fact no longer be true or relevant?" Set expires_at to that date. If the fact is stable and has no natural end (job, home city, preference, chronic condition, relationship), omit expires_at. If the expiry is genuinely unclear, include date context in the fact text and omit expires_at.

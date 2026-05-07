@@ -25,7 +25,15 @@ Do NOT save:
 - Sensitive secrets (passwords, tokens, keys)
 
 Bullet format: "- Fact text | topic=topic-name | source=document | confidence=SCORE | updated_at=YYYY-MM-DDTHH:MM"
-Set confidence to a float from 0 to 1 reflecting how certain you are this fact is accurate (do not use labels like "high" or "medium").
+Set confidence score based on how safe it would be for the agent to use this memory later. Choose one only:
+- 0.9: certain - the document explicitly states this, the meaning is clear, and it is likely durable.
+- 0.8: high - the document clearly conveys this, but it may be somewhat contextual or change over time.
+- 0.6: medium - the memory is plausible but contains ambiguity, hedging, future intent, or light inference.
+- 0.4: low - the memory is weakly supported, inferred, transient, or should only be used with caution.
+
+Do not invent arbitrary numeric values. Do not save memories below 0.4 confidence.
+Prefer not saving over saving weak or transient details.
+
 For time-bound facts (temporary plans, short-term goals, events with a clear end date), append: | expires_at=YYYY-MM-DD
 
 If nothing new is worth saving, stop without calling any tools.`;
@@ -76,11 +84,16 @@ Instructions:
 2. Use create_new_file for new topics, append_memory to add to existing files.
 3. Before calling append_memory on an existing file, use read_file to check its current bullets. This prevents re-saving facts already captured. Skip reads only when creating a new file.
 4. Use this bullet format: "- Fact text | topic=topic-name | source=SOURCE | confidence=SCORE | updated_at=YYYY-MM-DDTHH:MM"
-   Set confidence to a float from 0 to 1 (your own assessment; do not use labels like "high" or "medium").
 5. Source values (IMPORTANT — never use source=user_statement here):
    - source=document — the fact is directly stated or clearly shown in the document. Use for the majority of facts.
    - source=document_infer — a reasonable inference from what multiple parts of the document collectively show (e.g. a repo with only C files and a README praising simplicity → "prefers low-level, minimal implementations"). Use sparingly.
-6. Confidence: score source=document facts higher than source=document_infer facts, since inferences are inherently less certain.
+6. Set confidence score based on how safe it would be for the agent to use this memory later. Choose one only:
+   - 0.9: certain - the document explicitly states this, the meaning is clear, and it is likely durable.
+   - 0.8: high - the document clearly conveys this, but it may be somewhat contextual or change over time.
+   - 0.6: medium - the memory is plausible but contains ambiguity, hedging, future intent, or light inference.
+   - 0.4: low - the memory is weakly supported, inferred, transient, or should only be used with caution.
+   Do not invent arbitrary numeric values. Do not save memories below 0.4 confidence. Prefer not saving over saving weak or transient details.
+   For source=document_infer, default to medium or below since inferences are inherently less certain.
 7. Facts worth extracting: skills and expertise, projects built, stated opinions and philosophy, tools and languages used, patterns across work, goals and motivations, background and experience.
 8. If nothing meaningful can be extracted from a document, stop without calling any write tools.
 
