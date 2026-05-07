@@ -126,35 +126,49 @@ describe('normalizeSource', () => {
 });
 
 describe('normalizeConfidence', () => {
-    it('maps high variants', () => {
-        assert.equal(normalizeConfidence('high'), 'high');
-        assert.equal(normalizeConfidence('strong'), 'high');
+    it('maps high variants to 1.0', () => {
+        assert.equal(normalizeConfidence('high'), 1.0);
+        assert.equal(normalizeConfidence('strong'), 1.0);
     });
-    it('maps medium variants', () => {
-        assert.equal(normalizeConfidence('medium'), 'medium');
-        assert.equal(normalizeConfidence('med'), 'medium');
-        assert.equal(normalizeConfidence('moderate'), 'medium');
+    it('maps medium variants to 0.7', () => {
+        assert.equal(normalizeConfidence('medium'), 0.7);
+        assert.equal(normalizeConfidence('med'), 0.7);
+        assert.equal(normalizeConfidence('moderate'), 0.7);
     });
-    it('maps low variants', () => {
-        assert.equal(normalizeConfidence('low'), 'low');
-        assert.equal(normalizeConfidence('weak'), 'low');
+    it('maps low variants to 0.3', () => {
+        assert.equal(normalizeConfidence('low'), 0.3);
+        assert.equal(normalizeConfidence('weak'), 0.3);
     });
     it('returns fallback for unknown', () => {
-        assert.equal(normalizeConfidence(''), 'medium');
+        assert.equal(normalizeConfidence(''), 0.7);
+    });
+    it('passes numeric input through, clamped to [0,1]', () => {
+        assert.equal(normalizeConfidence(0.42), 0.42);
+        assert.equal(normalizeConfidence(0), 0);
+        assert.equal(normalizeConfidence(1), 1);
+        assert.equal(normalizeConfidence(1.5), 1);
+        assert.equal(normalizeConfidence(-0.2), 0);
+    });
+    it('parses numeric strings', () => {
+        assert.equal(normalizeConfidence('0.85'), 0.85);
+        assert.equal(normalizeConfidence('0'), 0);
+    });
+    it('respects an explicit numeric fallback', () => {
+        assert.equal(normalizeConfidence(undefined, 0.5), 0.5);
     });
 });
 
 describe('defaultConfidenceForSource', () => {
-    it('returns high for user_statement', () => {
-        assert.equal(defaultConfidenceForSource('user_statement'), 'high');
+    it('returns 1.0 for user_statement', () => {
+        assert.equal(defaultConfidenceForSource('user_statement'), 1.0);
     });
-    it('returns medium for assistant_summary and system', () => {
-        assert.equal(defaultConfidenceForSource('assistant_summary'), 'medium');
-        assert.equal(defaultConfidenceForSource('system'), 'medium');
+    it('returns 0.7 for assistant_summary and system', () => {
+        assert.equal(defaultConfidenceForSource('assistant_summary'), 0.7);
+        assert.equal(defaultConfidenceForSource('system'), 0.7);
     });
-    it('returns low for inference and unknown', () => {
-        assert.equal(defaultConfidenceForSource('inference'), 'low');
-        assert.equal(defaultConfidenceForSource('unknown'), 'low');
+    it('returns 0.3 for inference and unknown', () => {
+        assert.equal(defaultConfidenceForSource('inference'), 0.3);
+        assert.equal(defaultConfidenceForSource('unknown'), 0.3);
     });
 });
 
@@ -239,7 +253,7 @@ describe('ensureBulletMetadata', () => {
         assert.equal(result.tier, 'long_term');
         assert.equal(result.status, 'active');
         assert.equal(result.source, 'user_statement');
-        assert.equal(result.confidence, 'high');
+        assert.equal(result.confidence, 1.0);
         assert.equal(result.heading, 'General');
     });
     it('respects explicit values', () => {
@@ -257,7 +271,7 @@ describe('ensureBulletMetadata', () => {
         assert.equal(result.tier, 'working');
         assert.equal(result.status, 'uncertain');
         assert.equal(result.source, 'inference');
-        assert.equal(result.confidence, 'low');
+        assert.equal(result.confidence, 0.3);
     });
     it('applies option overrides', () => {
         const result = ensureBulletMetadata(

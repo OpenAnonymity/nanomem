@@ -113,10 +113,7 @@ describe('retrieveAdaptively', () => {
                                 function: {
                                     name: 'assemble_context',
                                     arguments: JSON.stringify({
-                                        facts: [{
-                                            text: 'You have a severe peanut allergy.',
-                                            confidence: 'high'
-                                        }]
+                                        content: 'You have a severe peanut allergy.'
                                     })
                                 }
                             }]

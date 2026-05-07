@@ -40,7 +40,7 @@ describe('parseBullets', () => {
         assert.equal(b.tier, 'working');
         assert.equal(b.status, 'active');
         assert.equal(b.source, 'user_statement');
-        assert.equal(b.confidence, 'high');
+        assert.equal(b.confidence, 1.0);
         assert.equal(b.updatedAt, '2024-06-01T00:00');
     });
 
@@ -110,7 +110,7 @@ describe('renderBullet', () => {
             tier: 'long_term',
             status: 'active',
             source: 'user_statement',
-            confidence: 'high',
+            confidence: 1.0,
             updatedAt: '2024-06-01',
         };
         const rendered = renderBullet(bullet);
@@ -119,7 +119,7 @@ describe('renderBullet', () => {
         assert.ok(rendered.includes('tier=long_term'));
         assert.ok(rendered.includes('status=active'));
         assert.ok(rendered.includes('source=user_statement'));
-        assert.ok(rendered.includes('confidence=high'));
+        assert.ok(rendered.includes('confidence=1'));
         assert.ok(rendered.includes('updated_at=2024-06-01'));
     });
 
@@ -148,7 +148,7 @@ describe('renderBullet / parseBullets round-trip', () => {
             tier: 'long_term',
             status: 'active',
             source: 'user_statement',
-            confidence: 'high',
+            confidence: 1.0,
             updatedAt: '2024-06-15',
             explicitTier: true,
             explicitStatus: true,
@@ -165,6 +165,22 @@ describe('renderBullet / parseBullets round-trip', () => {
         assert.equal(parsed[0].source, original.source);
         assert.equal(parsed[0].confidence, original.confidence);
         assert.equal(parsed[0].updatedAt, '2024-06-15T00:00');
+    });
+
+    it('preserves a fractional confidence value', () => {
+        const original = {
+            text: 'Sometimes drinks tea',
+            topic: 'habits',
+            tier: 'long_term',
+            status: 'active',
+            source: 'user_statement',
+            confidence: 0.65,
+            updatedAt: '2024-06-15',
+            explicitConfidence: true,
+        };
+        const rendered = renderBullet(original);
+        const parsed = parseBullets(rendered);
+        assert.equal(parsed[0].confidence, 0.65);
     });
 });
 
