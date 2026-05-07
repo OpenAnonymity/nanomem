@@ -20,7 +20,7 @@
  */
 
 /**
- * @typedef {'high' | 'medium' | 'low'} Confidence
+ * @typedef {number} Confidence - float in [0, 1] representing certainty; 1.0 = fully certain, 0.0 = no confidence
  */
 
 /**

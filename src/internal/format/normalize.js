@@ -120,27 +120,44 @@ export function normalizeSource(value, fallback = 'user_statement') {
 }
 
 /**
- * @param {string | null | undefined} value
- * @param {Confidence} [fallback]
- * @returns {Confidence}
+ * @param {number | string | null | undefined} value
+ * @param {number} [fallback]
+ * @returns {number}
  */
-export function normalizeConfidence(value, fallback = 'medium') {
+export function normalizeConfidence(value, fallback = 0.7) {
+    if (typeof value === 'number') return Math.min(1, Math.max(0, value));
     const source = String(value || '').trim().toLowerCase();
-    if (['high', 'strong'].includes(source)) return 'high';
-    if (['medium', 'med', 'moderate'].includes(source)) return 'medium';
-    if (['low', 'weak'].includes(source)) return 'low';
-    return fallback;
+    if (['high', 'strong'].includes(source)) return 1.0;
+    if (['medium', 'med', 'moderate'].includes(source)) return 0.7;
+    if (['low', 'weak'].includes(source)) return 0.3;
+    const parsed = parseFloat(source);
+    if (!isNaN(parsed)) return Math.min(1, Math.max(0, parsed));
+    return typeof fallback === 'number' ? fallback : 0.7;
 }
 
 /**
  * @param {Source | string | null | undefined} source
- * @returns {Confidence}
+ * @returns {number}
  */
 export function defaultConfidenceForSource(source) {
-    if (source === 'user_statement') return 'high';
-    if (source === 'assistant_summary') return 'medium';
-    if (source === 'system') return 'medium';
-    return 'low';
+    if (source === 'user_statement') return 1.0;
+    if (source === 'assistant_summary') return 0.7;
+    if (source === 'system') return 0.7;
+    return 0.3;
+}
+
+export const CONTRADICTION_DECAY_FACTOR = 0.5;
+
+/**
+ * Reduce a bullet's confidence after it has been contradicted via
+ * update_bullets. Multiplies by CONTRADICTION_DECAY_FACTOR and clamps to [0, 1].
+ *
+ * @param {number | string | null | undefined} value
+ * @returns {number}
+ */
+export function bumpDownConfidence(value) {
+    const current = normalizeConfidence(value);
+    return Math.min(1, Math.max(0, current * CONTRADICTION_DECAY_FACTOR));
 }
 
 /**
