@@ -15,6 +15,7 @@
  */
 /** @import { LLMClient, StorageBackend } from '../types.js' */
 import {
+    bumpDownConfidence,
     compactBullets,
     inferTopicFromPath,
     isExpiredBullet,
@@ -215,7 +216,13 @@ class MemoryCompactor {
 
         return working.map((b, i) => {
             if (decisions.get(i + 1) === 'SUPERSEDED') {
-                return { ...b, status: 'superseded', tier: 'history', section: 'history' };
+                return {
+                    ...b,
+                    status: 'superseded',
+                    tier: 'history',
+                    section: 'history',
+                    confidence: bumpDownConfidence(b.confidence),
+                };
             }
             return b;
         });

@@ -30,7 +30,7 @@ describe('scoreBullet', () => {
         tier: 'long_term',
         status: 'active',
         source: 'user_statement',
-        confidence: 'high',
+        confidence: 1.0,
     };
 
     it('returns 0 for a bullet with empty text', () => {
@@ -70,8 +70,8 @@ describe('scoreBullet', () => {
     });
 
     it('boosts score for high confidence', () => {
-        const highScore = scoreBullet({ ...base, confidence: 'high' }, []);
-        const lowScore = scoreBullet({ ...base, confidence: 'low' }, []);
+        const highScore = scoreBullet({ ...base, confidence: 0.9 }, []);
+        const lowScore = scoreBullet({ ...base, confidence: 0.2 }, []);
         assert.ok(highScore > lowScore);
     });
 

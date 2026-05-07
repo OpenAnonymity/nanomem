@@ -27,6 +27,7 @@ Rules:
 - Keep only concrete reusable facts.
 - Merge semantic duplicates and keep the most recent/best phrasing.
 - Resolve contradictions: newer user statements beat older ones; user statements beat inferences; higher confidence beats lower.
+- Preserve existing confidence values — do not promote a fact to confidence=high unless it is a direct, explicit user statement. Inferences, assistant summaries, plans, and habits must stay at confidence=medium even after compaction.
 - Put stable facts in Long-Term: identity/background, durable preferences, recurring constraints, persistent health facts, long-running roles, durable relationships.
 - Put temporary or in-progress context in Working: active plans, current tasks, temporary situations, near-term goals.
 - Expired facts (expires_at in the past) go to History with status=expired.

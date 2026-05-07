@@ -3,6 +3,7 @@
  */
 /** @import { Bullet } from '../../types.js' */
 import {
+    bumpDownConfidence,
     safeDateIso,
     safeDateTimeIso,
     normalizeTier,
@@ -170,9 +171,17 @@ function renderSection(lines, title, bullets, forceHistory = false) {
     }
 
     for (const bullet of bullets) {
-        const nextBullet = forceHistory
-            ? { ...bullet, tier: 'history', status: bullet.status === 'active' ? 'superseded' : bullet.status, section: 'history' }
-            : bullet;
+        let nextBullet = bullet;
+        if (forceHistory) {
+            const transitioning = bullet.status === 'active';
+            nextBullet = {
+                ...bullet,
+                tier: 'history',
+                status: transitioning ? 'superseded' : bullet.status,
+                section: 'history',
+                ...(transitioning ? { confidence: bumpDownConfidence(bullet.confidence) } : {}),
+            };
+        }
         lines.push(renderBullet(nextBullet));
     }
 }

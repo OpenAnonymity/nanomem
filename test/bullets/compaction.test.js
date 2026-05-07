@@ -89,6 +89,32 @@ describe('compactBullets', () => {
         assert.equal(result.history.length, 2);
     });
 
+    it('halves confidence on bullets demoted via per-topic overflow', () => {
+        const bullets = Array.from({ length: 4 }, (_, i) =>
+            makeBullet({ text: `Fact ${i}`, topic: 'general', updatedAt: `2024-0${i + 1}-01`, confidence: 0.9 })
+        );
+        const result = compactBullets(bullets, { maxActivePerTopic: 2 });
+        assert.equal(result.history.length, 2);
+        for (const bullet of result.history) {
+            assert.equal(bullet.confidence, 0.45);
+        }
+    });
+
+    it('halves confidence when an active bullet is normalized into history', () => {
+        const bullet = makeBullet({ text: 'Stale', tier: 'history', section: 'history', status: 'active', confidence: 0.8 });
+        const result = compactBullets([bullet]);
+        assert.equal(result.history.length, 1);
+        assert.equal(result.history[0].status, 'superseded');
+        assert.equal(result.history[0].confidence, 0.4);
+    });
+
+    it('does not bump confidence on bullets that were already superseded', () => {
+        const bullet = makeBullet({ text: 'Already gone', status: 'superseded', confidence: 0.6 });
+        const result = compactBullets([bullet]);
+        assert.equal(result.history.length, 1);
+        assert.equal(result.history[0].confidence, 0.6);
+    });
+
     it('sorts active results by recency (most recent first)', () => {
         const older = makeBullet({ text: 'Older fact', updatedAt: '2023-01-01' });
         const newer = makeBullet({ text: 'Newer fact', updatedAt: '2024-06-01' });

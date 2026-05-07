@@ -24,7 +24,10 @@ Do NOT save:
 - Boilerplate (installation steps, license text, generic disclaimers)
 - Sensitive secrets (passwords, tokens, keys)
 
-Bullet format: "- Fact text | topic=topic-name | source=document | confidence=high | updated_at=YYYY-MM-DDTHH:MM"
+Bullet format: "- Fact text | topic=topic-name | source=document | confidence=SCORE | updated_at=YYYY-MM-DDTHH:MM"
+Set confidence (0.4–1.0) based on how reliably this memory can be used later. Consider how clearly the document states it, how likely it is to remain true, and how much inference was required. Examples: ~1.0 = explicitly stated and permanent; ~0.7 = contextual or may evolve; ~0.4 = weak inference or transient. Pick the number that best fits — do not round to these examples. Do not save below 0.4.
+Prefer not saving over saving weak or transient details.
+
 For time-bound facts (temporary plans, short-term goals, events with a clear end date), append: | expires_at=YYYY-MM-DD
 
 If nothing new is worth saving, stop without calling any tools.`;
@@ -74,11 +77,12 @@ Instructions:
 1. Read the document content and identify concrete, reusable facts about the subject.
 2. Use create_new_file for new topics, append_memory to add to existing files.
 3. Before calling append_memory on an existing file, use read_file to check its current bullets. This prevents re-saving facts already captured. Skip reads only when creating a new file.
-4. Use this bullet format: "- Fact text | topic=topic-name | source=SOURCE | confidence=LEVEL | updated_at=YYYY-MM-DDTHH:MM"
+4. Use this bullet format: "- Fact text | topic=topic-name | source=SOURCE | confidence=SCORE | updated_at=YYYY-MM-DDTHH:MM"
 5. Source values (IMPORTANT — never use source=user_statement here):
    - source=document — the fact is directly stated or clearly shown in the document. Use for the majority of facts.
    - source=document_infer — a reasonable inference from what multiple parts of the document collectively show (e.g. a repo with only C files and a README praising simplicity → "prefers low-level, minimal implementations"). Use sparingly.
-6. Confidence: high for source=document facts, medium for source=document_infer.
+6. Set confidence (0.4–1.0) based on how reliably this memory can be used later. Consider how clearly the document states it, how likely it is to remain true, and how much inference was required. Examples: ~1.0 = explicitly stated and permanent; ~0.7 = contextual or may evolve; ~0.4 = weak inference or transient. Pick the number that best fits — do not round to these examples. Do not save below 0.4. Prefer not saving over saving weak or transient details.
+   For source=document_infer, lean toward 0.6 or below since inferences are inherently less certain.
 7. Facts worth extracting: skills and expertise, projects built, stated opinions and philosophy, tools and languages used, patterns across work, goals and motivations, background and experience.
 8. If nothing meaningful can be extracted from a document, stop without calling any write tools.
 
