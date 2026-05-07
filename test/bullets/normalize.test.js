@@ -8,6 +8,7 @@ import {
     normalizeSource,
     normalizeConfidence,
     defaultConfidenceForSource,
+    bumpDownConfidence,
     inferTierFromSection,
     inferStatusFromSection,
     normalizeTierToSection,
@@ -169,6 +170,24 @@ describe('defaultConfidenceForSource', () => {
     it('returns 0.3 for inference and unknown', () => {
         assert.equal(defaultConfidenceForSource('inference'), 0.3);
         assert.equal(defaultConfidenceForSource('unknown'), 0.3);
+    });
+});
+
+describe('bumpDownConfidence', () => {
+    it('halves the confidence for each named level', () => {
+        assert.equal(bumpDownConfidence(0.9), 0.45);
+        assert.equal(bumpDownConfidence(0.8), 0.4);
+        assert.equal(bumpDownConfidence(0.6), 0.3);
+        assert.equal(bumpDownConfidence(0.4), 0.2);
+    });
+    it('clamps to [0, 1]', () => {
+        assert.equal(bumpDownConfidence(0), 0);
+        assert.equal(bumpDownConfidence(1), 0.5);
+    });
+    it('accepts legacy enum strings', () => {
+        assert.equal(bumpDownConfidence('high'), 0.5);
+        assert.equal(bumpDownConfidence('medium'), 0.35);
+        assert.equal(bumpDownConfidence('low'), 0.15);
     });
 });
 

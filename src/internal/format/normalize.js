@@ -146,6 +146,20 @@ export function defaultConfidenceForSource(source) {
     return 0.3;
 }
 
+export const CONTRADICTION_DECAY_FACTOR = 0.5;
+
+/**
+ * Reduce a bullet's confidence after it has been contradicted via
+ * update_bullets. Multiplies by CONTRADICTION_DECAY_FACTOR and clamps to [0, 1].
+ *
+ * @param {number | string | null | undefined} value
+ * @returns {number}
+ */
+export function bumpDownConfidence(value) {
+    const current = normalizeConfidence(value);
+    return Math.min(1, Math.max(0, current * CONTRADICTION_DECAY_FACTOR));
+}
+
 /**
  * @param {string} section
  * @returns {Tier}

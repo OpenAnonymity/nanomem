@@ -11,6 +11,7 @@
  */
 /** @import { ChatCompletionResponse, ExtractionExecutorHooks, LLMClient, StorageBackend, ToolDefinition } from '../types.js' */
 import {
+    bumpDownConfidence,
     compactBullets,
     ensureBulletMetadata,
     inferTopicFromPath,
@@ -432,7 +433,12 @@ export function createExtractionExecutors(backend, hooks = {}) {
                 const cleanNewFact = rawNewFact.includes('|')
                     ? rawNewFact.split('|')[0].trim()
                     : rawNewFact;
-                parsed[idx] = { ...oldBullet, status: 'superseded', tier: 'history' };
+                parsed[idx] = {
+                    ...oldBullet,
+                    status: 'superseded',
+                    tier: 'history',
+                    confidence: bumpDownConfidence(oldBullet.confidence),
+                };
                 parsed.push(ensureBulletMetadata(
                     {
                         text: cleanNewFact,

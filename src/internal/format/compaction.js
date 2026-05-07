@@ -8,6 +8,7 @@
  */
 /** @import { Bullet, CompactionResult, CompactBulletsOptions, Confidence, Source } from '../../types.js' */
 import {
+    bumpDownConfidence,
     ensureBulletMetadata,
     normalizeFactText,
     normalizeTier,
@@ -60,7 +61,14 @@ export function compactBullets(bullets, options = {}) {
         const status = normalizeStatus(bullet.status || inferStatusFromSection(normalizeTierToSection(tier)));
 
         if (tier === 'history' || status === 'superseded' || status === 'expired' || isExpiredBullet(bullet, today)) {
-            history.push({ ...bullet, tier: 'history', status: status === 'active' ? 'superseded' : status, section: 'history' });
+            const transitioning = status === 'active';
+            history.push({
+                ...bullet,
+                tier: 'history',
+                status: transitioning ? 'superseded' : status,
+                section: 'history',
+                ...(transitioning ? { confidence: bumpDownConfidence(bullet.confidence) } : {}),
+            });
             continue;
         }
 
@@ -81,7 +89,14 @@ export function compactBullets(bullets, options = {}) {
             }
         }
         for (const item of list.slice(maxActivePerTopic)) {
-            history.push({ ...item, topic, tier: 'history', status: 'superseded', section: 'history' });
+            history.push({
+                ...item,
+                topic,
+                tier: 'history',
+                status: 'superseded',
+                section: 'history',
+                confidence: bumpDownConfidence(item.confidence),
+            });
         }
     }
 
