@@ -25,13 +25,7 @@ Do NOT save:
 - Sensitive secrets (passwords, tokens, keys)
 
 Bullet format: "- Fact text | topic=topic-name | source=document | confidence=SCORE | updated_at=YYYY-MM-DDTHH:MM"
-Set confidence score based on how safe it would be for the agent to use this memory later. Choose one only:
-- 0.9: certain - the document explicitly states this, the meaning is clear, and it is likely durable.
-- 0.8: high - the document clearly conveys this, but it may be somewhat contextual or change over time.
-- 0.6: medium - the memory is plausible but contains ambiguity, hedging, future intent, or light inference.
-- 0.4: low - the memory is weakly supported, inferred, transient, or should only be used with caution.
-
-Do not invent arbitrary numeric values. Do not save memories below 0.4 confidence.
+Set confidence (0.4–1.0) based on how reliably this memory can be used later. Consider how clearly the document states it, how likely it is to remain true, and how much inference was required. Examples: ~1.0 = explicitly stated and permanent; ~0.7 = contextual or may evolve; ~0.4 = weak inference or transient. Pick the number that best fits — do not round to these examples. Do not save below 0.4.
 Prefer not saving over saving weak or transient details.
 
 For time-bound facts (temporary plans, short-term goals, events with a clear end date), append: | expires_at=YYYY-MM-DD
@@ -87,13 +81,8 @@ Instructions:
 5. Source values (IMPORTANT — never use source=user_statement here):
    - source=document — the fact is directly stated or clearly shown in the document. Use for the majority of facts.
    - source=document_infer — a reasonable inference from what multiple parts of the document collectively show (e.g. a repo with only C files and a README praising simplicity → "prefers low-level, minimal implementations"). Use sparingly.
-6. Set confidence score based on how safe it would be for the agent to use this memory later. Choose one only:
-   - 0.9: certain - the document explicitly states this, the meaning is clear, and it is likely durable.
-   - 0.8: high - the document clearly conveys this, but it may be somewhat contextual or change over time.
-   - 0.6: medium - the memory is plausible but contains ambiguity, hedging, future intent, or light inference.
-   - 0.4: low - the memory is weakly supported, inferred, transient, or should only be used with caution.
-   Do not invent arbitrary numeric values. Do not save memories below 0.4 confidence. Prefer not saving over saving weak or transient details.
-   For source=document_infer, default to medium or below since inferences are inherently less certain.
+6. Set confidence (0.4–1.0) based on how reliably this memory can be used later. Consider how clearly the document states it, how likely it is to remain true, and how much inference was required. Examples: ~1.0 = explicitly stated and permanent; ~0.7 = contextual or may evolve; ~0.4 = weak inference or transient. Pick the number that best fits — do not round to these examples. Do not save below 0.4. Prefer not saving over saving weak or transient details.
+   For source=document_infer, lean toward 0.6 or below since inferences are inherently less certain.
 7. Facts worth extracting: skills and expertise, projects built, stated opinions and philosophy, tools and languages used, patterns across work, goals and motivations, background and experience.
 8. If nothing meaningful can be extracted from a document, stop without calling any write tools.
 
