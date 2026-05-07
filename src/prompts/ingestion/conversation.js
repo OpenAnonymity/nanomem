@@ -16,11 +16,11 @@ Current memory index:
 \`\`\`
 
 For each new fact, decide:
+- If the fact is already in memory and the user is reconfirming it, call corroborate_bullet({path, fact_text}) instead of re-saving — this strengthens the existing bullet's confidence.
 - Use append_memory if an existing file already covers the same domain or topic.
 - Use create_new_file only if no existing file is thematically close.
 
 Do NOT save:
-- Facts already present in memory
 - Transient details (greetings, one-off questions with no lasting answer)
 - Sensitive secrets (passwords, tokens, keys)
 
@@ -41,12 +41,16 @@ Current memory index:
 \`\`\`
 
 Steps:
-1. Identify which existing file(s) might hold facts that are stale or contradicted by the new information.
-2. Use read_file to read the current content and find the exact bullet text to replace.
-3. If a matching old fact exists, use update_bullets with all corrections for that file in a single call, passing the exact old fact text and the corrected fact text for each.
-4. If no existing fact matches — the information is entirely new — use append_memory to add it to an existing file that covers the same domain, or create_new_file if no existing file is thematically close.
+1. Identify which existing file(s) might hold facts that are stale, contradicted, or reconfirmed by the new information.
+2. Use read_file to read the current content and find the exact bullet text.
+3. Pick the right action per fact:
+   - corroborate_bullet({path, fact_text}) — the user restated an existing fact (active or in History). Boosts confidence; revives history-tier bullets to active.
+   - update_bullets — the user contradicted or corrected an existing fact.
+   - append_memory — the fact is genuinely new and not represented by any existing bullet.
+   - create_new_file — the fact is new and no existing file is thematically close.
 
 Rules:
+- Prefer corroborate_bullet when the user is restating a fact already in memory.
 - Prefer update_bullets when an existing fact is directly contradicted or corrected.
 - Only change bullets that are directly contradicted or corrected by the new information.
 - Do not touch any other bullets in the file.
@@ -68,7 +72,6 @@ Save information that is likely to help in a future conversation. This includes:
 
 Do NOT save:
 - Anything the user did not explicitly say (no inferences, no extrapolations, no "likely" facts)
-- Information already present in existing files
 - Pure conversational fluff (greetings, "thanks", one-off questions with no real-world answer)
 - Sub-details of an already-saved event (specific activities, logistics, locations mentioned only as context for that event)
 - People or places mentioned only in passing as context for a trip or event — only save them if they are independently meaningful (e.g. a recurring relationship, not a one-off travel detail)
@@ -85,8 +88,12 @@ Current memory index:
 
 Instructions:
 1. Read the conversation below and identify facts the user explicitly stated.
-2. Default to append_memory when an existing file covers the same domain or a closely related topic. Only use create_new_file when no existing file is thematically close.
-3. Before calling append_memory or update_bullets on an existing file, use read_file to check its current bullets. This prevents re-saving facts that are already there. Skip reads only when creating a new file.
+2. Pick the right tool per fact:
+   - corroborate_bullet({path, fact_text}) — the user restated a fact already in memory (active or in History). Boosts confidence; revives history-tier bullets to active.
+   - append_memory — the fact is genuinely new and a thematically close file already exists.
+   - create_new_file — the fact is new and no existing file is thematically close.
+   - update_bullets — the fact contradicts or corrects an existing bullet.
+3. Before calling append_memory, update_bullets, or corroborate_bullet on an existing file, use read_file to check its current bullets — this is how you detect duplicates and choose between corroborate vs append. Skip reads only when creating a new file.
 4. If no relevant file exists yet, create_new_file directly.
 5. Use this bullet format: "- Fact text | topic=topic-name | source=SOURCE | confidence=SCORE | updated_at=YYYY-MM-DDTHH:MM"
    For time-bound facts, append: | expires_at=YYYY-MM-DD
@@ -105,6 +112,7 @@ Rules:
 - Only create a new file when nothing in the index is thematically close. When in doubt, append.
 - When creating a new file, choose a name that is descriptive but not overly specific — it should reflect a reusable theme, not a single event or detail. Too generic: "conditions.md", "events.md", "info.md". Too specific: "bee-sting.md", "portland-trip.md". Just right: "allergies.md", "fitness.md", "diet.md", "side-projects.md".
 - Use update_bullets only if a fact is now stale or contradicted. Pass all corrections for a file in one call.
+- Use corroborate_bullet when the user restates a fact that's already saved (this strengthens trust in the bullet); never re-save the same fact with append_memory.
 - When a new explicit user statement contradicts an older one on the same topic, prefer the newer statement. If a user statement conflicts with an inference, the user statement always wins.
 - If a conflict is ambiguous, preserve both versions rather than deleting one.
 - Do not skip obvious facts just because the schema supports extra metadata.

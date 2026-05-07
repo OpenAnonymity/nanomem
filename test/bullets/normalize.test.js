@@ -9,6 +9,7 @@ import {
     normalizeConfidence,
     defaultConfidenceForSource,
     bumpDownConfidence,
+    bumpUpConfidence,
     inferTierFromSection,
     inferStatusFromSection,
     normalizeTierToSection,
@@ -188,6 +189,41 @@ describe('bumpDownConfidence', () => {
         assert.equal(bumpDownConfidence('high'), 0.5);
         assert.equal(bumpDownConfidence('medium'), 0.35);
         assert.equal(bumpDownConfidence('low'), 0.15);
+    });
+});
+
+describe('bumpUpConfidence', () => {
+    const close = (a, b) => assert.ok(Math.abs(a - b) < 1e-9, `expected ~${b}, got ${a}`);
+    it('moves a fraction of the remaining distance to 1.0 (boost=0.2)', () => {
+        close(bumpUpConfidence(0.4), 0.52);
+        close(bumpUpConfidence(0.6), 0.68);
+        close(bumpUpConfidence(0.8), 0.84);
+        close(bumpUpConfidence(0.9), 0.92);
+    });
+    it('exhibits diminishing returns — low-confidence shifts more than high', () => {
+        const lowShift = bumpUpConfidence(0.4) - 0.4;
+        const highShift = bumpUpConfidence(0.9) - 0.9;
+        assert.ok(lowShift > highShift);
+    });
+    it('clamps to [0, 1]', () => {
+        close(bumpUpConfidence(0), 0.2);
+        close(bumpUpConfidence(1), 1);
+    });
+    it('accepts legacy enum strings', () => {
+        // 'high' → 1.0, then bumped → 1.0 (already at ceiling)
+        close(bumpUpConfidence('high'), 1.0);
+        // 'medium' → 0.7, then bumped → 0.76
+        close(bumpUpConfidence('medium'), 0.76);
+        // 'low' → 0.3, then bumped → 0.44
+        close(bumpUpConfidence('low'), 0.44);
+    });
+    it('repeated application is cumulative but tapers', () => {
+        const once = bumpUpConfidence(0.6);   // 0.68
+        const twice = bumpUpConfidence(once); // 0.744
+        const thrice = bumpUpConfidence(twice); // 0.7952
+        close(once, 0.68);
+        close(twice, 0.744);
+        close(thrice, 0.7952);
     });
 });
 
