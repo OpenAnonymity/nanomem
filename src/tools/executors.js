@@ -39,6 +39,12 @@ function clipText(value, limit) {
     return `${text.slice(0, limit)}\n...(truncated)`;
 }
 
+function stripHistorySection(content) {
+    if (typeof content !== 'string') return content;
+    const historyIdx = content.search(/^## History/im);
+    return historyIdx === -1 ? content : content.slice(0, historyIdx).trimEnd();
+}
+
 function renderFiles(files) {
     const normalizedFiles = Array.isArray(files) ? files : [];
     let usedChars = 0;
@@ -282,9 +288,10 @@ export function createRetrievalExecutors(backend) {
                 : null;
             const content = await backend.read(resolvedPath || path);
             if (content === null) return JSON.stringify({ error: `File not found: ${path}` });
-            return content.length > MAX_READ_FILE_CHARS
-                ? content.slice(0, MAX_READ_FILE_CHARS) + '...(truncated)'
-                : content;
+            const active = stripHistorySection(content);
+            return active.length > MAX_READ_FILE_CHARS
+                ? active.slice(0, MAX_READ_FILE_CHARS) + '...(truncated)'
+                : active;
         }
     };
 }
@@ -334,7 +341,7 @@ export function createAugmentQueryExecutor({ backend, llmClient, model, query, c
             const canonicalPath = resolvedPath || path;
             const raw = await backend.read(canonicalPath);
             if (!raw) continue;
-            files.push({ path: canonicalPath, content: raw });
+            files.push({ path: canonicalPath, content: stripHistorySection(raw) });
         }
 
         if (files.length === 0) {

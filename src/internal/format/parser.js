@@ -105,7 +105,7 @@ export function parseBullets(content) {
  * @returns {number}
  */
 export function countBullets(content) {
-    return parseBullets(content).length;
+    return parseBullets(content).filter(b => b.section !== 'history').length;
 }
 
 /**

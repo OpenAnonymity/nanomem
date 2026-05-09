@@ -21,6 +21,7 @@ For each new fact, decide:
 
 Do NOT save:
 - Facts already present in memory
+- Facts that contradict or update an existing fact — if new information changes something already stored, that is an update, not an addition. Skip it entirely; do not overwrite or supersede.
 - Transient details (greetings, one-off questions with no lasting answer)
 - Sensitive secrets (passwords, tokens, keys)
 
