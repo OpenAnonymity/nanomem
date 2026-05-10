@@ -46,6 +46,23 @@ function stripHistorySection(content) {
     return historyIdx === -1 ? content : content.slice(0, historyIdx).trimEnd();
 }
 
+function wordOverlap(a, b) {
+    const setA = new Set(a.split(' ').filter(Boolean));
+    const setB = new Set(b.split(' ').filter(Boolean));
+    if (setA.size === 0 || setB.size === 0) return 0;
+    let shared = 0;
+    for (const w of setA) if (setB.has(w)) shared++;
+    return shared / Math.max(setA.size, setB.size);
+}
+
+function fuzzyFindBullet(parsed, target) {
+    const candidates = parsed
+        .map((b, i) => ({ b, i, score: wordOverlap(normalizeFactText(b.text), target) }))
+        .filter(({ b, score }) => b.section !== 'history' && score >= 0.5)
+        .sort((a, b) => b.score - a.score);
+    return candidates.length > 0 ? candidates[0].i : -1;
+}
+
 function renderFiles(files) {
     const normalizedFiles = Array.isArray(files) ? files : [];
     let usedChars = 0;
@@ -431,7 +448,8 @@ export function createExtractionExecutors(backend, hooks = {}) {
                 const target = normalizeFactText(factText);
                 if (!target) { errors.push('empty old_fact'); continue; }
 
-                const idx = parsed.findIndex((b) => normalizeFactText(b.text) === target);
+                let idx = parsed.findIndex((b) => normalizeFactText(b.text) === target);
+                if (idx === -1) idx = fuzzyFindBullet(parsed, target);
                 if (idx === -1) { errors.push(`No match: ${factText}`); continue; }
 
                 // Supersede the old bullet and push a new active replacement.

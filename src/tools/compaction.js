@@ -24,7 +24,7 @@ import {
     nowIsoDateTime,
     renderCompactedDocument
 } from '../internal/format/index.js';
-import { compactionPrompt, semanticReviewPrompt } from '../prompts/compaction.js';
+import { compactionPrompt, contradictionReviewPrompt, semanticReviewPrompt } from '../prompts/compaction.js';
 import { DIRECT_LLM_OUTPUT_TOKENS } from '../internal/limits.js';
 
 
@@ -154,8 +154,20 @@ class MemoryCompactor {
             superseded = working.filter(b => b.status === 'superseded').length;
         }
 
+        // Phase 2b: contradiction review across all active bullets (working + long-term).
+        // Catches cases where ingest left two contradicting facts both active.
+        let longTerm = det.longTerm;
+        const allActive = [...working, ...longTerm];
+        if (allActive.length > 1) {
+            this._onProgress?.({ stage: 'contradiction', file: path });
+            const reviewed = await this._contradictionReview(allActive, path);
+            working = reviewed.slice(0, working.length);
+            longTerm = reviewed.slice(working.length);
+            superseded += reviewed.filter(b => b.status === 'superseded').length - working.filter(b => b.status === 'superseded').length;
+        }
+
         // Re-run deterministic compaction so newly-superseded bullets flow to History.
-        const allBullets = [...working, ...det.longTerm, ...det.history];
+        const allBullets = [...working, ...longTerm, ...det.history];
         const final = compactBullets(allBullets, { defaultTopic });
 
         this._onProgress?.({ stage: 'file_done', file: path, deduplicated, superseded, expired });
@@ -223,6 +235,42 @@ class MemoryCompactor {
                     section: 'history',
                     confidence: bumpDownConfidence(b.confidence),
                 };
+            }
+            return b;
+        });
+    }
+
+    async _contradictionReview(allActive, path) {
+        const numberedBullets = allActive
+            .map((b, i) => `${i + 1}: ${b.text} (updated_at=${b.updatedAt || ''}, confidence=${b.confidence ?? ''})`)
+            .join('\n');
+
+        const prompt = contradictionReviewPrompt
+            .replace('{TODAY}', todayIsoDate())
+            .replace('{NUMBERED_BULLETS}', numberedBullets);
+
+        let responseText = '';
+        try {
+            const response = await this._llmClient.createChatCompletion({
+                model: this._model,
+                messages: [{ role: 'user', content: prompt }],
+                max_tokens: DIRECT_LLM_OUTPUT_TOKENS.compactionSemanticReview,
+                temperature: 0,
+            });
+            responseText = response.content || '';
+        } catch {
+            return allActive;
+        }
+
+        const decisions = new Map();
+        for (const line of responseText.split('\n')) {
+            const match = line.match(/^(\d+)\s*:\s*(KEEP|SUPERSEDED)/i);
+            if (match) decisions.set(parseInt(match[1], 10), match[2].toUpperCase());
+        }
+
+        return allActive.map((b, i) => {
+            if (decisions.get(i + 1) === 'SUPERSEDED') {
+                return { ...b, status: 'superseded', tier: 'history', section: 'history', confidence: bumpDownConfidence(b.confidence) };
             }
             return b;
         });

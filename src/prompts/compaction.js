@@ -44,6 +44,24 @@ File content:
 {CONTENT}
 \`\`\``;
 
+export const contradictionReviewPrompt = `Today is {TODAY}. Review these active memory bullets and identify contradicting pairs — two bullets that assert different current values for the same type of fact (e.g. two different current jobs, two different home cities, two different current tech stacks).
+
+Active bullets:
+{NUMBERED_BULLETS}
+
+Rules:
+- Only mark a bullet SUPERSEDED if another bullet in this list directly contradicts it (different value for the same singleton attribute).
+- When two bullets contradict, mark the OLDER one superseded (earlier updated_at or lower confidence). If timestamps are the same, mark the one with lower confidence.
+- Do NOT mark bullets superseded just because they seem similar or redundant — only for direct contradictions.
+- Additive facts (multiple allergies, multiple skills, multiple past events) are not contradictions.
+
+For each numbered bullet, output exactly one line:
+N: KEEP
+or
+N: SUPERSEDED — brief reason
+
+Output only these lines, one per bullet, nothing else.`;
+
 export const semanticReviewPrompt = `Today is {TODAY}. Review these short-term (Working) memory bullets and identify which are stale, completed, or superseded.
 
 {FILE_SUMMARIES_SECTION}{LONG_TERM_SECTION}Working bullets to review:
