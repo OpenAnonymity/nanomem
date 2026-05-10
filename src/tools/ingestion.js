@@ -11,7 +11,7 @@
 import { runAgenticToolLoop } from '../internal/toolLoop.js';
 import { createExtractionExecutors } from './executors.js';
 import { resolvePromptSet } from '../prompts/index.js';
-import { TOOL_OUTPUT_TOKENS, TOOL_LOOP_ITERATIONS } from '../internal/limits.js';
+import { TOOL_OUTPUT_TOKENS, TOOL_LOOP_ITERATIONS, INGESTION_CHUNK_SIZE } from '../internal/limits.js';
 import {
     compactBullets,
     ensureBulletMetadata,
@@ -144,27 +144,87 @@ class MemoryIngester {
     /**
      * Ingest memory from a conversation.
      *
+     * Long conversations (> INGESTION_CHUNK_SIZE turns) are split into chunks
+     * so each pass sees a focused slice at high signal density. The memory index
+     * is re-read before each chunk, so later chunks can update_bullets on facts
+     * saved by earlier ones.
+     *
      * @param {Message[]} messages
      * @param {IngestOptions} [options]
      * @returns {Promise<IngestResult>}
      */
     async ingest(messages, options = {}) {
         const updatedAt = options.updatedAt || nowIsoDateTime();
-        const onToolCall = this._onToolCall;
         const signal = options.signal || null;
         if (!messages || messages.length === 0) return { status: 'skipped', writeCalls: 0 };
-        if (signal?.aborted) {
-            throw createAbortError();
-        }
+        if (signal?.aborted) throw createAbortError();
 
         const mode = options.mode || 'conversation';
         const isDocument = mode === 'document';
+
+        await this._backend.init();
+
+        if (!isDocument && messages.length > INGESTION_CHUNK_SIZE) {
+            return this._ingestInChunks(messages, updatedAt, mode, signal);
+        }
+
+        return this._ingestSingle(messages, updatedAt, mode, signal);
+    }
+
+    /**
+     * Split messages into fixed-size chunks and run a separate ingestion pass
+     * on each. The memory index is re-fetched before each chunk so later passes
+     * see what earlier ones wrote.
+     *
+     * @param {Message[]} messages
+     * @param {string} updatedAt
+     * @param {string} mode
+     * @param {AbortSignal|null} signal
+     * @returns {Promise<IngestResult>}
+     */
+    async _ingestInChunks(messages, updatedAt, mode, signal) {
+        const allWrites = [];
+        let totalWriteCalls = 0;
+        let anyProcessed = false;
+
+        for (let offset = 0; offset < messages.length; offset += INGESTION_CHUNK_SIZE) {
+            if (signal?.aborted) throw createAbortError();
+            const chunk = messages.slice(offset, offset + INGESTION_CHUNK_SIZE);
+            const result = await this._ingestSingle(chunk, updatedAt, mode, signal);
+            if (result.status === 'error') return result;
+            if (result.status === 'processed') {
+                anyProcessed = true;
+                totalWriteCalls += result.writeCalls || 0;
+                if (result.writes) allWrites.push(...result.writes);
+            }
+        }
+
+        return {
+            status: anyProcessed ? 'processed' : 'skipped',
+            writeCalls: totalWriteCalls,
+            writes: allWrites,
+        };
+    }
+
+    /**
+     * Run a single ingestion pass over the given messages.
+     *
+     * @param {Message[]} messages
+     * @param {string} updatedAt
+     * @param {string} mode
+     * @param {AbortSignal|null} signal
+     * @returns {Promise<IngestResult>}
+     */
+    async _ingestSingle(messages, updatedAt, mode, signal) {
+        const onToolCall = this._onToolCall;
+        const isDocument = mode === 'document';
+
         const conversationText = isDocument
             ? this._buildDocumentText(messages)
             : this._buildConversationText(messages);
         if (!conversationText) return { status: 'skipped', writeCalls: 0 };
 
-        await this._backend.init();
+        // Re-read the index on every call so chunked passes see prior writes.
         const index = await this._backend.getTree() || '';
 
         const { ingestionPrompt } = resolvePromptSet(mode);
@@ -206,16 +266,12 @@ class MemoryIngester {
             });
             toolCallLog = result.toolCallLog;
         } catch (error) {
-            if (isAbortError(error, signal)) {
-                throw createAbortError();
-            }
+            if (isAbortError(error, signal)) throw createAbortError();
             const message = error instanceof Error ? error.message : String(error);
             return { status: 'error', writeCalls: 0, error: message };
         }
 
-        if (signal?.aborted) {
-            throw createAbortError();
-        }
+        if (signal?.aborted) throw createAbortError();
 
         const writeTools = ['create_new_file', 'append_memory', 'update_bullets', 'archive_memory', 'delete_memory'];
         const writeCalls = toolCallLog.filter(e => writeTools.includes(e.name));
