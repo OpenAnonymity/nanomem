@@ -101,6 +101,23 @@ const T_UPDATE_BULLETS = {
     }
 };
 
+/** @type {ToolDefinition} */
+const T_CORROBORATE_BULLET = {
+    type: 'function',
+    function: {
+        name: 'corroborate_bullet',
+        description: 'When the user reconfirms a fact already in memory (whether currently active or in History), call this instead of skipping or re-saving. Boosts the bullet\'s confidence and refreshes its updated_at. If the bullet was in History, this revives it back to active.',
+        parameters: {
+            type: 'object',
+            properties: {
+                path: { type: 'string', description: 'File path containing the bullet' },
+                fact_text: { type: 'string', description: 'Exact fact text of the existing bullet (pipe-delimited metadata is fine — only the leading text is matched)' }
+            },
+            required: ['path', 'fact_text']
+        }
+    }
+};
+
 /**
  * Tool sets per ingestion mode.
  * `add`    — can only write new content.
@@ -109,11 +126,11 @@ const T_UPDATE_BULLETS = {
  * @type {Record<string, ToolDefinition[]>}
  */
 const TOOLS_BY_MODE = {
-    add: [T_READ_FILE, T_CREATE_NEW_FILE, T_APPEND_MEMORY],
-    update: [T_READ_FILE, T_UPDATE_BULLETS, T_APPEND_MEMORY, T_CREATE_NEW_FILE],
+    add: [T_READ_FILE, T_CREATE_NEW_FILE, T_APPEND_MEMORY, T_CORROBORATE_BULLET],
+    update: [T_READ_FILE, T_UPDATE_BULLETS, T_APPEND_MEMORY, T_CREATE_NEW_FILE, T_CORROBORATE_BULLET],
 };
 
-const EXTRACTION_TOOLS = [T_READ_FILE, T_CREATE_NEW_FILE, T_APPEND_MEMORY, T_UPDATE_BULLETS];
+const EXTRACTION_TOOLS = [T_READ_FILE, T_CREATE_NEW_FILE, T_APPEND_MEMORY, T_UPDATE_BULLETS, T_CORROBORATE_BULLET];
 
 class MemoryIngester {
     constructor({ backend, bulletIndex, llmClient, model, onToolCall }) {

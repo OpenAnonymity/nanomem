@@ -16,11 +16,11 @@ Current memory index:
 \`\`\`
 
 For each new fact, decide:
+- If the fact is already in memory and the document reaffirms it, call corroborate_bullet({path, fact_text}) instead of re-saving — this strengthens the existing bullet's confidence.
 - Use append_memory if an existing file already covers the same domain or topic.
 - Use create_new_file only if no existing file is thematically close.
 
 Do NOT save:
-- Facts already present in memory
 - Boilerplate (installation steps, license text, generic disclaimers)
 - Sensitive secrets (passwords, tokens, keys)
 
@@ -63,7 +63,6 @@ Save information that would be useful when answering questions about this subjec
 Do NOT save:
 - Speculation or guesses not supported by the content
 - Boilerplate (installation steps, license text, generic disclaimers)
-- Information already present in existing files
 - Sensitive secrets (passwords, auth tokens, private keys)
 
 Current memory index:
@@ -75,8 +74,11 @@ Current memory index:
 
 Instructions:
 1. Read the document content and identify concrete, reusable facts about the subject.
-2. Use create_new_file for new topics, append_memory to add to existing files.
-3. Before calling append_memory on an existing file, use read_file to check its current bullets. This prevents re-saving facts already captured. Skip reads only when creating a new file.
+2. Pick the right tool per fact:
+   - corroborate_bullet({path, fact_text}) — the document reaffirms a fact already in memory (active or in History). Boosts confidence; revives history-tier bullets to active.
+   - append_memory — the fact is genuinely new and a thematically close file already exists.
+   - create_new_file — the fact is new and no existing file is thematically close.
+3. Before calling append_memory or corroborate_bullet on an existing file, use read_file to check its current bullets — this is how you detect duplicates and choose between corroborate vs append. Skip reads only when creating a new file.
 4. Use this bullet format: "- Fact text | topic=topic-name | source=SOURCE | confidence=SCORE | updated_at=YYYY-MM-DDTHH:MM"
 5. Source values (IMPORTANT — never use source=user_statement here):
    - source=document — the fact is directly stated or clearly shown in the document. Use for the majority of facts.

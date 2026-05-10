@@ -12,6 +12,7 @@
 /** @import { ChatCompletionResponse, ExtractionExecutorHooks, LLMClient, StorageBackend, ToolDefinition } from '../types.js' */
 import {
     bumpDownConfidence,
+    bumpUpConfidence,
     compactBullets,
     ensureBulletMetadata,
     inferTopicFromPath,
@@ -473,6 +474,60 @@ export function createExtractionExecutors(backend, hooks = {}) {
             const result = { success: true, path, action: 'bullets_updated', updated: matchedCount };
             if (errors.length) result.errors = errors;
             return JSON.stringify(result);
+        },
+        corroborate_bullet: async ({ path, fact_text }) => {
+            const before = await backend.read(path);
+            if (!before) return JSON.stringify({ error: `File not found: ${path}` });
+
+            const factText = typeof fact_text === 'string' && fact_text.includes('|')
+                ? fact_text.split('|')[0].trim()
+                : String(fact_text || '').trim();
+            const target = normalizeFactText(factText);
+            if (!target) return JSON.stringify({ error: 'empty fact_text' });
+
+            const parsed = parseBullets(before);
+            const idx = parsed.findIndex((b) => normalizeFactText(b.text) === target);
+            if (idx === -1) return JSON.stringify({ error: `No matching bullet in ${path} for: ${factText}` });
+
+            const matched = parsed[idx];
+            const wasInHistory = matched.tier === 'history' || matched.status === 'superseded';
+            const confidenceBefore = matched.confidence;
+            const confidenceAfter = bumpUpConfidence(matched.confidence);
+            const defaultTopic = inferTopicFromPath(path);
+            const effectiveUpdatedAt = updatedAt || nowIsoDateTime();
+
+            parsed[idx] = wasInHistory
+                ? {
+                    ...matched,
+                    tier: 'long_term',
+                    status: 'active',
+                    section: 'long_term',
+                    confidence: confidenceAfter,
+                    updatedAt: effectiveUpdatedAt,
+                    explicitConfidence: true,
+                }
+                : {
+                    ...matched,
+                    confidence: confidenceAfter,
+                    updatedAt: effectiveUpdatedAt,
+                    explicitConfidence: true,
+                };
+
+            const compacted = compactBullets(parsed, { defaultTopic, maxActivePerTopic: 1000 });
+            const after = renderCompactedDocument(
+                compacted.working, compacted.longTerm, compacted.history,
+                { titleTopic: defaultTopic }
+            );
+            await backend.write(path, after);
+            if (refreshIndex) await refreshIndex(path);
+            onWrite?.(path, before, after);
+            return JSON.stringify({
+                success: true,
+                path,
+                action: wasInHistory ? 'revived' : 'corroborated',
+                confidence_before: confidenceBefore,
+                confidence_after: confidenceAfter,
+            });
         },
         archive_memory: async ({ path, item_text }) => {
             const existing = await backend.read(path);

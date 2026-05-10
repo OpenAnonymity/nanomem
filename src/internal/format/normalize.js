@@ -147,6 +147,7 @@ export function defaultConfidenceForSource(source) {
 }
 
 export const CONTRADICTION_DECAY_FACTOR = 0.5;
+export const CORROBORATION_BOOST_FACTOR = 0.2;
 
 /**
  * Reduce a bullet's confidence after it has been contradicted via
@@ -158,6 +159,23 @@ export const CONTRADICTION_DECAY_FACTOR = 0.5;
 export function bumpDownConfidence(value) {
     const current = normalizeConfidence(value);
     return Math.min(1, Math.max(0, current * CONTRADICTION_DECAY_FACTOR));
+}
+
+/**
+ * Boost a bullet's confidence after it has been corroborated (the user
+ * restated a fact already in memory). Moves a fraction of the remaining
+ * distance to 1.0 — diminishing returns, asymptotic. Asymmetric with the
+ * decay factor on purpose: contradictions are decisive, corroborations
+ * are gentle and cumulative.
+ *
+ * @param {number | string | null | undefined} value
+ * @returns {number}
+ */
+export function bumpUpConfidence(value) {
+    const current = normalizeConfidence(value);
+    const next = current + (1 - current) * CORROBORATION_BOOST_FACTOR;
+    const clamped = Math.min(1, Math.max(0, next));
+    return Math.round(clamped * 10000) / 10000;
 }
 
 /**
