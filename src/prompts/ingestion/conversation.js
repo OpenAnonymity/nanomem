@@ -21,6 +21,8 @@ For each new fact, decide:
 - Use create_new_file only if no existing file is thematically close.
 
 Do NOT save:
+- Facts already present in memory
+- Facts that contradict or update an existing fact — if new information changes something already stored, that is an update, not an addition. Skip it entirely; do not overwrite or supersede.
 - Transient details (greetings, one-off questions with no lasting answer)
 - Sensitive secrets (passwords, tokens, keys)
 
@@ -99,9 +101,9 @@ Instructions:
    For time-bound facts, append: | expires_at=YYYY-MM-DD
 6. Source values:
    - source=user_statement — the user directly said this. This is the PRIMARY source. Use it for the vast majority of saved facts.
-   - source=llm_infer — use ONLY when combining multiple explicit user statements into an obvious conclusion (e.g. user said "I work at Acme" and "Acme is in SF" → "Works in SF"). Never use this to guess, extrapolate, or fill in gaps. When in doubt, do not save.
+   - source=llm_infer — use when (a) combining multiple explicit user statements into an obvious conclusion (e.g. user said "I work at Acme" and "Acme is in SF" → "Works in SF"), or (b) a specific statement reveals a stable preference or behavioral tendency worth abstracting beyond the immediate context. Test for (b): "If I were helping this person with a completely different request next month, would knowing this preference change my answer?" If yes, save the abstracted preference as a separate durable fact alongside the specific one. A one-off event or task-specific detail fails this test; a stable tendency passes it. Never guess or fill gaps. When in doubt, do not save. Set confidence lower (0.5–0.7) for inferred facts.
 7. Set confidence (0.4–1.0) based on how reliably this memory can be used later. Consider how explicitly the user stated it, how likely it is to remain true, and how much inference was required. Examples: ~1.0 = stated plainly and permanent; ~0.7 = contextual or may evolve; ~0.4 = weak inference or transient. Pick the number that best fits — do not round to these examples. Do not save below 0.4. Prefer not saving over saving weak or transient details.
-8. You may optionally add tier=working for clearly short-term or in-progress context. If you are unsure, omit tier and just save the fact.
+8. Tier reflects how durable a fact is, not whether it is currently true. Use tier=working only for genuinely transient states that will no longer be relevant within weeks (e.g. a temporary injury, a trip in progress, a one-off task). Announced future states that are permanent once they occur — a new job, a move, a relationship change — are long-term facts even if the change hasn't happened yet. If you are unsure, omit tier.
 9. Facts worth saving: allergies, health conditions, location, job/role, tech stack, pets, family members, durable preferences, and active plans — but ONLY if the user explicitly mentioned them.
 10. For time-bound facts, set expires_at=YYYY-MM-DD. Ask yourself: "After what date would this fact no longer be true or relevant?" Set expires_at to that date. If the fact is stable and has no natural end (job, home city, preference, chronic condition, relationship), omit expires_at. If the expiry is genuinely unclear, include date context in the fact text and omit expires_at.
 11. If nothing new is worth remembering, simply stop without calling any write tools. Saving nothing is better than saving something wrong.
@@ -111,7 +113,9 @@ Rules:
 - Favor broad thematic files. A file can hold multiple related sub-topics — only truly unrelated facts need separate files.
 - Only create a new file when nothing in the index is thematically close. When in doubt, append.
 - When creating a new file, choose a name that is descriptive but not overly specific — it should reflect a reusable theme, not a single event or detail. Too generic: "conditions.md", "events.md", "info.md". Too specific: "bee-sting.md", "portland-trip.md". Just right: "allergies.md", "fitness.md", "diet.md", "side-projects.md".
-- Use update_bullets only if a fact is now stale or contradicted. Pass all corrections for a file in one call.
+- When read_file reveals a bullet that is directly contradicted by new information, you MUST use update_bullets — never append_memory for a fact that conflicts with an existing one. Supersession is atomic: update_bullets marks the old fact as history and inserts the new one in a single call. Using append_memory alongside a contradicted fact creates duplicates.
+- Supersede proactively for committed transitions: if the user explicitly states they are leaving, ending, or departing from something currently in memory (e.g. "I'm leaving X", "I quit X", "we broke up", "I moved out of X"), treat the existing fact as superseded immediately — do not wait for the change to have taken effect. The same applies to any committed replacement in a domain where only one value can be true at a time (primary job, home city, relationship): once the user announces a definitive transition, the old value is superseded even if the start date is in the future. Tentative or hypothetical plans ("thinking about", "might", "considering") do not qualify.
+- Use update_bullets only when a fact is stale or contradicted. Pass all corrections for a file in one call.
 - Use corroborate_bullet when the user restates a fact that's already saved (this strengthens trust in the bullet); never re-save the same fact with append_memory.
 - When a new explicit user statement contradicts an older one on the same topic, prefer the newer statement. If a user statement conflicts with an inference, the user statement always wins.
 - If a conflict is ambiguous, preserve both versions rather than deleting one.

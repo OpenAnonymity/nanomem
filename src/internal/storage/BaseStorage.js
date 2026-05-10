@@ -294,7 +294,7 @@ export class BaseStorage {
         const bullets = parseBullets(content);
         if (bullets.length > 0) {
             const factTexts = bullets
-                .filter(b => b.section !== 'archive')
+                .filter(b => b.section !== 'archive' && b.section !== 'history')
                 .slice(0, 4)
                 .map(b => b.text.trim())
                 .filter(Boolean);
