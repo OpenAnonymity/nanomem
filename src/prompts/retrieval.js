@@ -31,6 +31,8 @@ Retrieval sufficiency metadata:
 - coverage="none" means memory was not useful for this query.
 - missing_variables should list only personal variables that would materially improve the answer but were not found. Use [] when coverage is full.
 - confidence_reason should briefly explain the sufficiency judgment.
+- fact_confidence is a float in [0, 1] representing the aggregate reliability of the individual facts you assembled. Derive it from the confidence= metadata on the bullet lines you read (e.g. "| confidence=0.6"). Use the mean of those values for the facts you included in your answer. Omit or pass null when no facts were retrieved or none had confidence metadata.
+- uncertain_facts lists the specific claims in your assembled answer that came from bullets with confidence= below 0.7. Quote or paraphrase the uncertain portion concisely (e.g. "User lives in Seattle") — not the full bullet text. Use [] when all included facts are high-confidence or when no confidence metadata was present.
 
 CONSERVATIVE DEFAULT — when in doubt, retrieve nothing:
 - Before opening any file, ask: "Would including personal memory give a meaningfully better answer to this specific query?" If not clearly yes, call assemble_context with an empty string immediately — no file reads needed.
@@ -122,6 +124,8 @@ Retrieval sufficiency metadata:
 - coverage="none" means memory did not help answer this query.
 - missing_variables should list only personal variables that would materially improve the answer but were not found. Use [] when coverage is full.
 - confidence_reason should briefly explain the sufficiency judgment.
+- fact_confidence is a float in [0, 1] representing the aggregate reliability of the individual facts you assembled. Derive it from the confidence= metadata on the bullet lines you read (e.g. "| confidence=0.6"). Use the mean of those values for the facts you included in your answer. Omit or pass null when no new facts were retrieved or none had confidence metadata.
+- uncertain_facts lists the specific claims in your assembled answer that came from bullets with confidence= below 0.7. Quote or paraphrase the uncertain portion concisely (e.g. "User lives in Seattle") — not the full bullet text. Use [] when skipped, all included facts are high-confidence, or no confidence metadata was present.
 - If skipped=true because existing context is enough, use coverage="full" and retrieval_confidence="high" only when the existing context directly covers the current query.
 
 Conservative default: Before retrieving anything new, ask "Would personal memory give a meaningfully better answer to this specific query?" If not clearly yes, call assemble_context with an empty string and skipped=true. Statements of current activity ("I'm studying X", "I started Y") and general knowledge questions almost never need memory retrieval. Exception: if the query is underspecified and personal memory would supply a missing parameter, ambiguity, or decision variable, you SHOULD retrieve that missing context — but only that context, as narrowly as possible, and you should make at least one targeted retrieval attempt before skipping.

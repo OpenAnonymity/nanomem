@@ -129,7 +129,9 @@ describe('retrieveAdaptively', () => {
                 retrievalConfidence: 'low',
                 coverage: 'none',
                 missingVariables: [],
-                retrievalReason: null
+                retrievalReason: null,
+                factConfidence: null,
+                uncertainFacts: []
             }
         );
 
@@ -148,7 +150,9 @@ describe('retrieveAdaptively', () => {
                 retrievalConfidence: 'medium',
                 coverage: 'partial',
                 missingVariables: ['current location'],
-                retrievalReason: 'Location is still missing.'
+                retrievalReason: 'Location is still missing.',
+                factConfidence: null,
+                uncertainFacts: []
             }
         );
     });
