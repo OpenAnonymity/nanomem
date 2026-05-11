@@ -25,6 +25,11 @@ export const TOOL_LOOP_ITERATIONS = {
     deletionDeepFloor: 30
 };
 
+// Conversations longer than this are split into chunks of this size before
+// ingestion. Each chunk gets a fresh LLM pass with the updated memory index,
+// keeping signal density high regardless of session length.
+export const INGESTION_CHUNK_SIZE = 15;
+
 export const DIRECT_LLM_OUTPUT_TOKENS = {
     // 1-2 sentence direct answer for already-covered queries.
     retrievalDirectAnswer: 250,
