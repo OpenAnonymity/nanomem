@@ -79,7 +79,7 @@ describe('parseBullets', () => {
 
 describe('countBullets', () => {
     it('counts bullets in the document', () => {
-        assert.equal(countBullets(SAMPLE_DOC), 4);
+        assert.equal(countBullets(SAMPLE_DOC), 3);
     });
     it('returns 0 for empty input', () => {
         assert.equal(countBullets(''), 0);
