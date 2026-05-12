@@ -30,6 +30,8 @@ const MAX_RECENT_CONTEXT_CHARS = 2000;
 const MAX_DISPLAY_CONTEXT_CHARS = 2500;
 const REDUNDANT_CONTEXT_MIN_TOKENS = 4;
 const REDUNDANT_CONTEXT_OVERLAP_THRESHOLD = 0.82;
+const RETRIEVAL_CONFIDENCE_LEVELS = new Set(['high', 'medium', 'low']);
+const RETRIEVAL_COVERAGE_LEVELS = new Set(['full', 'partial', 'none']);
 const ADAPTIVE_FALLBACK_STOPWORDS = new Set([
     'what', 'when', 'where', 'which', 'who', 'whom', 'whose', 'why', 'how',
     'have', 'has', 'had', 'with', 'from', 'into', 'onto', 'about', 'there',
@@ -91,7 +93,12 @@ const RETRIEVAL_TOOLS = [
             parameters: {
                 type: 'object',
                 properties: {
-                    content: { type: 'string', description: 'A synthesized, human-readable answer to the query derived from the memory files. Write prose, not raw bullet dumps. If nothing relevant was found, pass an empty string.' }
+                    content: { type: 'string', description: 'A synthesized, human-readable answer to the query derived from the memory files. Write prose, not raw bullet dumps. If nothing relevant was found, pass an empty string.' },
+                    retrieval_confidence: { type: 'string', description: 'One of high, medium, or low. Confidence that the delivered memory context is sufficient for this user turn. This is not the confidence of individual stored facts.' },
+                    coverage: { type: 'string', description: 'One of full, partial, or none. How completely the delivered memory context answers the current query.' },
+                    missing_variables: { type: 'array', items: { type: 'string' }, description: 'Personal variables that would materially improve the answer but were not found. Empty array when coverage is full.' },
+                    confidence_reason: { type: 'string', description: 'Brief reason for retrieval_confidence and coverage.' },
+                    uncertain_facts: { type: 'array', items: { type: 'string' }, description: 'Specific claims from your assembled answer that came from bullets with low stored confidence (confidence= below 0.7). Quote or paraphrase the uncertain portion concisely — not the full bullet text. Empty array when all included facts are high-confidence or when no confidence metadata was present.' }
                 },
                 required: ['content']
             }
@@ -140,7 +147,12 @@ const ADAPTIVE_RETRIEVAL_TOOLS = RETRIEVAL_TOOLS.map(tool => {
                 properties: {
                     content: { type: 'string', description: 'Newly retrieved facts as synthesized prose. Empty string when skipped.' },
                     skipped: { type: 'boolean', description: 'True when existing context already covers the query and no new retrieval was done.' },
-                    skip_reason: { type: 'string', description: 'Brief explanation of why retrieval was skipped. Required when skipped=true.' }
+                    skip_reason: { type: 'string', description: 'Brief explanation of why retrieval was skipped. Required when skipped=true.' },
+                    retrieval_confidence: { type: 'string', description: 'One of high, medium, or low. Confidence that the delivered or already-retrieved memory context is sufficient for this user turn. This is not the confidence of individual stored facts.' },
+                    coverage: { type: 'string', description: 'One of full, partial, or none. How completely the delivered or already-retrieved memory context answers the current query.' },
+                    missing_variables: { type: 'array', items: { type: 'string' }, description: 'Personal variables that would materially improve the answer but were not found. Empty array when coverage is full.' },
+                    confidence_reason: { type: 'string', description: 'Brief reason for retrieval_confidence and coverage.' },
+                    uncertain_facts: { type: 'array', items: { type: 'string' }, description: 'Specific claims from your assembled answer that came from bullets with low stored confidence (confidence= below 0.7). Quote or paraphrase the uncertain portion concisely — not the full bullet text. Empty array when all included facts are high-confidence or when no confidence metadata was present.' }
                 },
                 required: ['content']
             }
@@ -216,6 +228,13 @@ class MemoryRetriever {
         // Post-filter assembled context to remove facts already in the conversation
         if (result?.assembledContext && conversationText) {
             result.assembledContext = this._filterRedundantContext(result.assembledContext, conversationText);
+            if (!result.assembledContext) {
+                Object.assign(result, this._normalizeRetrievalAssessment(null, {
+                    hasContent: false,
+                    skipped: false,
+                    hasPriorContext: false,
+                }));
+            }
         }
 
         return result;
@@ -377,11 +396,11 @@ class MemoryRetriever {
             };
         }
 
+        const terminalWasCalled = terminalToolResult != null;
+        const terminalArgs = terminalToolResult?.arguments || {};
         const files = await collectReadFiles(toolCallLog, this._backend);
         const paths = files.map(f => f.path);
-
-        const terminalWasCalled = terminalToolResult != null;
-        const assembledContext = terminalToolResult?.arguments?.content || null;
+        const assembledContext = terminalArgs.content || null;
 
         // LLM explicitly said nothing relevant — respect that, don't fall back to snippet context.
         if (terminalWasCalled && !assembledContext) return null;
@@ -389,6 +408,12 @@ class MemoryRetriever {
         if (files.length === 0 && !assembledContext) return null;
 
         const snippetContext = terminalWasCalled ? null : await this._buildSnippetContext(paths, query, conversationText);
+        const finalContext = assembledContext || snippetContext;
+        const assessment = this._normalizeRetrievalAssessment(terminalArgs, {
+            hasContent: Boolean(finalContext),
+            skipped: false,
+            hasPriorContext: false,
+        });
 
         onProgress?.({
             stage: 'complete',
@@ -396,7 +421,7 @@ class MemoryRetriever {
             paths
         });
 
-        return { files, paths, assembledContext: assembledContext || snippetContext };
+        return { files, paths, assembledContext: finalContext, ...assessment };
     }
 
     /**
@@ -449,6 +474,12 @@ class MemoryRetriever {
 
         const retrieval = await this.retrieveAdaptively(query, alreadyRetrievedContext, conversationText);
         if (!retrieval) return null;
+        const retrievalMetadata = {
+            retrievalConfidence: retrieval.retrievalConfidence,
+            coverage: retrieval.coverage,
+            missingVariables: retrieval.missingVariables,
+            retrievalReason: retrieval.retrievalReason,
+        };
         if (retrieval.skipped) {
             return {
                 files: [],
@@ -458,6 +489,7 @@ class MemoryRetriever {
                 assembledContext: null,
                 skipped: true,
                 skipReason: retrieval.skipReason || 'Already covered by retrieved context.',
+                ...retrievalMetadata,
                 ...(retrieval.displayText ? { displayText: retrieval.displayText } : {})
             };
         }
@@ -473,7 +505,8 @@ class MemoryRetriever {
                 apiPrompt: null,
                 assembledContext: null,
                 skipped: true,
-                skipReason: 'No new relevant memory found.'
+                skipReason: 'No new relevant memory found.',
+                ...retrievalMetadata
             };
         }
 
@@ -509,7 +542,8 @@ class MemoryRetriever {
                 apiPrompt: null,
                 assembledContext: null,
                 skipped: true,
-                skipReason: 'No new memory context needed.'
+                skipReason: 'No new memory context needed.',
+                ...retrievalMetadata
             };
         }
 
@@ -519,7 +553,8 @@ class MemoryRetriever {
             reviewPrompt: crafted.reviewPrompt,
             apiPrompt: crafted.apiPrompt,
             assembledContext,
-            skipped: false
+            skipped: false,
+            ...retrievalMetadata
         };
     }
 
@@ -555,10 +590,16 @@ class MemoryRetriever {
             paths: files.map(f => f.path)
         });
 
+        const assessment = this._normalizeRetrievalAssessment(null, {
+            hasContent: Boolean(assembled),
+            skipped: false,
+            hasPriorContext: false,
+        });
         return {
             files,
             paths: files.map(f => f.path),
             assembledContext: assembled,
+            ...assessment,
             ...(displayText ? { displayText } : {})
         };
     }
@@ -926,27 +967,46 @@ class MemoryRetriever {
             const expandedQuery = this._buildAdaptiveFallbackQuery(query, alreadyRetrievedContext);
             const fallback = await this._textSearchFallbackWithLoad(expandedQuery, onProgress, conversationText);
             if (fallback) return { ...fallback, skipped: false };
+            const assessment = this._normalizeRetrievalAssessment(null, {
+                hasContent: false,
+                skipped: true,
+                hasPriorContext: false,
+            });
             return {
                 files: [],
                 paths: [],
                 assembledContext: null,
                 skipped: true,
-                skipReason: 'No new relevant memory found.'
+                skipReason: 'No new relevant memory found.',
+                ...assessment
             };
         }
 
         if (!result) {
+            const assessment = this._normalizeRetrievalAssessment(null, {
+                hasContent: false,
+                skipped: true,
+                hasPriorContext: false,
+            });
             return {
                 files: [],
                 paths: [],
                 assembledContext: null,
                 skipped: true,
-                skipReason: 'No new relevant memory found.'
+                skipReason: 'No new relevant memory found.',
+                ...assessment
             };
         }
 
         if (result && !result.skipped && result.assembledContext && conversationText) {
             result.assembledContext = this._filterRedundantContext(result.assembledContext, conversationText);
+            if (!result.assembledContext) {
+                Object.assign(result, this._normalizeRetrievalAssessment(null, {
+                    hasContent: false,
+                    skipped: false,
+                    hasPriorContext: Boolean(alreadyRetrievedContext?.trim()),
+                }));
+            }
         }
 
         return result;
@@ -1007,6 +1067,11 @@ class MemoryRetriever {
         if (args.skipped === true) {
             const skipReason = args.skip_reason || 'Already covered by retrieved context.';
             const displayText = await this._renderDirectAnswer(query, alreadyRetrievedContext);
+            const assessment = this._normalizeRetrievalAssessment(args, {
+                hasContent: false,
+                skipped: true,
+                hasPriorContext: true,
+            });
             onProgress?.({ stage: 'complete', message: `Retrieval skipped: ${skipReason}` });
             return {
                 files: [],
@@ -1014,6 +1079,7 @@ class MemoryRetriever {
                 assembledContext: null,
                 skipped: true,
                 skipReason,
+                ...assessment,
                 ...(displayText ? { displayText } : {})
             };
         }
@@ -1026,6 +1092,11 @@ class MemoryRetriever {
         if (terminalToolResult && !assembledContext) {
             const reason = 'No new relevant memory found.';
             const displayText = await this._renderDirectAnswer(query, alreadyRetrievedContext);
+            const assessment = this._normalizeRetrievalAssessment(args, {
+                hasContent: false,
+                skipped: true,
+                hasPriorContext: true,
+            });
             onProgress?.({ stage: 'complete', message: `Retrieval skipped: ${reason}` });
             return {
                 files: [],
@@ -1033,6 +1104,7 @@ class MemoryRetriever {
                 assembledContext: null,
                 skipped: true,
                 skipReason: reason,
+                ...assessment,
                 ...(displayText ? { displayText } : {})
             };
         }
@@ -1040,6 +1112,11 @@ class MemoryRetriever {
         if (files.length === 0 && !assembledContext) {
             const reason = 'No new relevant memory found.';
             const displayText = await this._renderDirectAnswer(query, alreadyRetrievedContext);
+            const assessment = this._normalizeRetrievalAssessment(args, {
+                hasContent: false,
+                skipped: true,
+                hasPriorContext: true,
+            });
             onProgress?.({ stage: 'complete', message: `Retrieval skipped: ${reason}` });
             return {
                 files: [],
@@ -1047,6 +1124,7 @@ class MemoryRetriever {
                 assembledContext: null,
                 skipped: true,
                 skipReason: reason,
+                ...assessment,
                 ...(displayText ? { displayText } : {})
             };
         }
@@ -1060,9 +1138,25 @@ class MemoryRetriever {
         });
 
         const finalContext = assembledContext || snippetContext;
-        if (this._isContextRedundant(finalContext, alreadyRetrievedContext)) {
+        const assessment = this._normalizeRetrievalAssessment(args, {
+            hasContent: Boolean(finalContext),
+            skipped: false,
+            hasPriorContext: true,
+        });
+
+        if (!terminalToolResult && this._isContextRedundant(finalContext, alreadyRetrievedContext)) {
             const skipReason = 'Already covered by retrieved context.';
             const displayText = await this._renderDirectAnswer(query, alreadyRetrievedContext);
+            const skipAssessment = this._normalizeRetrievalAssessment({
+                ...args,
+                coverage: 'full',
+                retrieval_confidence: 'medium',
+                confidence_reason: skipReason,
+            }, {
+                hasContent: false,
+                skipped: true,
+                hasPriorContext: true,
+            });
             onProgress?.({ stage: 'complete', message: `Retrieval skipped: ${skipReason}` });
             return {
                 files: [],
@@ -1070,6 +1164,7 @@ class MemoryRetriever {
                 assembledContext: null,
                 skipped: true,
                 skipReason,
+                ...skipAssessment,
                 ...(displayText ? { displayText } : {})
             };
         }
@@ -1083,7 +1178,67 @@ class MemoryRetriever {
             paths,
             assembledContext: finalContext,
             skipped: false,
+            ...assessment,
             ...(displayText ? { displayText } : {})
+        };
+    }
+
+    _normalizeRetrievalAssessment(args, { hasContent = false, skipped = false, hasPriorContext = false } = {}) {
+        const rawConfidence = typeof args?.retrieval_confidence === 'string'
+            ? args.retrieval_confidence.toLowerCase()
+            : '';
+        const rawCoverage = typeof args?.coverage === 'string'
+            ? args.coverage.toLowerCase()
+            : '';
+        const hasAnyContext = Boolean(hasContent || hasPriorContext);
+
+        let coverage = RETRIEVAL_COVERAGE_LEVELS.has(rawCoverage) ? rawCoverage : null;
+        if (!coverage) {
+            if (!hasAnyContext) coverage = 'none';
+            else if (skipped && hasPriorContext) coverage = 'full';
+            else if (hasContent) coverage = 'partial';
+            else coverage = 'none';
+        }
+
+        let retrievalConfidence = RETRIEVAL_CONFIDENCE_LEVELS.has(rawConfidence) ? rawConfidence : null;
+        if (!retrievalConfidence) {
+            if (coverage === 'none') retrievalConfidence = 'low';
+            else if (coverage === 'full') retrievalConfidence = skipped ? 'medium' : 'high';
+            else retrievalConfidence = hasContent ? 'medium' : 'low';
+        }
+
+        if (!hasAnyContext) {
+            coverage = 'none';
+            retrievalConfidence = 'low';
+        } else if (coverage === 'none') {
+            retrievalConfidence = 'low';
+        } else if (coverage !== 'full' && retrievalConfidence === 'high') {
+            retrievalConfidence = 'medium';
+        }
+
+        const missingVariables = Array.isArray(args?.missing_variables)
+            ? args.missing_variables
+                .filter((value) => typeof value === 'string')
+                .map((value) => value.trim())
+                .filter(Boolean)
+            : [];
+        const retrievalReason = typeof args?.confidence_reason === 'string' && args.confidence_reason.trim()
+            ? args.confidence_reason.trim()
+            : null;
+
+        const uncertainFacts = Array.isArray(args?.uncertain_facts)
+            ? args.uncertain_facts
+                .filter(v => typeof v === 'string')
+                .map(v => v.trim())
+                .filter(Boolean)
+            : [];
+
+        return {
+            retrievalConfidence,
+            coverage,
+            missingVariables,
+            retrievalReason,
+            uncertainFacts,
         };
     }
 
