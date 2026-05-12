@@ -136,8 +136,26 @@ export async function runAgenticToolLoop(options) {
                     ? JSON.parse(tc.function.arguments)
                     : (tc.function?.arguments || {});
             } catch (err) {
-                console.warn(`[tool-loop] failed to parse args for ${toolName}: ${err.message}. Raw: ${String(tc.function?.arguments).slice(0, 200)}`);
-                args = {};
+                const raw = String(tc.function?.arguments || '');
+                let recovered = false;
+
+                // Recovery 1: stray `-` before a string value ("key":-"value" → "key":"value")
+                const patched = raw.replace(/:\s*-\s*"/g, ': "');
+                if (patched !== raw) {
+                    try { args = JSON.parse(patched); recovered = true; } catch (_) { /* fall through */ }
+                }
+
+                // Recovery 2: truncated string (hit token limit mid-JSON) — close the open string and object
+                if (!recovered && err.message.includes('Unterminated string')) {
+                    for (const suffix of ['"', '"}', '"}}']) {
+                        try { args = JSON.parse(raw + suffix); recovered = true; break; } catch (_) { /* try next */ }
+                    }
+                }
+
+                if (!recovered) {
+                    console.warn(`[tool-loop] failed to parse args for ${toolName}: ${err.message}. Raw: ${raw.slice(0, 200)}`);
+                    args = {};
+                }
             }
 
             const toolCallId = tc.id || `iter-${iterations}-tool-${toolIndex + 1}-${toolName || 'tool'}`;

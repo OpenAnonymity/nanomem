@@ -45,6 +45,7 @@ CONSERVATIVE DEFAULT — when in doubt, retrieve nothing:
 IMPORTANT — Domain-exhaustive retrieval:
 - When a query touches a domain (health, work, personal), prefer completeness over selectivity within that domain. File descriptions may be incomplete.
 - For family-related queries: check personal/family.md AND any health files about family members.
+- File index descriptions are brief summaries — a file may contain facts relevant to the query even if its name or description does not obviously match. When a query is broad or could depend on facts spread across multiple files, read more files rather than fewer.
 
 IMPORTANT — Implied context: Many queries depend on unstated personal facts. Before reading files, ask yourself: "What personal background would a human assistant need to answer this well?" Then search for that too.
 Examples of implied needs:
