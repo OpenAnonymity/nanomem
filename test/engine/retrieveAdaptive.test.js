@@ -130,7 +130,6 @@ describe('retrieveAdaptively', () => {
                 coverage: 'none',
                 missingVariables: [],
                 retrievalReason: null,
-                factConfidence: null,
                 uncertainFacts: []
             }
         );
@@ -151,7 +150,6 @@ describe('retrieveAdaptively', () => {
                 coverage: 'partial',
                 missingVariables: ['current location'],
                 retrievalReason: 'Location is still missing.',
-                factConfidence: null,
                 uncertainFacts: []
             }
         );

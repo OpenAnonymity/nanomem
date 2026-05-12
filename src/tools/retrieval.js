@@ -98,7 +98,6 @@ const RETRIEVAL_TOOLS = [
                     coverage: { type: 'string', description: 'One of full, partial, or none. How completely the delivered memory context answers the current query.' },
                     missing_variables: { type: 'array', items: { type: 'string' }, description: 'Personal variables that would materially improve the answer but were not found. Empty array when coverage is full.' },
                     confidence_reason: { type: 'string', description: 'Brief reason for retrieval_confidence and coverage.' },
-                    fact_confidence: { type: 'number', description: 'Float in [0, 1]. Mean of the confidence= metadata values on the bullet lines you included in your answer. Omit or null when no facts were retrieved or none had confidence metadata.' },
                     uncertain_facts: { type: 'array', items: { type: 'string' }, description: 'Specific claims from your assembled answer that came from bullets with low stored confidence (confidence= below 0.7). Quote or paraphrase the uncertain portion concisely — not the full bullet text. Empty array when all included facts are high-confidence or when no confidence metadata was present.' }
                 },
                 required: ['content']
@@ -153,7 +152,6 @@ const ADAPTIVE_RETRIEVAL_TOOLS = RETRIEVAL_TOOLS.map(tool => {
                     coverage: { type: 'string', description: 'One of full, partial, or none. How completely the delivered or already-retrieved memory context answers the current query.' },
                     missing_variables: { type: 'array', items: { type: 'string' }, description: 'Personal variables that would materially improve the answer but were not found. Empty array when coverage is full.' },
                     confidence_reason: { type: 'string', description: 'Brief reason for retrieval_confidence and coverage.' },
-                    fact_confidence: { type: 'number', description: 'Float in [0, 1]. Mean of the confidence= metadata values on the newly retrieved bullet lines you included. Omit or null when skipped or no facts had confidence metadata.' },
                     uncertain_facts: { type: 'array', items: { type: 'string' }, description: 'Specific claims from your assembled answer that came from bullets with low stored confidence (confidence= below 0.7). Quote or paraphrase the uncertain portion concisely — not the full bullet text. Empty array when all included facts are high-confidence or when no confidence metadata was present.' }
                 },
                 required: ['content']
@@ -409,16 +407,13 @@ class MemoryRetriever {
 
         if (files.length === 0 && !assembledContext) return null;
 
-        const snippetResult = terminalWasCalled ? null : await this._buildSnippetContext(paths, query, conversationText);
-        const snippetContext = snippetResult?.context ?? null;
-        const snippetFactConfidence = snippetResult?.factConfidence ?? null;
+        const snippetContext = terminalWasCalled ? null : await this._buildSnippetContext(paths, query, conversationText);
         const finalContext = assembledContext || snippetContext;
         const assessment = this._normalizeRetrievalAssessment(terminalArgs, {
             hasContent: Boolean(finalContext),
             skipped: false,
             hasPriorContext: false,
         });
-        const factConfidence = assessment.factConfidence ?? snippetFactConfidence;
 
         onProgress?.({
             stage: 'complete',
@@ -426,7 +421,7 @@ class MemoryRetriever {
             paths
         });
 
-        return { files, paths, assembledContext: finalContext, ...assessment, factConfidence };
+        return { files, paths, assembledContext: finalContext, ...assessment };
     }
 
     /**
@@ -584,9 +579,7 @@ class MemoryRetriever {
 
         if (files.length === 0) return null;
 
-        const snippetResult = await this._buildSnippetContext(files.map(f => f.path), query, conversationText);
-        const assembled = snippetResult?.context ?? null;
-        const snippetFactConfidence = snippetResult?.factConfidence ?? null;
+        const assembled = await this._buildSnippetContext(files.map(f => f.path), query, conversationText);
         const displayText = assembled
             ? await this._renderDirectAnswer(query, assembled)
             : null;
@@ -602,13 +595,11 @@ class MemoryRetriever {
             skipped: false,
             hasPriorContext: false,
         });
-        const factConfidence = assessment.factConfidence ?? snippetFactConfidence;
         return {
             files,
             paths: files.map(f => f.path),
             assembledContext: assembled,
             ...assessment,
-            factConfidence,
             ...(displayText ? { displayText } : {})
         };
     }
@@ -810,8 +801,7 @@ class MemoryRetriever {
                 score,
                 text: renderBullet(item.bullet),
                 updatedAt: item.bullet.updatedAt || '',
-                fileUpdatedAt: item.fileUpdatedAt || 0,
-                confidence: typeof item.bullet.confidence === 'number' ? item.bullet.confidence : null
+                fileUpdatedAt: item.fileUpdatedAt || 0
             });
         }
 
@@ -824,15 +814,12 @@ class MemoryRetriever {
                 if (bullets.length > 0) {
                     for (const bullet of bullets) {
                         const score = scoreBullet(bullet, queryTerms);
-                        candidates.push({
-                            path, score, text: renderBullet(bullet), updatedAt: bullet.updatedAt || '',
-                            confidence: typeof bullet.confidence === 'number' ? bullet.confidence : null
-                        });
+                        candidates.push({ path, score, text: renderBullet(bullet), updatedAt: bullet.updatedAt || '' });
                     }
                     continue;
                 }
                 for (const snippet of this._scoreRawLines(raw, queryTerms)) {
-                    candidates.push({ path, score: snippet.score, text: `- ${snippet.text}`, updatedAt: '', confidence: null });
+                    candidates.push({ path, score: snippet.score, text: `- ${snippet.text}`, updatedAt: '' });
                 }
             }
         }
@@ -847,7 +834,7 @@ class MemoryRetriever {
             });
         }
 
-        if (candidates.length === 0) return { context: null, factConfidence: null };
+        if (candidates.length === 0) return null;
 
         candidates.sort((a, b) => {
             if (b.score !== a.score) return b.score - a.score;
@@ -855,13 +842,6 @@ class MemoryRetriever {
         });
 
         const selected = candidates.slice(0, MAX_SNIPPETS);
-        const confValues = selected
-            .map(c => (typeof c.confidence === 'number' ? c.confidence : null))
-            .filter(v => v !== null);
-        const factConfidence = confValues.length > 0
-            ? confValues.reduce((a, b) => a + b, 0) / confValues.length
-            : null;
-
         const grouped = new Map();
         for (const item of selected) {
             const list = grouped.get(item.path) || [];
@@ -878,8 +858,7 @@ class MemoryRetriever {
             total += section.length;
         }
 
-        const context = sections.join('\n\n').trim() || null;
-        return { context, factConfidence };
+        return sections.join('\n\n').trim() || null;
     }
 
     _filterRedundantContext(assembledContext, conversationText) {
@@ -1150,9 +1129,7 @@ class MemoryRetriever {
             };
         }
 
-        const snippetResult = terminalToolResult ? null : await this._buildSnippetContext(paths, query, conversationText);
-        const snippetContext = snippetResult?.context ?? null;
-        const snippetFactConfidence = snippetResult?.factConfidence ?? null;
+        const snippetContext = terminalToolResult ? null : await this._buildSnippetContext(paths, query, conversationText);
 
         onProgress?.({
             stage: 'complete',
@@ -1196,14 +1173,12 @@ class MemoryRetriever {
             ? await this._renderDirectAnswer(query, snippetContext)
             : null;
 
-        const factConfidence = assessment.factConfidence ?? snippetFactConfidence;
         return {
             files,
             paths,
             assembledContext: finalContext,
             skipped: false,
             ...assessment,
-            factConfidence,
             ...(displayText ? { displayText } : {})
         };
     }
@@ -1251,11 +1226,6 @@ class MemoryRetriever {
             ? args.confidence_reason.trim()
             : null;
 
-        const rawFactConfidence = typeof args?.fact_confidence === 'number' ? args.fact_confidence : null;
-        const factConfidence = rawFactConfidence !== null && rawFactConfidence >= 0 && rawFactConfidence <= 1
-            ? rawFactConfidence
-            : null;
-
         const uncertainFacts = Array.isArray(args?.uncertain_facts)
             ? args.uncertain_facts
                 .filter(v => typeof v === 'string')
@@ -1268,7 +1238,6 @@ class MemoryRetriever {
             coverage,
             missingVariables,
             retrievalReason,
-            factConfidence,
             uncertainFacts,
         };
     }

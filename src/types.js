@@ -218,7 +218,6 @@
  * @property {'full' | 'partial' | 'none'} [coverage]
  * @property {string[]} [missingVariables]
  * @property {string | null} [retrievalReason]
- * @property {number | null} [factConfidence] - float in [0,1], mean confidence of the individual facts assembled; null when unknown
  * @property {string[]} [uncertainFacts] - specific claims from the assembled answer with low stored confidence
  */
 
@@ -234,7 +233,6 @@
  * @property {'full' | 'partial' | 'none'} [coverage]
  * @property {string[]} [missingVariables]
  * @property {string | null} [retrievalReason]
- * @property {number | null} [factConfidence] - float in [0,1], mean confidence of the individual facts assembled; null when unknown
  * @property {string[]} [uncertainFacts] - specific claims from the assembled answer with low stored confidence
  */
 
