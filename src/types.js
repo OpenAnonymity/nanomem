@@ -214,6 +214,11 @@
  * @property {{ path: string; content: string }[]} files
  * @property {string[]} paths
  * @property {string | null} assembledContext
+ * @property {'high' | 'medium' | 'low'} [retrievalConfidence]
+ * @property {'full' | 'partial' | 'none'} [coverage]
+ * @property {string[]} [missingVariables]
+ * @property {string | null} [retrievalReason]
+ * @property {string[]} [uncertainFacts] - specific claims from the assembled answer with low stored confidence
  */
 
 /**
@@ -224,6 +229,11 @@
  * @property {string} [displayText]
  * @property {boolean} skipped - true when existing context already covered the query
  * @property {string} [skipReason] - explanation when skipped=true
+ * @property {'high' | 'medium' | 'low'} [retrievalConfidence]
+ * @property {'full' | 'partial' | 'none'} [coverage]
+ * @property {string[]} [missingVariables]
+ * @property {string | null} [retrievalReason]
+ * @property {string[]} [uncertainFacts] - specific claims from the assembled answer with low stored confidence
  */
 
 /**
@@ -245,6 +255,10 @@
  * @property {string} [displayText]
  * @property {boolean} skipped - true when existing context already covered the query
  * @property {string} [skipReason] - explanation when skipped=true
+ * @property {'high' | 'medium' | 'low'} [retrievalConfidence]
+ * @property {'full' | 'partial' | 'none'} [coverage]
+ * @property {string[]} [missingVariables]
+ * @property {string | null} [retrievalReason]
  */
 
 /**

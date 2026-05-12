@@ -46,7 +46,11 @@ function formatHuman(result, flags) {
 
     // retrieve → print assembled context directly
     if (result.assembledContext != null) {
-        return maybeRenderMarkdown(result.assembledContext, flags) || dim('No relevant context found.');
+        let out = maybeRenderMarkdown(result.assembledContext, flags) || dim('No relevant context found.');
+        if (Array.isArray(result.uncertainFacts) && result.uncertainFacts.length > 0) {
+            out += '\n' + dim('Low confidence: ') + result.uncertainFacts.map(f => `"${f}"`).join(', ');
+        }
+        return out;
     }
 
     // read → print content directly
