@@ -12,6 +12,8 @@
 
 `nanomem` turns chats, notes, and exports into a markdown memory system that an LLM can update and retrieve as facts evolve over time. The result stays inspectable, portable, and user-owned instead of disappearing into hidden vector state.
 
+Read the design overview: [nanomem: An Extremely Simple, Inference-Time Memory Module](https://openanonymity.ai/blog/nanomem/).
+
 <div align="center">
 <video src="https://github.com/user-attachments/assets/fb59c332-2f93-415a-b514-571491bec565" width="60%" controls></video>
 </div>
