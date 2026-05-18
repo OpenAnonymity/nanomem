@@ -61,6 +61,10 @@ export function parseBullets(content) {
         let status = null;
         let source = null;
         let confidence = null;
+        let id = null;
+        let v = null;
+        let supersedes = null;
+        let prevConfidence = null;
 
         for (const part of parts) {
             const kv = part.match(/^([a-z_]+)\s*=\s*(.+)$/i);
@@ -75,6 +79,10 @@ export function parseBullets(content) {
             if (key === 'status') status = normalizeStatus(value);
             if (key === 'source') source = normalizeSource(value);
             if (key === 'confidence') confidence = normalizeConfidence(value);
+            if (key === 'id') id = value;
+            if (key === 'v') { const n = parseInt(value, 10); if (n >= 1) v = n; }
+            if (key === 'supersedes') supersedes = value;
+            if (key === 'prev_confidence') prevConfidence = normalizeConfidence(value);
         }
 
         bullets.push({
@@ -93,7 +101,11 @@ export function parseBullets(content) {
             explicitConfidence: Boolean(confidence),
             heading: currentHeading,
             section,
-            lineIndex: i
+            lineIndex: i,
+            id,
+            v,
+            supersedes,
+            prevConfidence,
         });
     }
 
@@ -145,6 +157,10 @@ export function renderBullet(bullet) {
     ];
     if (clean.reviewAt) metadata.push(`review_at=${clean.reviewAt}`);
     if (clean.expiresAt) metadata.push(`expires_at=${clean.expiresAt}`);
+    metadata.push(`id=${clean.id}`);
+    metadata.push(`v=${clean.v}`);
+    if (clean.supersedes) metadata.push(`supersedes=${clean.supersedes}`);
+    if (typeof clean.prevConfidence === 'number') metadata.push(`prev_confidence=${clean.prevConfidence}`);
     return `- ${clean.text} | ${metadata.join(' | ')}`;
 }
 

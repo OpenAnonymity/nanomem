@@ -41,6 +41,11 @@
  * @property {string} heading
  * @property {string} section
  * @property {number} lineIndex
+ * @property {string | null} id - stable ID assigned at creation, preserved across all mutations
+ * @property {number} v - version counter, incremented on every mutation
+ * @property {string | null} supersedes - ID of the bullet this one replaced (content changes only)
+ * @property {Confidence | null} prevConfidence - confidence value before the last mutation
+ * @property {string | null} confidenceEvent - what caused the last confidence change
  */
 
 /**
@@ -51,6 +56,22 @@
  * @property {Source} [defaultSource]
  * @property {Confidence} [defaultConfidence]
  * @property {string} [updatedAt]
+ */
+
+/**
+ * @typedef {'created' | 'corroboration' | 'contradiction' | 'content_update' | 'compaction' | 'tier_transition' | 'deleted'} VlogEvent
+ */
+
+/**
+ * @typedef {object} VersionLogEntry
+ * @property {string} id - bullet ID this entry belongs to
+ * @property {number} v - version number after this event
+ * @property {VlogEvent} event - what caused this version
+ * @property {string} at - ISO datetime of the event
+ * @property {Confidence | null} confidence - confidence after this event
+ * @property {Confidence | null} [prev] - confidence before this event
+ * @property {string | null} [text] - text snapshot (present for created and content_update)
+ * @property {string | null} [supersedes] - ID of replaced bullet (present for content_update)
  */
 
 /**

@@ -10,6 +10,7 @@ import {
     renderCompactedDocument,
     normalizeFactText,
 } from './format/index.js';
+import { vlogPath, isVlogPath, readVlog, appendVlogEntry } from './vlog.js';
 
 const SUPPORTED_OMF_VERSIONS = ['1.0'];
 const DEFAULT_SOURCE_APP = 'nanomem';
@@ -104,6 +105,7 @@ export async function buildOmfExport(storage, options = {}) {
 
     for (const file of allFiles) {
         if (file.path.endsWith('_tree.md')) continue;
+        if (isVlogPath(file.path)) continue;
         if (!file.content?.trim()) continue;
 
         const category = categoryFromPath(file.path);
@@ -137,6 +139,9 @@ export async function buildOmfExport(storage, options = {}) {
                     nanomem: {
                         file_path: file.path,
                         heading: bullet.heading || null,
+                        id: bullet.id || null,
+                        v: bullet.v || 1,
+                        supersedes: bullet.supersedes || null,
                     },
                 };
 
@@ -162,6 +167,13 @@ export async function buildOmfExport(storage, options = {}) {
         memories.push(item);
     }
 
+    // Export vlogs as a separate extension block so they survive round-trips.
+    const vlogs = {};
+    for (const file of allFiles) {
+        if (!isVlogPath(file.path) || !file.content?.trim()) continue;
+        vlogs[file.path] = file.content;
+    }
+
     return {
         omf: SUPPORTED_OMF_VERSIONS[0],
         exported_at: new Date().toISOString(),
@@ -169,6 +181,7 @@ export async function buildOmfExport(storage, options = {}) {
             app: options.sourceApp || DEFAULT_SOURCE_APP,
         },
         memories,
+        ...(Object.keys(vlogs).length > 0 ? { extensions: { nanomem: { vlogs } } } : {}),
     };
 }
 
@@ -295,13 +308,19 @@ export async function importOmf(storage, doc, options = {}) {
             const existing = await storage.read(path);
             const existingBullets = existing ? parseBullets(existing) : [];
 
-            const incomingBullets = bulletItems.map((item) => ensureBulletMetadata({
-                text: item.content,
-                topic: item.tags?.[0] || null,
-                updatedAt: item.updated_at || today,
-                expiresAt: item.expires_at || null,
-                section: statusToSection(item.status),
-            }, { updatedAt: today, defaultTopic }));
+            const incomingBullets = bulletItems.map((item) => {
+                const ext = item.extensions?.nanomem || {};
+                return ensureBulletMetadata({
+                    text: item.content,
+                    topic: item.tags?.[0] || null,
+                    updatedAt: item.updated_at || today,
+                    expiresAt: item.expires_at || null,
+                    section: statusToSection(item.status),
+                    id: ext.id || null,
+                    v: ext.v || null,
+                    supersedes: ext.supersedes || null,
+                }, { updatedAt: today, defaultTopic });
+            });
 
             const existingNormalized = new Set(existingBullets.map((bullet) => normalizeFactText(bullet.text)));
             let itemDuplicates = 0;
@@ -329,6 +348,20 @@ export async function importOmf(storage, doc, options = {}) {
             }
         } catch (error) {
             errors.push(`Error writing ${path}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+
+    // Restore vlogs from the export if present.
+    const exportedVlogs = doc.extensions?.nanomem?.vlogs;
+    if (exportedVlogs && typeof exportedVlogs === 'object') {
+        for (const [vlogFilePath, content] of Object.entries(exportedVlogs)) {
+            if (typeof content === 'string' && content.trim()) {
+                try {
+                    await storage.write(vlogFilePath, content);
+                } catch {
+                    // Non-fatal: vlog restore failure doesn't block memory import.
+                }
+            }
         }
     }
 
