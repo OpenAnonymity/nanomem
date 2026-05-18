@@ -119,9 +119,17 @@
  */
 
 /**
+ * @typedef {object} ToolParameterSchema
+ * @property {string} type
+ * @property {string} [description]
+ * @property {object} [items]
+ * @property {string[]} [enum]
+ */
+
+/**
  * @typedef {object} ToolFunctionParameters
  * @property {'object'} type
- * @property {Record<string, { type: string; description?: string; items?: object }>} properties
+ * @property {Record<string, ToolParameterSchema>} properties
  * @property {string[]} required
  */
 

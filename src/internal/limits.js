@@ -31,6 +31,8 @@ export const TOOL_LOOP_ITERATIONS = {
 export const INGESTION_CHUNK_SIZE = 15;
 
 export const DIRECT_LLM_OUTPUT_TOKENS = {
+    // Tiny one-line decision for adaptive retrieval no-op checks.
+    retrievalNoOpCheck: 250,
     // 1-2 sentence direct answer for already-covered queries.
     retrievalDirectAnswer: 250,
     // Numbered KEEP/SUPERSEDED lines for hundreds of bullets.

@@ -26,10 +26,12 @@ Instructions:
 
 Retrieval sufficiency metadata:
 - retrieval_confidence is confidence that the delivered memory context is enough for this user turn. It is NOT confidence in individual stored facts.
+- retrieval_confidence must be "high", "medium", or "low". Never use "none"; use "low" when coverage is "none".
 - coverage="full" means the delivered memory context directly answers the query or supplies all personal context needed for the final answer.
 - coverage="partial" means the context helps but one or more answer-shaping personal variables are missing or ambiguous.
 - coverage="none" means memory was not useful for this query.
 - missing_variables should list only personal variables that would materially improve the answer but were not found. Use [] when coverage is full.
+- When coverage is "none" for a user-specific recommendation, planning, or decision query, missing_variables should name the main personal variables searched for or needed.
 - confidence_reason should briefly explain the sufficiency judgment.
 - uncertain_facts lists the specific claims in your assembled answer that came from bullets with confidence= below 0.7. Quote or paraphrase the uncertain portion concisely (e.g. "User lives in Seattle") — not the full bullet text. Use [] when all included facts are high-confidence or when no confidence metadata was present.
 
@@ -111,21 +113,23 @@ The following memory context was already retrieved and delivered earlier in this
 
 Instructions:
 1. First assess whether the current query is already sufficiently covered by the already-retrieved context above.
-2. If it IS covered — call assemble_context with an empty string, skipped=true, and a brief skip_reason. Do not use any retrieval tools.
-3. If it is NOT covered or only partially covered — use the retrieval tools to find only the MISSING information. Read at most {MAX_FILES} files.
+2. If it IS fully covered — call assemble_context with an empty string, skipped=true, coverage="full", and a brief skip_reason. Do not use any retrieval tools.
+3. If it is NOT covered or only partially covered — use the retrieval tools to find only the MISSING information. Read at most {MAX_FILES} files. Do not skip with coverage="partial" or coverage="none" before making a targeted retrieval attempt.
 4. Once you have retrieved new information, call assemble_context with ONLY the newly found facts in content. Do not repeat what was already retrieved. Leave skipped unset (or false).
 5. If you searched but found nothing new, call assemble_context with an empty string and skipped=true, skip_reason="No new relevant memory found."
 6. In every assemble_context call, report retrieval_confidence, coverage, missing_variables, and confidence_reason.
 
 Retrieval sufficiency metadata:
 - retrieval_confidence is confidence that the already-retrieved context plus any newly delivered memory is enough for this user turn. It is NOT confidence in individual stored facts.
+- retrieval_confidence must be "high", "medium", or "low".
 - coverage="full" means the already-retrieved context or newly delivered memory directly answers the current query.
 - coverage="partial" means the context helps but one or more answer-shaping personal variables are missing or ambiguous.
 - coverage="none" means memory did not help answer this query.
 - missing_variables should list only personal variables that would materially improve the answer but were not found. Use [] when coverage is full.
+- When coverage is "none" for a user-specific recommendation, planning, or decision query, missing_variables should name the main personal variables searched for or needed.
 - confidence_reason should briefly explain the sufficiency judgment.
 - uncertain_facts lists the specific claims in your assembled answer that came from bullets with confidence= below 0.7. Quote or paraphrase the uncertain portion concisely (e.g. "User lives in Seattle") — not the full bullet text. Use [] when skipped, all included facts are high-confidence, or no confidence metadata was present.
-- If skipped=true because existing context is enough, use coverage="full" and retrieval_confidence="high" only when the existing context directly covers the current query.
+- If skipped=true because existing context is enough, use coverage="full" and retrieval_confidence="high" only when the existing context directly covers the current query. Skipping with coverage="partial" or coverage="none" is invalid unless you already made a targeted retrieval attempt and found nothing new.
 
 Conservative default: Before retrieving anything new, ask "Would personal memory give a meaningfully better answer to this specific query?" If not clearly yes, call assemble_context with an empty string and skipped=true. Statements of current activity ("I'm studying X", "I started Y") and general knowledge questions almost never need memory retrieval. Exception: if the query is underspecified and personal memory would supply a missing parameter, ambiguity, or decision variable, you SHOULD retrieve that missing context — but only that context, as narrowly as possible, and you should make at least one targeted retrieval attempt before skipping.
 
@@ -134,6 +138,35 @@ Implied context: When a query does warrant retrieval, consider what unstated per
 When recent conversation is provided alongside the query, use it to resolve references like "that", "the same", "what we discussed", etc.
 
 Only retrieve content that genuinely adds to what is already in the session context.`;
+
+export const adaptiveNoOpPrompt = `You decide whether to skip memory retrieval in a multi-turn memory system.
+
+The following memory context was already retrieved and delivered earlier in this session:
+
+\`\`\`
+{ALREADY_RETRIEVED}
+\`\`\`
+
+{RECENT_CONVERSATION_SECTION}Current query:
+
+\`\`\`
+{QUERY}
+\`\`\`
+
+Return exactly one line in this format:
+decision | confidence | reason
+
+Where decision is skip or retrieve, confidence is high, medium, or low, and reason is a short plain-text explanation.
+
+Choose "skip" only when the current query is clearly answerable using the already-retrieved context alone, or when the user is merely asking to restate, summarize, compare, or clarify that context.
+
+Choose "retrieve" whenever additional memory could plausibly improve the answer.
+
+Important:
+- Do not assume the already-retrieved context is complete memory.
+- Open-ended questions, requests for recommendations or planning, and questions that may depend on unstated personal context should usually retrieve.
+- If uncertain, choose "retrieve".
+- Use high confidence only for obvious no-ops.`;
 
 export const augmentCrafterPrompt = `You craft delegation prompts for a frontier model.
 

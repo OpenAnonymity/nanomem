@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { MemoryRetriever } from '../../src/tools/retrieval.js';
 
-function createRetriever({ searchResults = [], llmClient = null } = {}) {
+function createRetriever({ searchResults = [], readContent = null, bulletIndex = null, llmClient = null } = {}) {
     const backend = {
         async init() {},
         async getTree() {
@@ -14,12 +14,15 @@ function createRetriever({ searchResults = [], llmClient = null } = {}) {
         async search() {
             return searchResults;
         },
-        async read() {
-            return null;
+        async read(path) {
+            if (readContent && typeof readContent === 'object') {
+                return readContent[path] || null;
+            }
+            return readContent;
         }
     };
 
-    const bulletIndex = {
+    const resolvedBulletIndex = bulletIndex || {
         async init() {},
         getBulletsForPaths() {
             return [];
@@ -35,13 +38,52 @@ function createRetriever({ searchResults = [], llmClient = null } = {}) {
 
     return new MemoryRetriever({
         backend,
-        bulletIndex,
+        bulletIndex: resolvedBulletIndex,
         llmClient: resolvedLlmClient,
         model: 'test-model'
     });
 }
 
 describe('retrieveAdaptively', () => {
+    it('returns normalized no-memory metadata when first-turn adaptive retrieval finds nothing', async () => {
+        const retriever = createRetriever({
+            llmClient: {
+                async createChatCompletion(request) {
+                    if (request.tools) {
+                        return {
+                            content: '',
+                            tool_calls: [{
+                                id: 'call-1',
+                                type: 'function',
+                                function: {
+                                    name: 'assemble_context',
+                                    arguments: JSON.stringify({
+                                        content: '',
+                                        retrieval_confidence: 'none',
+                                        coverage: 'none',
+                                        missing_variables: ['dietary preferences'],
+                                        confidence_reason: 'No relevant personal memory was found.'
+                                    })
+                                }
+                            }]
+                        };
+                    }
+
+                    return { content: '', tool_calls: [] };
+                }
+            }
+        });
+
+        const result = await retriever.retrieveAdaptively('Any dinner ideas for tonight?');
+
+        assert.equal(result.skipped, true);
+        assert.equal(result.skipReason, 'No new relevant memory found.');
+        assert.equal(result.coverage, 'none');
+        assert.equal(result.retrievalConfidence, 'low');
+        assert.deepEqual(result.missingVariables, ['dietary preferences']);
+        assert.equal(result.retrievalReason, 'No relevant personal memory was found.');
+    });
+
     it('returns a skipped result instead of null when adaptive retrieval fallback finds nothing', async () => {
         const retriever = createRetriever();
 
@@ -70,6 +112,178 @@ describe('retrieveAdaptively', () => {
         assert.match(query, /\bMise\b/);
     });
 
+    it('skips adaptive retrieval when the no-op precheck is high confidence', async () => {
+        const calls = [];
+        const retriever = createRetriever({
+            llmClient: {
+                async createChatCompletion(request) {
+                    calls.push(request);
+                    assert.equal(request.tools, undefined);
+                    if (calls.length === 1) {
+                        return {
+                            content: 'skip | high | The deadline is already present in the retrieved context.',
+                            tool_calls: []
+                        };
+                    }
+                    return { content: 'NomNom has a June 15 launch deadline.', tool_calls: [] };
+                }
+            }
+        });
+
+        const result = await retriever.retrieveAdaptively(
+            'what was that deadline again?',
+            '**NomNom** has a June 15 launch deadline.',
+            null
+        );
+
+        assert.equal(result.skipped, true);
+        assert.equal(result.skipReason, 'Already covered by retrieved context.');
+        assert.equal(result.coverage, 'full');
+        assert.equal(result.retrievalConfidence, 'high');
+        assert.equal(result.retrievalReason, 'The deadline is already present in the retrieved context.');
+        assert.equal(result.displayText, 'NomNom has a June 15 launch deadline.');
+        assert.equal(calls.length, 2);
+    });
+
+    it('retrieves when the no-op precheck is not high confidence', async () => {
+        const calls = [];
+        const retriever = createRetriever({
+            llmClient: {
+                async createChatCompletion(request) {
+                    calls.push(request);
+                    if (!request.tools) {
+                        return {
+                            content: 'skip | medium | The prior context may answer part of the query.',
+                            tool_calls: []
+                        };
+                    }
+
+                    return {
+                        content: '',
+                        tool_calls: [{
+                            id: 'call-1',
+                            type: 'function',
+                            function: {
+                                name: 'assemble_context',
+                                arguments: JSON.stringify({
+                                    content: 'Mise is in early alpha.',
+                                    retrieval_confidence: 'medium',
+                                    coverage: 'partial',
+                                    missing_variables: [],
+                                    confidence_reason: 'The retrieved context adds a project status.'
+                                })
+                            }
+                        }]
+                    };
+                }
+            }
+        });
+
+        const result = await retriever.retrieveAdaptively(
+            'what else do I know about those projects?',
+            '**NomNom** has a June 15 launch deadline.',
+            null
+        );
+
+        assert.equal(result.skipped, false);
+        assert.equal(result.assembledContext, 'Mise is in early alpha.');
+        assert.equal(result.coverage, 'partial');
+        assert.equal(calls.some((request) => Boolean(request.tools)), true);
+    });
+
+    it('continues adaptive retrieval when the no-op precheck fails', async () => {
+        let calls = 0;
+        const retriever = createRetriever({
+            llmClient: {
+                async createChatCompletion(request) {
+                    calls += 1;
+                    if (!request.tools) {
+                        throw new Error('precheck unavailable');
+                    }
+
+                    return {
+                        content: '',
+                        tool_calls: [{
+                            id: 'call-1',
+                            type: 'function',
+                            function: {
+                                name: 'assemble_context',
+                                arguments: JSON.stringify({
+                                    content: 'Mise is in early alpha.',
+                                    retrieval_confidence: 'medium',
+                                    coverage: 'partial',
+                                    confidence_reason: 'The retrieved context adds a project status.'
+                                })
+                            }
+                        }]
+                    };
+                }
+            }
+        });
+
+        const result = await retriever.retrieveAdaptively(
+            'what else do I know about those projects?',
+            '**NomNom** has a June 15 launch deadline.',
+            null
+        );
+
+        assert.equal(result.skipped, false);
+        assert.equal(result.assembledContext, 'Mise is in early alpha.');
+        assert.equal(calls, 2);
+    });
+
+    it('uses keyword fallback when the model tries to skip with incomplete coverage before retrieving', async () => {
+        const retriever = createRetriever({
+            searchResults: [{ path: 'work/projects.md' }],
+            readContent: {
+                'work/projects.md': [
+                    '# Projects',
+                    '',
+                    '## Long-Term',
+                    '- Mise is in early alpha. | tier=long_term | status=active | source=user_statement | confidence=1'
+                ].join('\n')
+            },
+            llmClient: {
+                async createChatCompletion(request) {
+                    if (request.tools) {
+                        return {
+                            content: '',
+                            tool_calls: [{
+                                id: 'call-1',
+                                type: 'function',
+                                function: {
+                                    name: 'assemble_context',
+                                    arguments: JSON.stringify({
+                                        content: '',
+                                        skipped: true,
+                                        skip_reason: 'Existing context is related but incomplete.',
+                                        retrieval_confidence: 'medium',
+                                        coverage: 'partial',
+                                        missing_variables: ['other project statuses'],
+                                        confidence_reason: 'Other projects may be missing.'
+                                    })
+                                }
+                            }]
+                        };
+                    }
+
+                    return { content: '', tool_calls: [] };
+                }
+            }
+        });
+
+        const result = await retriever.retrieveAdaptively(
+            'what else do I know about those projects?',
+            '**NomNom** has a June 15 launch deadline.',
+            null
+        );
+
+        assert.equal(result.skipped, false);
+        assert.match(result.assembledContext, /Mise is in early alpha/);
+        assert.equal(result.coverage, 'partial');
+        assert.equal(result.retrievalConfidence, 'medium');
+    });
+
     it('detects newly assembled context that duplicates prior retrieved context', () => {
         const retriever = createRetriever();
 
@@ -80,6 +294,95 @@ describe('retrieveAdaptively', () => {
             ),
             true
         );
+    });
+
+    it('suppresses model-assembled context that duplicates prior retrieved context', async () => {
+        const retriever = createRetriever({
+            llmClient: {
+                async createChatCompletion(request) {
+                    if (!request.tools) {
+                        return {
+                            content: 'retrieve | high | Check whether there is anything new.',
+                            tool_calls: []
+                        };
+                    }
+
+                    return {
+                        content: '',
+                        tool_calls: [{
+                            id: 'call-1',
+                            type: 'function',
+                            function: {
+                                name: 'assemble_context',
+                                arguments: JSON.stringify({
+                                    content: 'Follows a gluten-free diet and prefers warm savory meat-forward East Asian options.',
+                                    retrieval_confidence: 'high',
+                                    coverage: 'full',
+                                    missing_variables: [],
+                                    confidence_reason: 'The retrieved context answers the food preference query.'
+                                })
+                            }
+                        }]
+                    };
+                }
+            }
+        });
+
+        const result = await retriever.retrieveAdaptively(
+            'what food preferences should I use?',
+            'Follows a gluten-free diet. Prefers warm, savory, meat-forward, and East Asian inspired options.',
+            null
+        );
+
+        assert.equal(result.skipped, true);
+        assert.equal(result.skipReason, 'Already covered by retrieved context.');
+        assert.equal(result.coverage, 'full');
+        assert.equal(result.retrievalConfidence, 'medium');
+    });
+
+    it('suppresses retrieved context when the model assesses coverage as none', async () => {
+        const retriever = createRetriever({
+            llmClient: {
+                async createChatCompletion(request) {
+                    if (!request.tools) {
+                        return {
+                            content: 'retrieve | high | The query may need new memory.',
+                            tool_calls: []
+                        };
+                    }
+
+                    return {
+                        content: '',
+                        tool_calls: [{
+                            id: 'call-1',
+                            type: 'function',
+                            function: {
+                                name: 'assemble_context',
+                                arguments: JSON.stringify({
+                                    content: 'The user once mentioned a loosely related project.',
+                                    retrieval_confidence: 'high',
+                                    coverage: 'none',
+                                    missing_variables: [],
+                                    confidence_reason: 'The retrieved memory does not help answer the query.'
+                                })
+                            }
+                        }]
+                    };
+                }
+            }
+        });
+
+        const result = await retriever.retrieveAdaptively(
+            'what should I book?',
+            'User is considering a conference in Seattle.',
+            null
+        );
+
+        assert.equal(result.skipped, true);
+        assert.equal(result.skipReason, 'No new relevant memory found.');
+        assert.equal(result.coverage, 'none');
+        assert.equal(result.retrievalConfidence, 'low');
+        assert.equal(result.assembledContext, null);
     });
 
     it('returns retrieval confidence metadata from normal retrieval', async () => {
@@ -192,7 +495,7 @@ describe('retrieveAdaptively', () => {
         assert.equal(result.coverage, 'full');
     });
 
-    it('does not preserve high confidence for partial adaptive skips', async () => {
+    it('does not accept partial adaptive skips without a retrieval attempt', async () => {
         const retriever = createRetriever({
             llmClient: {
                 async createChatCompletion(request) {
@@ -230,9 +533,10 @@ describe('retrieveAdaptively', () => {
         );
 
         assert.equal(result.skipped, true);
-        assert.equal(result.retrievalConfidence, 'medium');
-        assert.equal(result.coverage, 'partial');
-        assert.deepEqual(result.missingVariables, ['current budget']);
+        assert.equal(result.skipReason, 'No new relevant memory found.');
+        assert.equal(result.retrievalConfidence, 'low');
+        assert.equal(result.coverage, 'none');
+        assert.deepEqual(result.missingVariables, []);
     });
 
     it('returns a skipped adaptive augment result when prior context is sufficient', async () => {
@@ -255,7 +559,23 @@ describe('retrieveAdaptively', () => {
             llmClient: {
                 async createChatCompletion(request) {
                     calls.push(request);
-                    if (calls.length === 1) {
+                    if (!request.tools) {
+                        if (calls.length === 1) {
+                            return {
+                                content: 'retrieve | high | The recommendation may need additional personal constraints.',
+                                tool_calls: []
+                            };
+                        }
+
+                        return {
+                            content: JSON.stringify({
+                                reviewPrompt: 'Avoid restaurants where cross-contact is likely. [[user_data]]The user has a severe peanut allergy.[[/user_data]]'
+                            }),
+                            tool_calls: []
+                        };
+                    }
+
+                    if (request.tools) {
                         return {
                             content: '',
                             tool_calls: [{
@@ -270,13 +590,6 @@ describe('retrieveAdaptively', () => {
                             }]
                         };
                     }
-
-                    return {
-                        content: JSON.stringify({
-                            reviewPrompt: 'Avoid restaurants where cross-contact is likely. [[user_data]]The user has a severe peanut allergy.[[/user_data]]'
-                        }),
-                        tool_calls: []
-                    };
                 }
             }
         });
@@ -294,6 +607,6 @@ describe('retrieveAdaptively', () => {
             result.apiPrompt,
             'Avoid restaurants where cross-contact is likely. The user has a severe peanut allergy.'
         );
-        assert.doesNotMatch(calls[1].messages[1].content, /gluten-free diet/);
+        assert.doesNotMatch(calls[2].messages[1].content, /gluten-free diet/);
     });
 });

@@ -13,7 +13,8 @@ import { TOOL_OUTPUT_TOKENS, TOOL_LOOP_ITERATIONS, DIRECT_LLM_OUTPUT_TOKENS } fr
 import {
     retrievalPrompt,
     augmentAddendum,
-    adaptiveRetrievalPrompt
+    adaptiveRetrievalPrompt,
+    adaptiveNoOpPrompt
 } from '../prompts/retrieval.js';
 import {
     normalizeFactText,
@@ -32,6 +33,7 @@ const REDUNDANT_CONTEXT_MIN_TOKENS = 4;
 const REDUNDANT_CONTEXT_OVERLAP_THRESHOLD = 0.82;
 const RETRIEVAL_CONFIDENCE_LEVELS = new Set(['high', 'medium', 'low']);
 const RETRIEVAL_COVERAGE_LEVELS = new Set(['full', 'partial', 'none']);
+const ADAPTIVE_NO_OP_DECISIONS = new Set(['skip', 'retrieve']);
 const ADAPTIVE_FALLBACK_STOPWORDS = new Set([
     'what', 'when', 'where', 'which', 'who', 'whom', 'whose', 'why', 'how',
     'have', 'has', 'had', 'with', 'from', 'into', 'onto', 'about', 'there',
@@ -94,13 +96,13 @@ const RETRIEVAL_TOOLS = [
                 type: 'object',
                 properties: {
                     content: { type: 'string', description: 'A synthesized, human-readable answer to the query derived from the memory files. Write prose, not raw bullet dumps. If nothing relevant was found, pass an empty string.' },
-                    retrieval_confidence: { type: 'string', description: 'One of high, medium, or low. Confidence that the delivered memory context is sufficient for this user turn. This is not the confidence of individual stored facts.' },
-                    coverage: { type: 'string', description: 'One of full, partial, or none. How completely the delivered memory context answers the current query.' },
+                    retrieval_confidence: { type: 'string', enum: ['high', 'medium', 'low'], description: 'Confidence that the delivered memory context is sufficient for this user turn. This is not the confidence of individual stored facts. Use low when coverage is none.' },
+                    coverage: { type: 'string', enum: ['full', 'partial', 'none'], description: 'How completely the delivered memory context answers the current query.' },
                     missing_variables: { type: 'array', items: { type: 'string' }, description: 'Personal variables that would materially improve the answer but were not found. Empty array when coverage is full.' },
                     confidence_reason: { type: 'string', description: 'Brief reason for retrieval_confidence and coverage.' },
                     uncertain_facts: { type: 'array', items: { type: 'string' }, description: 'Specific claims from your assembled answer that came from bullets with low stored confidence (confidence= below 0.7). Quote or paraphrase the uncertain portion concisely — not the full bullet text. Empty array when all included facts are high-confidence or when no confidence metadata was present.' }
                 },
-                required: ['content']
+                required: ['content', 'retrieval_confidence', 'coverage', 'missing_variables', 'confidence_reason']
             }
         }
     }
@@ -148,13 +150,13 @@ const ADAPTIVE_RETRIEVAL_TOOLS = RETRIEVAL_TOOLS.map(tool => {
                     content: { type: 'string', description: 'Newly retrieved facts as synthesized prose. Empty string when skipped.' },
                     skipped: { type: 'boolean', description: 'True when existing context already covers the query and no new retrieval was done.' },
                     skip_reason: { type: 'string', description: 'Brief explanation of why retrieval was skipped. Required when skipped=true.' },
-                    retrieval_confidence: { type: 'string', description: 'One of high, medium, or low. Confidence that the delivered or already-retrieved memory context is sufficient for this user turn. This is not the confidence of individual stored facts.' },
-                    coverage: { type: 'string', description: 'One of full, partial, or none. How completely the delivered or already-retrieved memory context answers the current query.' },
+                    retrieval_confidence: { type: 'string', enum: ['high', 'medium', 'low'], description: 'Confidence that the delivered or already-retrieved memory context is sufficient for this user turn. This is not the confidence of individual stored facts. Use low when coverage is none.' },
+                    coverage: { type: 'string', enum: ['full', 'partial', 'none'], description: 'How completely the delivered or already-retrieved memory context answers the current query.' },
                     missing_variables: { type: 'array', items: { type: 'string' }, description: 'Personal variables that would materially improve the answer but were not found. Empty array when coverage is full.' },
                     confidence_reason: { type: 'string', description: 'Brief reason for retrieval_confidence and coverage.' },
                     uncertain_facts: { type: 'array', items: { type: 'string' }, description: 'Specific claims from your assembled answer that came from bullets with low stored confidence (confidence= below 0.7). Quote or paraphrase the uncertain portion concisely — not the full bullet text. Empty array when all included facts are high-confidence or when no confidence metadata was present.' }
                 },
-                required: ['content']
+                required: ['content', 'retrieval_confidence', 'coverage', 'missing_variables', 'confidence_reason']
             }
         }
     };
@@ -246,7 +248,7 @@ class MemoryRetriever {
      * @param {(event: ProgressEvent) => void | null} onProgress
      * @param {string | undefined} conversationText
      * @param {((text: string, iteration: number) => void) | null} onModelText
-     * @param {{ mode: 'retrieve' | 'augment' }} options
+     * @param {{ mode: 'retrieve' | 'augment', returnEmptyTerminalAssessment?: boolean }} options
      * @returns {Promise<RetrievalResult | AugmentQueryResult | null>}
      */
     async _toolCallingRetrieval(query, index, onProgress, conversationText, onModelText, options = { mode: 'retrieve' }) {
@@ -403,7 +405,17 @@ class MemoryRetriever {
         const assembledContext = terminalArgs.content || null;
 
         // LLM explicitly said nothing relevant — respect that, don't fall back to snippet context.
-        if (terminalWasCalled && !assembledContext) return null;
+        if (terminalWasCalled && !assembledContext) {
+            if (options.returnEmptyTerminalAssessment) {
+                const assessment = this._normalizeRetrievalAssessment(terminalArgs, {
+                    hasContent: false,
+                    skipped: true,
+                    hasPriorContext: false,
+                });
+                return { files: [], paths: [], assembledContext: null, ...assessment };
+            }
+            return null;
+        }
 
         if (files.length === 0 && !assembledContext) return null;
 
@@ -676,7 +688,7 @@ class MemoryRetriever {
                 messages: [
                     {
                         role: 'system',
-                        content: 'Answer the user in concise plain prose using only the provided memory context. Do not mention files, bullets, retrieval, or metadata. If the context does not answer the question, reply with an empty string.'
+                        content: 'Answer the user in concise plain prose using only the provided memory context. Do not mention files, bullets, retrieval, or metadata. If the memory context is non-empty and contains relevant facts, use them — do not claim you lack information. If the context truly does not answer the question, reply with an empty string.'
                     },
                     {
                         role: 'user',
@@ -941,14 +953,32 @@ class MemoryRetriever {
 
             try {
                 onProgress?.({ stage: 'retrieval', message: 'Selecting relevant memory files...' });
-                const result = await this._toolCallingRetrieval(query, index, onProgress, conversationText, onModelText, { mode: 'retrieve' });
-                if (!result) return null;
-                return { ...result, skipped: false };
+                const result = await this._toolCallingRetrieval(query, index, onProgress, conversationText, onModelText, {
+                    mode: 'retrieve',
+                    returnEmptyTerminalAssessment: true
+                });
+                if (!result) return this._noRelevantMemoryResult();
+                const retrievalResult = /** @type {RetrievalResult} */ (result);
+                if (!retrievalResult.assembledContext) {
+                    return {
+                        files: [],
+                        paths: [],
+                        assembledContext: null,
+                        skipped: true,
+                        skipReason: 'No new relevant memory found.',
+                        retrievalConfidence: retrievalResult.retrievalConfidence || 'low',
+                        coverage: retrievalResult.coverage || 'none',
+                        missingVariables: retrievalResult.missingVariables || [],
+                        retrievalReason: retrievalResult.retrievalReason || null,
+                        uncertainFacts: retrievalResult.uncertainFacts || []
+                    };
+                }
+                return { ...retrievalResult, skipped: false };
             } catch (err) {
                 const message = err instanceof Error ? err.message : String(err);
                 onProgress?.({ stage: 'fallback', message: `LLM unavailable (${message}) — falling back to keyword search.` });
                 const fallback = await this._textSearchFallbackWithLoad(query, onProgress, conversationText);
-                return fallback ? { ...fallback, skipped: false } : null;
+                return fallback ? { ...fallback, skipped: false } : this._noRelevantMemoryResult();
             }
         }
 
@@ -959,14 +989,47 @@ class MemoryRetriever {
 
         let result;
         try {
+            onProgress?.({ stage: 'retrieval', message: 'Checking whether existing context is enough...' });
+            let noOp = null;
+            try {
+                noOp = await this._adaptiveNoOpPrecheck(query, alreadyRetrievedContext, conversationText);
+            } catch (err) {
+                const message = err instanceof Error ? err.message : String(err);
+                onProgress?.({ stage: 'retrieval', message: `No-op check unavailable (${message}); continuing retrieval.` });
+            }
+            if (noOp?.decision === 'skip' && noOp.confidence === 'high') {
+                const skipReason = 'Already covered by retrieved context.';
+                const displayText = await this._renderDirectAnswer(query, alreadyRetrievedContext);
+                const assessment = this._normalizeRetrievalAssessment({
+                    coverage: 'full',
+                    retrieval_confidence: 'high',
+                    confidence_reason: noOp.reason || skipReason,
+                    missing_variables: [],
+                    uncertain_facts: []
+                }, {
+                    hasContent: false,
+                    skipped: true,
+                    hasPriorContext: true,
+                });
+                onProgress?.({ stage: 'complete', message: `Retrieval skipped: ${skipReason}` });
+                return {
+                    files: [],
+                    paths: [],
+                    assembledContext: null,
+                    skipped: true,
+                    skipReason,
+                    ...assessment,
+                    ...(displayText ? { displayText } : {})
+                };
+            }
+
             onProgress?.({ stage: 'retrieval', message: 'Checking existing memory context...' });
             result = await this._adaptiveToolCallingRetrieval(query, index, onProgress, conversationText, onModelText, alreadyRetrievedContext);
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             onProgress?.({ stage: 'fallback', message: `Adaptive retrieval unavailable (${message}) — falling back to keyword search.` });
-            const expandedQuery = this._buildAdaptiveFallbackQuery(query, alreadyRetrievedContext);
-            const fallback = await this._textSearchFallbackWithLoad(expandedQuery, onProgress, conversationText);
-            if (fallback) return { ...fallback, skipped: false };
+            const fallback = await this._adaptiveKeywordFallback(query, alreadyRetrievedContext, conversationText, onProgress);
+            if (fallback) return fallback;
             const assessment = this._normalizeRetrievalAssessment(null, {
                 hasContent: false,
                 skipped: true,
@@ -1010,6 +1073,97 @@ class MemoryRetriever {
         }
 
         return result;
+    }
+
+    _noRelevantMemoryResult() {
+        const assessment = this._normalizeRetrievalAssessment(null, {
+            hasContent: false,
+            skipped: true,
+            hasPriorContext: false,
+        });
+        return {
+            files: [],
+            paths: [],
+            assembledContext: null,
+            skipped: true,
+            skipReason: 'No new relevant memory found.',
+            ...assessment
+        };
+    }
+
+    async _adaptiveNoOpPrecheck(query, alreadyRetrievedContext, conversationText) {
+        const context = String(alreadyRetrievedContext || '').trim();
+        if (!query?.trim() || !context) return null;
+
+        const truncatedRetrieved = context.length > MAX_ALREADY_RETRIEVED_CHARS
+            ? context.slice(0, MAX_ALREADY_RETRIEVED_CHARS) + '...(truncated)'
+            : context;
+        const recentContext = this._buildRecentContext(conversationText);
+        const recentConversationSection = recentContext
+            ? `Recent conversation:\n\n\`\`\`\n${recentContext}\n\`\`\`\n\n`
+            : '';
+        const prompt = adaptiveNoOpPrompt
+            .replace('{ALREADY_RETRIEVED}', truncatedRetrieved)
+            .replace('{RECENT_CONVERSATION_SECTION}', recentConversationSection)
+            .replace('{QUERY}', query);
+
+        const response = await this._llmClient.createChatCompletion({
+            model: this._model,
+            messages: [
+                { role: 'user', content: prompt }
+            ],
+            max_tokens: DIRECT_LLM_OUTPUT_TOKENS.retrievalNoOpCheck,
+            temperature: 0
+        });
+
+        const parts = String(response?.content || '')
+            .trim()
+            .split('|')
+            .map((part) => part.trim());
+        if (parts.length < 2) return null;
+
+        const decision = parts[0].toLowerCase();
+        const confidence = parts[1].toLowerCase();
+        if (!ADAPTIVE_NO_OP_DECISIONS.has(decision)) return null;
+        if (!RETRIEVAL_CONFIDENCE_LEVELS.has(confidence)) return null;
+
+        return {
+            decision,
+            confidence,
+            reason: parts.slice(2).join(' | ').trim()
+        };
+    }
+
+    async _adaptiveKeywordFallback(query, alreadyRetrievedContext, conversationText, onProgress) {
+        const expandedQuery = this._buildAdaptiveFallbackQuery(query, alreadyRetrievedContext);
+        const fallback = await this._textSearchFallbackWithLoad(expandedQuery, onProgress, conversationText);
+        if (!fallback?.assembledContext) return null;
+
+        if (this._isContextRedundant(fallback.assembledContext, alreadyRetrievedContext)) {
+            const skipReason = 'Already covered by retrieved context.';
+            const displayText = await this._renderDirectAnswer(query, alreadyRetrievedContext);
+            const assessment = this._normalizeRetrievalAssessment({
+                coverage: 'full',
+                retrieval_confidence: 'medium',
+                confidence_reason: skipReason,
+            }, {
+                hasContent: false,
+                skipped: true,
+                hasPriorContext: true,
+            });
+            onProgress?.({ stage: 'complete', message: `Retrieval skipped: ${skipReason}` });
+            return {
+                files: [],
+                paths: [],
+                assembledContext: null,
+                skipped: true,
+                skipReason,
+                ...assessment,
+                ...(displayText ? { displayText } : {})
+            };
+        }
+
+        return { ...fallback, skipped: false };
     }
 
     async _adaptiveToolCallingRetrieval(query, index, onProgress, conversationText, onModelText, alreadyRetrievedContext) {
@@ -1062,16 +1216,44 @@ class MemoryRetriever {
         });
 
         const args = terminalToolResult?.arguments || {};
+        const retrievalWasAttempted = toolCallLog.some((entry) =>
+            entry.name === 'search_memory' || entry.name === 'read_file' || entry.name === 'list_directory'
+        );
 
         // LLM explicitly signalled skip
         if (args.skipped === true) {
             const skipReason = args.skip_reason || 'Already covered by retrieved context.';
-            const displayText = await this._renderDirectAnswer(query, alreadyRetrievedContext);
             const assessment = this._normalizeRetrievalAssessment(args, {
                 hasContent: false,
                 skipped: true,
                 hasPriorContext: true,
             });
+
+            const confidentPriorSkip = assessment.coverage === 'full' && assessment.retrievalConfidence !== 'low';
+            if (!confidentPriorSkip && !retrievalWasAttempted) {
+                const fallback = await this._adaptiveKeywordFallback(query, alreadyRetrievedContext, conversationText, onProgress);
+                if (fallback) return fallback;
+            }
+
+            if (!confidentPriorSkip) {
+                const reason = 'No new relevant memory found.';
+                const missAssessment = this._normalizeRetrievalAssessment(null, {
+                    hasContent: false,
+                    skipped: true,
+                    hasPriorContext: false,
+                });
+                onProgress?.({ stage: 'complete', message: `Retrieval skipped: ${reason}` });
+                return {
+                    files: [],
+                    paths: [],
+                    assembledContext: null,
+                    skipped: true,
+                    skipReason: reason,
+                    ...missAssessment
+                };
+            }
+
+            const displayText = await this._renderDirectAnswer(query, alreadyRetrievedContext);
             onProgress?.({ stage: 'complete', message: `Retrieval skipped: ${skipReason}` });
             return {
                 files: [],
@@ -1144,7 +1326,25 @@ class MemoryRetriever {
             hasPriorContext: true,
         });
 
-        if (!terminalToolResult && this._isContextRedundant(finalContext, alreadyRetrievedContext)) {
+        if (assessment.coverage === 'none') {
+            const skipReason = 'No new relevant memory found.';
+            const missAssessment = this._normalizeRetrievalAssessment(args, {
+                hasContent: false,
+                skipped: true,
+                hasPriorContext: false,
+            });
+            onProgress?.({ stage: 'complete', message: `Retrieval skipped: ${skipReason}` });
+            return {
+                files: [],
+                paths: [],
+                assembledContext: null,
+                skipped: true,
+                skipReason,
+                ...missAssessment
+            };
+        }
+
+        if (this._isContextRedundant(finalContext, alreadyRetrievedContext)) {
             const skipReason = 'Already covered by retrieved context.';
             const displayText = await this._renderDirectAnswer(query, alreadyRetrievedContext);
             const skipAssessment = this._normalizeRetrievalAssessment({
