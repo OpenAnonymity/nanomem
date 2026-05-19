@@ -15,12 +15,20 @@ import {
     bumpUpConfidence,
     compactBullets,
     ensureBulletMetadata,
+    generateBulletId,
     inferTopicFromPath,
     normalizeFactText,
     parseBullets,
     renderCompactedDocument,
     nowIsoDateTime,
 } from '../internal/format/index.js';
+import {
+    appendVlogEntry,
+    buildConfidenceEntry,
+    buildContentUpdateEntries,
+    buildCreatedEntry,
+    buildDeletedEntry,
+} from '../internal/vlog.js';
 import { trimRecentConversation } from '../internal/recentConversation.js';
 import { augmentCrafterPrompt } from '../prompts/retrieval.js';
 
@@ -409,7 +417,7 @@ export function createExtractionExecutors(backend, hooks = {}) {
         read_file: async ({ path }) => {
             const content = await backend.read(path);
             if (content === null) return JSON.stringify({ error: `File not found: ${path}` });
-            return content.length > 2000 ? content.slice(0, 2000) + '...(truncated)' : content;
+            return content.length > MAX_READ_FILE_CHARS ? content.slice(0, MAX_READ_FILE_CHARS) + '...(truncated)' : content;
         },
         create_new_file: async ({ path, content }) => {
             const exists = await backend.exists(path);
@@ -454,26 +462,42 @@ export function createExtractionExecutors(backend, hooks = {}) {
 
                 // Supersede the old bullet and push a new active replacement.
                 // Strip any metadata the LLM may have included in new_fact.
+                // Stamp ID onto legacy bullets (no id in storage) before superseding.
+                if (!parsed[idx].id) parsed[idx] = { ...parsed[idx], id: generateBulletId() };
                 const oldBullet = parsed[idx];
                 const rawNewFact = String(new_fact || '').trim();
                 const cleanNewFact = rawNewFact.includes('|')
                     ? rawNewFact.split('|')[0].trim()
                     : rawNewFact;
+                const oldConfidence = oldBullet.confidence;
+                const decayedConfidence = bumpDownConfidence(oldConfidence);
                 parsed[idx] = {
                     ...oldBullet,
                     status: 'superseded',
                     tier: 'history',
-                    confidence: bumpDownConfidence(oldBullet.confidence),
+                    confidence: decayedConfidence,
+                    prevConfidence: oldConfidence,
+                    v: (oldBullet.v || 1) + 1,
                 };
-                parsed.push(ensureBulletMetadata(
+                const newBullet = ensureBulletMetadata(
                     {
                         text: cleanNewFact,
                         topic: oldBullet.topic,
                         source: oldBullet.source,
                         confidence: oldBullet.confidence,
+                        id: generateBulletId(),
+                        v: 1,
+                        supersedes: oldBullet.id,
                     },
                     { defaultTopic, updatedAt: effectiveUpdatedAt }
-                ));
+                );
+                parsed.push(newBullet);
+
+                const { oldEntry, newEntry } = buildContentUpdateEntries(
+                    newBullet, oldBullet.id, oldConfidence, effectiveUpdatedAt
+                );
+                await appendVlogEntry(backend, path, oldEntry);
+                await appendVlogEntry(backend, path, newEntry);
                 matchedCount++;
             }
 
@@ -507,13 +531,16 @@ export function createExtractionExecutors(backend, hooks = {}) {
             const idx = parsed.findIndex((b) => normalizeFactText(b.text) === target);
             if (idx === -1) return JSON.stringify({ error: `No matching bullet in ${path} for: ${factText}` });
 
-            const matched = parsed[idx];
+            // Ensure legacy bullets (no id in storage) get a stable ID before mutation.
+            const matched = { ...parsed[idx], id: parsed[idx].id || generateBulletId() };
+            parsed[idx] = matched;
             const wasInHistory = matched.tier === 'history' || matched.status === 'superseded';
             const confidenceBefore = matched.confidence;
             const confidenceAfter = bumpUpConfidence(matched.confidence);
             const defaultTopic = inferTopicFromPath(path);
             const effectiveUpdatedAt = updatedAt || nowIsoDateTime();
 
+            const nextV = (matched.v || 1) + 1;
             parsed[idx] = wasInHistory
                 ? {
                     ...matched,
@@ -521,15 +548,23 @@ export function createExtractionExecutors(backend, hooks = {}) {
                     status: 'active',
                     section: 'long_term',
                     confidence: confidenceAfter,
+                    prevConfidence: confidenceBefore,
+                    v: nextV,
                     updatedAt: effectiveUpdatedAt,
                     explicitConfidence: true,
                 }
                 : {
                     ...matched,
                     confidence: confidenceAfter,
+                    prevConfidence: confidenceBefore,
+                    v: nextV,
                     updatedAt: effectiveUpdatedAt,
                     explicitConfidence: true,
                 };
+
+            await appendVlogEntry(backend, path, buildConfidenceEntry(
+                parsed[idx], confidenceBefore, 'corroboration', effectiveUpdatedAt
+            ));
 
             const compacted = compactBullets(parsed, { defaultTopic, maxActivePerTopic: 1000 });
             const after = renderCompactedDocument(
@@ -561,6 +596,14 @@ export function createExtractionExecutors(backend, hooks = {}) {
         delete_memory: async ({ path }) => {
             if (path.endsWith('_tree.md')) {
                 return JSON.stringify({ error: 'Cannot delete index files' });
+            }
+            const content = await backend.read(path);
+            if (content) {
+                const at = updatedAt || nowIsoDateTime();
+                const bullets = parseBullets(content).filter(b => b.id && b.section !== 'history');
+                for (const bullet of bullets) {
+                    await appendVlogEntry(backend, path, buildDeletedEntry(bullet, at));
+                }
             }
             await backend.delete(path);
             if (refreshIndex) await refreshIndex(path);
@@ -613,10 +656,20 @@ export function createDeletionExecutors(backend, hooks = {}) {
             const factText = bullet_text.includes('|')
                 ? bullet_text.split('|')[0].trim()
                 : bullet_text.trim();
+
+            const allBullets = parseBullets(before);
+            const target = normalizeFactText(factText);
+            const deletedBullet = allBullets.find(b => normalizeFactText(b.text) === target);
+
             const after = removeArchivedItem(before, factText, path);
             if (after === null) {
                 return JSON.stringify({ error: `No exact match found for the given bullet text in: ${path}` });
             }
+
+            if (deletedBullet?.id) {
+                await appendVlogEntry(backend, path, buildDeletedEntry(deletedBullet, nowIsoDateTime()));
+            }
+
             // If no bullets remain, delete the file entirely instead of leaving empty headers.
             const remaining = parseBullets(after);
             if (remaining.length === 0) {

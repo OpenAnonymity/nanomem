@@ -146,6 +146,14 @@ export function defaultConfidenceForSource(source) {
     return 0.3;
 }
 
+/**
+ * Generates a stable 8-character alphanumeric ID for a new bullet.
+ * @returns {string}
+ */
+export function generateBulletId() {
+    return Math.random().toString(36).slice(2, 10).padEnd(8, '0');
+}
+
 export const CONTRADICTION_DECAY_FACTOR = 0.5;
 export const CORROBORATION_BOOST_FACTOR = 0.2;
 
@@ -284,7 +292,11 @@ export function ensureBulletMetadata(bullet, options = {}) {
         explicitConfidence: Boolean(bullet?.explicitConfidence || bullet?.confidence),
         heading: String(bullet?.heading || 'General'),
         section: normalizeTierToSection(preferredTier || fallbackTier),
-        lineIndex: Number.isFinite(bullet?.lineIndex) ? /** @type {number} */ (bullet.lineIndex) : 0
+        lineIndex: Number.isFinite(bullet?.lineIndex) ? /** @type {number} */ (bullet.lineIndex) : 0,
+        id: typeof bullet?.id === 'string' && bullet.id ? bullet.id : generateBulletId(),
+        v: Number.isFinite(bullet?.v) && bullet.v >= 1 ? Math.floor(/** @type {number} */ (bullet.v)) : 1,
+        supersedes: typeof bullet?.supersedes === 'string' && bullet.supersedes ? bullet.supersedes : null,
+        prevConfidence: typeof bullet?.prevConfidence === 'number' ? normalizeConfidence(bullet.prevConfidence) : null,
     };
 }
 

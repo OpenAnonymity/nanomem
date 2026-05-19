@@ -24,6 +24,7 @@ import {
     nowIsoDateTime,
     renderCompactedDocument
 } from '../internal/format/index.js';
+import { appendVlogEntry, bootstrapCreatedEntries, detectCompactionMutations } from '../internal/vlog.js';
 import { compactionPrompt, contradictionReviewPrompt, semanticReviewPrompt } from '../prompts/compaction.js';
 import { DIRECT_LLM_OUTPUT_TOKENS } from '../internal/limits.js';
 
@@ -66,6 +67,16 @@ class MemoryCompactor {
                 const compacted = await this._compactFile(file.path, file.content || '');
                 if (!compacted) continue;
                 if (compacted.trim() === String(file.content || '').trim()) continue;
+
+                const bulletsBefore = parseBullets(file.content || '');
+                const bulletsAfter = parseBullets(compacted);
+                const at = nowIsoDateTime();
+                await bootstrapCreatedEntries(this._backend, file.path, bulletsBefore, bulletsAfter, at);
+                const vlogEntries = detectCompactionMutations(bulletsBefore, bulletsAfter, at);
+                for (const entry of vlogEntries) {
+                    await appendVlogEntry(this._backend, file.path, entry);
+                }
+
                 await this._backend.write(file.path, compacted);
                 await this._bulletIndex.refreshPath(file.path);
                 filesChanged++;
@@ -118,6 +129,8 @@ class MemoryCompactor {
 
             if (rendered.trim() === raw) continue;
 
+            const at = nowIsoDateTime();
+            await bootstrapCreatedEntries(this._backend, file.path, bullets, parseBullets(rendered), at);
             await this._backend.write(file.path, rendered);
             await this._bulletIndex.refreshPath(file.path);
             totalArchived += toExpire.length;
@@ -233,7 +246,9 @@ class MemoryCompactor {
                     status: 'superseded',
                     tier: 'history',
                     section: 'history',
+                    prevConfidence: b.confidence,
                     confidence: bumpDownConfidence(b.confidence),
+                    v: (b.v || 1) + 1,
                 };
             }
             return b;
@@ -270,7 +285,15 @@ class MemoryCompactor {
 
         return allActive.map((b, i) => {
             if (decisions.get(i + 1) === 'SUPERSEDED') {
-                return { ...b, status: 'superseded', tier: 'history', section: 'history', confidence: bumpDownConfidence(b.confidence) };
+                return {
+                    ...b,
+                    status: 'superseded',
+                    tier: 'history',
+                    section: 'history',
+                    prevConfidence: b.confidence,
+                    confidence: bumpDownConfidence(b.confidence),
+                    v: (b.v || 1) + 1,
+                };
             }
             return b;
         });
