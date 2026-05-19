@@ -417,7 +417,7 @@ export function createExtractionExecutors(backend, hooks = {}) {
         read_file: async ({ path }) => {
             const content = await backend.read(path);
             if (content === null) return JSON.stringify({ error: `File not found: ${path}` });
-            return content.length > 2000 ? content.slice(0, 2000) + '...(truncated)' : content;
+            return content.length > MAX_READ_FILE_CHARS ? content.slice(0, MAX_READ_FILE_CHARS) + '...(truncated)' : content;
         },
         create_new_file: async ({ path, content }) => {
             const exists = await backend.exists(path);
