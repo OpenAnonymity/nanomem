@@ -81,12 +81,12 @@ export function createMemoryBank(config = {}) {
 
     return {
         init: () => backend.init(),
-        retrieve: (query, conversationText) => retrieval.retrieveForQuery(query, conversationText),
-        retrieveAdaptive: (query, alreadyRetrievedContext, conversationText) =>
-            retrieval.retrieveAdaptively(query, alreadyRetrievedContext, conversationText),
-        augmentQuery: (query, conversationText) => retrieval.augmentQueryForPrompt(query, conversationText),
-        augmentQueryAdaptive: (query, alreadyRetrievedContext, conversationText) =>
-            retrieval.augmentQueryAdaptively(query, alreadyRetrievedContext, conversationText),
+        retrieve: (query, conversationText, options) => retrieval.retrieveForQuery(query, conversationText, options),
+        retrieveAdaptive: (query, alreadyRetrievedContext, conversationText, options) =>
+            retrieval.retrieveAdaptively(query, alreadyRetrievedContext, conversationText, options),
+        augmentQuery: (query, conversationText, options) => retrieval.augmentQueryForPrompt(query, conversationText, options),
+        augmentQueryAdaptive: (query, alreadyRetrievedContext, conversationText, options) =>
+            retrieval.augmentQueryAdaptively(query, alreadyRetrievedContext, conversationText, options),
         ingest: (messages, options) => ingester.ingest(messages, options),
         importData: (input, options) => importMemoryData({
             init: () => backend.init(),

@@ -91,7 +91,7 @@ export function createMemoryBank(config = {}) {
          * @param {string} [conversationText] current session text for reference resolution
          * @returns {Promise<RetrievalResult | null>}
          */
-        retrieve: (query, conversationText) => retrieval.retrieveForQuery(query, conversationText),
+        retrieve: (query, conversationText, options) => retrieval.retrieveForQuery(query, conversationText, options),
 
         /**
          * Adaptive retrieval for multi-turn sessions. Only fetches new memory if
@@ -103,8 +103,8 @@ export function createMemoryBank(config = {}) {
          * @param {string} [conversationText] recent conversation for reference resolution
          * @returns {Promise<AdaptiveRetrievalResult | null>}
          */
-        retrieveAdaptive: (query, alreadyRetrievedContext, conversationText) =>
-            retrieval.retrieveAdaptively(query, alreadyRetrievedContext, conversationText),
+        retrieveAdaptive: (query, alreadyRetrievedContext, conversationText, options) =>
+            retrieval.retrieveAdaptively(query, alreadyRetrievedContext, conversationText, options),
 
         /**
          * Build a reviewable prompt that augments the user query with memory.
@@ -112,7 +112,7 @@ export function createMemoryBank(config = {}) {
          * @param {string} [conversationText]
          * @returns {Promise<AugmentQueryResult | null>}
          */
-        augmentQuery: (query, conversationText) => retrieval.augmentQueryForPrompt(query, conversationText),
+        augmentQuery: (query, conversationText, options) => retrieval.augmentQueryForPrompt(query, conversationText, options),
 
         /**
          * Adaptive prompt augmentation for multi-turn sessions. Returns skipped=true
@@ -123,8 +123,8 @@ export function createMemoryBank(config = {}) {
          * @param {string} [conversationText]
          * @returns {Promise<AdaptiveAugmentQueryResult | null>}
          */
-        augmentQueryAdaptive: (query, alreadyRetrievedContext, conversationText) =>
-            retrieval.augmentQueryAdaptively(query, alreadyRetrievedContext, conversationText),
+        augmentQueryAdaptive: (query, alreadyRetrievedContext, conversationText, options) =>
+            retrieval.augmentQueryAdaptively(query, alreadyRetrievedContext, conversationText, options),
 
         /**
          * Ingest facts from a conversation into memory.

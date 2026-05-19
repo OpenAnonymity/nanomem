@@ -147,8 +147,27 @@ function parseCrafterJson(rawText) {
     };
 }
 
-function sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+function sleep(ms, signal = null) {
+    return new Promise((resolve, reject) => {
+        let timeoutId = null;
+        const cleanup = () => {
+            if (timeoutId !== null) clearTimeout(timeoutId);
+            if (signal) signal.removeEventListener('abort', onAbort);
+        };
+        const onAbort = () => {
+            cleanup();
+            reject(createAbortError());
+        };
+        if (signal?.aborted) {
+            reject(createAbortError());
+            return;
+        }
+        timeoutId = setTimeout(() => {
+            cleanup();
+            resolve();
+        }, ms);
+        if (signal) signal.addEventListener('abort', onAbort, { once: true });
+    });
 }
 
 function getCrafterRetryDelay(attemptIndex) {
@@ -169,13 +188,15 @@ function normalizeQueryText(text) {
  * @param {{ path: string; content: string }[]} options.files
  * @param {string} [options.conversationText]
  * @param {(event: { stage: 'loading', message: string, attempt?: number }) => void} [options.onProgress]
+ * @param {AbortSignal | null} [options.signal]
  * @returns {Promise<{ reviewPrompt?: string, apiPrompt?: string, noRelevantMemory?: boolean, error?: string }>}
  */
-export async function craftAugmentedPromptFromFiles({ llmClient, model, query, files, conversationText, onProgress }) {
+export async function craftAugmentedPromptFromFiles({ llmClient, model, query, files, conversationText, onProgress, signal = null }) {
     const effectiveQuery = normalizeQueryText(query);
     if (!effectiveQuery) {
         return { error: 'augment_query requires the original user_query.' };
     }
+    throwIfAborted(signal);
 
     const selectedFiles = Array.isArray(files)
         ? files.filter((file) => typeof file?.content === 'string' && file.content.trim())
@@ -215,6 +236,7 @@ export async function craftAugmentedPromptFromFiles({ llmClient, model, query, f
                     model,
                     messages,
                     temperature: 0,
+                    signal,
                     onDelta: (chunk) => {
                         if (!chunk || emittedOutputPhase) return;
                         emittedOutputPhase = true;
@@ -238,10 +260,12 @@ export async function craftAugmentedPromptFromFiles({ llmClient, model, query, f
                 response = /** @type {ChatCompletionResponse} */ (await llmClient.createChatCompletion({
                     model,
                     messages,
-                    temperature: 0
+                    temperature: 0,
+                    signal
                 }));
             }
         } catch (error) {
+            if (isAbortError(error, signal)) throw error;
             const message = error instanceof Error ? error.message : String(error);
             return { error: `augment_query prompt crafting failed: ${message}` };
         }
@@ -266,7 +290,7 @@ export async function craftAugmentedPromptFromFiles({ llmClient, model, query, f
                 attempt: attempt + 1
             });
             console.warn(`[nanomem/augment_query] prompt crafter attempt ${attempt}/${AUGMENT_CRAFTER_MAX_ATTEMPTS} failed: ${crafterError}. Retrying in ${Math.round(delay)}ms.`);
-            await sleep(delay);
+            await sleep(delay, signal);
         }
     }
 
@@ -346,9 +370,11 @@ export function createRetrievalExecutors(backend) {
  * @param {string} options.query
  * @param {string} [options.conversationText]
  * @param {(event: { stage: 'loading', message: string, attempt?: number }) => void} [options.onProgress]
+ * @param {AbortSignal | null} [options.signal]
  */
-export function createAugmentQueryExecutor({ backend, llmClient, model, query, conversationText, onProgress }) {
+export function createAugmentQueryExecutor({ backend, llmClient, model, query, conversationText, onProgress, signal = null }) {
     return async ({ user_query, memory_files }) => {
+        throwIfAborted(signal);
         const selectedPaths = Array.isArray(memory_files)
             ? [...new Set(memory_files.filter((path) => typeof path === 'string' && path.trim() && !path.startsWith('_vlog/')))].slice(0, MAX_AUGMENT_QUERY_FILES)
             : [];
@@ -371,6 +397,7 @@ export function createAugmentQueryExecutor({ backend, llmClient, model, query, c
 
         const files = [];
         for (const path of selectedPaths) {
+            throwIfAborted(signal);
             const resolvedPath = typeof backend.resolvePath === 'function'
                 ? await backend.resolvePath(path)
                 : null;
@@ -390,7 +417,8 @@ export function createAugmentQueryExecutor({ backend, llmClient, model, query, c
             query: effectiveQuery,
             files,
             conversationText,
-            onProgress
+            onProgress,
+            signal
         });
 
         if (crafted.error) {
@@ -743,4 +771,21 @@ function stripUserDataTags(text) {
     return String(text ?? '')
         .replace(/\[\[user_data\]\]/g, '')
         .replace(/\[\[\/user_data\]\]/g, '');
+}
+
+function createAbortError() {
+    const error = new Error('Memory prompt crafting aborted.');
+    error.name = 'AbortError';
+    error.aborted = true;
+    return error;
+}
+
+function throwIfAborted(signal) {
+    if (signal?.aborted) {
+        throw createAbortError();
+    }
+}
+
+function isAbortError(error, signal) {
+    return !!signal?.aborted || error?.name === 'AbortError' || error?.aborted === true;
 }

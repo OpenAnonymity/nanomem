@@ -563,12 +563,17 @@
  */
 
 /**
+ * @typedef {object} RetrievalOptions
+ * @property {AbortSignal | null} [signal]
+ */
+
+/**
  * @typedef {object} MemoryBank
  * @property {() => Promise<void>} init
- * @property {(query: string, conversationText?: string) => Promise<RetrievalResult | null>} retrieve
- * @property {(query: string, alreadyRetrievedContext?: string, conversationText?: string) => Promise<AdaptiveRetrievalResult | null>} retrieveAdaptive
- * @property {(query: string, conversationText?: string) => Promise<AugmentQueryResult | null>} augmentQuery
- * @property {(query: string, alreadyRetrievedContext?: string, conversationText?: string) => Promise<AdaptiveAugmentQueryResult | null>} augmentQueryAdaptive
+ * @property {(query: string, conversationText?: string, options?: RetrievalOptions) => Promise<RetrievalResult | null>} retrieve
+ * @property {(query: string, alreadyRetrievedContext?: string, conversationText?: string, options?: RetrievalOptions) => Promise<AdaptiveRetrievalResult | null>} retrieveAdaptive
+ * @property {(query: string, conversationText?: string, options?: RetrievalOptions) => Promise<AugmentQueryResult | null>} augmentQuery
+ * @property {(query: string, alreadyRetrievedContext?: string, conversationText?: string, options?: RetrievalOptions) => Promise<AdaptiveAugmentQueryResult | null>} augmentQueryAdaptive
  * @property {(messages: Message[], options?: IngestOptions) => Promise<IngestResult>} ingest
  * @property {(input: string | unknown | MemoryImportConversation | MemoryImportConversation[] | Array<{ path: string, content: string }>, options?: ImportDataOptions) => Promise<ImportDataResult>} importData
  * @property {() => Promise<OmfDocument>} exportOmf

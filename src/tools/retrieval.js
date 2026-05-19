@@ -203,15 +203,19 @@ class MemoryRetriever {
      * @param {string} [conversationText] current session text for reference resolution
      * @returns {Promise<RetrievalResult | null>}
      */
-    async retrieveForQuery(query, conversationText) {
+    async retrieveForQuery(query, conversationText, options = {}) {
         if (!query || !query.trim()) return null;
 
         const onProgress = this._onProgress;
         const onModelText = this._onModelText;
+        const signal = options.signal || null;
 
+        throwIfAborted(signal);
         onProgress?.({ stage: 'init', message: 'Reading memory index...' });
         await this._backend.init();
+        throwIfAborted(signal);
         const index = await this._backend.getTree();
+        throwIfAborted(signal);
 
         if (!index || await this._isMemoryEmpty(index)) {
             return null;
@@ -220,11 +224,12 @@ class MemoryRetriever {
         let result;
         try {
             onProgress?.({ stage: 'retrieval', message: 'Selecting relevant memory files...' });
-            result = await this._toolCallingRetrieval(query, index, onProgress, conversationText, onModelText, { mode: 'retrieve' });
+            result = await this._toolCallingRetrieval(query, index, onProgress, conversationText, onModelText, { mode: 'retrieve', signal });
         } catch (err) {
+            if (isAbortError(err, signal)) throw err;
             const message = err instanceof Error ? err.message : String(err);
             onProgress?.({ stage: 'fallback', message: `LLM unavailable (${message}) — falling back to keyword search. Results may be less accurate.` });
-            result = await this._textSearchFallbackWithLoad(query, onProgress, conversationText);
+            result = await this._textSearchFallbackWithLoad(query, onProgress, conversationText, signal);
         }
 
         // Post-filter assembled context to remove facts already in the conversation
@@ -253,6 +258,8 @@ class MemoryRetriever {
      */
     async _toolCallingRetrieval(query, index, onProgress, conversationText, onModelText, options = { mode: 'retrieve' }) {
         const isAugmentMode = options.mode === 'augment';
+        const signal = options.signal || null;
+        throwIfAborted(signal);
         const systemPrompt = (
             RETRIEVAL_SYSTEM_PROMPT.replace('{INDEX}', index) +
             (isAugmentMode ? AUGMENT_SYSTEM_ADDENDUM : '')
@@ -266,6 +273,7 @@ class MemoryRetriever {
                     model: this._model,
                     query,
                     conversationText,
+                    signal,
                     onProgress: (event) => {
                         if (!event?.stage || !event?.message) return;
                         onProgress?.({
@@ -302,6 +310,7 @@ class MemoryRetriever {
             maxOutputTokens: isAugmentMode ? TOOL_OUTPUT_TOKENS.retrievalAugment : TOOL_OUTPUT_TOKENS.retrieval,
             temperature: 0,
             executeTerminalTool: isAugmentMode,
+            signal,
             onToolCall: (name, args, result, meta) => {
                 const toolState = meta?.status || 'finished';
                 let progressArgs = args;
@@ -441,15 +450,19 @@ class MemoryRetriever {
      * @param {string} [conversationText]
      * @returns {Promise<AugmentQueryResult | null>}
      */
-    async augmentQueryForPrompt(query, conversationText) {
+    async augmentQueryForPrompt(query, conversationText, options = {}) {
         if (!query || !query.trim()) return null;
 
         const onProgress = this._onProgress;
         const onModelText = this._onModelText;
+        const signal = options.signal || null;
 
+        throwIfAborted(signal);
         onProgress?.({ stage: 'init', message: 'Reading memory index...' });
         await this._backend.init();
+        throwIfAborted(signal);
         const index = await this._backend.getTree();
+        throwIfAborted(signal);
 
         if (!index || await this._isMemoryEmpty(index)) {
             return null;
@@ -458,9 +471,10 @@ class MemoryRetriever {
         try {
             onProgress?.({ stage: 'retrieval', message: 'Retrieving memory...' });
             return /** @type {Promise<AugmentQueryResult | null>} */ (
-                this._toolCallingRetrieval(query, index, onProgress, conversationText, onModelText, { mode: 'augment' })
+                this._toolCallingRetrieval(query, index, onProgress, conversationText, onModelText, { mode: 'augment', signal })
             );
         } catch (err) {
+            if (isAbortError(err, signal)) throw err;
             const message = err instanceof Error ? err.message : String(err);
             onProgress?.({ stage: 'fallback', message: `Memory prompt crafting unavailable (${message}).` });
             return null;
@@ -476,15 +490,17 @@ class MemoryRetriever {
      * @param {string} [conversationText]
      * @returns {Promise<import('../types.js').AdaptiveAugmentQueryResult | null>}
      */
-    async augmentQueryAdaptively(query, alreadyRetrievedContext, conversationText) {
+    async augmentQueryAdaptively(query, alreadyRetrievedContext, conversationText, options = {}) {
         if (!query || !query.trim()) return null;
+        const signal = options.signal || null;
+        throwIfAborted(signal);
 
         if (!alreadyRetrievedContext || !alreadyRetrievedContext.trim()) {
-            const result = await this.augmentQueryForPrompt(query, conversationText);
+            const result = await this.augmentQueryForPrompt(query, conversationText, { signal });
             return result ? { ...result, skipped: false } : null;
         }
 
-        const retrieval = await this.retrieveAdaptively(query, alreadyRetrievedContext, conversationText);
+        const retrieval = await this.retrieveAdaptively(query, alreadyRetrievedContext, conversationText, { signal });
         if (!retrieval) return null;
         const retrievalMetadata = {
             retrievalConfidence: retrieval.retrievalConfidence,
@@ -532,6 +548,7 @@ class MemoryRetriever {
             query,
             files: [{ path: syntheticPath, content: assembledContext }],
             conversationText,
+            signal,
             onProgress: (event) => {
                 if (!event?.stage || !event?.message) return;
                 this._onProgress?.({
@@ -570,14 +587,16 @@ class MemoryRetriever {
         };
     }
 
-    async _textSearchFallbackWithLoad(query, onProgress, conversationText) {
-        const paths = await this._textSearchFallback(query);
+    async _textSearchFallbackWithLoad(query, onProgress, conversationText, signal = null) {
+        throwIfAborted(signal);
+        const paths = await this._textSearchFallback(query, signal);
         if (!paths || paths.length === 0) return null;
 
         const MAX_PER_FILE_CHARS = 10000;
         const files = [];
         let total = 0;
         for (const path of paths.slice(0, MAX_FILES_TO_LOAD)) {
+            throwIfAborted(signal);
             onProgress?.({ stage: 'loading', message: `Loading ${path}...`, path });
             const raw = await this._backend.read(path);
             if (!raw) continue;
@@ -593,7 +612,7 @@ class MemoryRetriever {
 
         const assembled = await this._buildSnippetContext(files.map(f => f.path), query, conversationText);
         const displayText = assembled
-            ? await this._renderDirectAnswer(query, assembled)
+            ? await this._renderDirectAnswer(query, assembled, signal)
             : null;
 
         onProgress?.({
@@ -616,11 +635,12 @@ class MemoryRetriever {
         };
     }
 
-    async _textSearchFallback(query) {
+    async _textSearchFallback(query, signal = null) {
         const words = query.split(/\s+/).filter(w => w.length > 3).slice(0, 3);
         const allPaths = new Set();
 
         for (const word of words) {
+            throwIfAborted(signal);
             const results = await this._backend.search(word);
             for (const r of results) {
                 allPaths.add(r.path);
@@ -674,7 +694,7 @@ class MemoryRetriever {
         return `${query} ${candidates.slice(0, 6).join(' ')}`.trim();
     }
 
-    async _renderDirectAnswer(query, sourceContext) {
+    async _renderDirectAnswer(query, sourceContext, signal = null) {
         const context = String(sourceContext || '').trim();
         if (!context) return null;
 
@@ -696,12 +716,14 @@ class MemoryRetriever {
                     }
                 ],
                 max_tokens: DIRECT_LLM_OUTPUT_TOKENS.retrievalDirectAnswer,
-                temperature: 0
+                temperature: 0,
+                signal
             });
 
             const text = String(response?.content || '').trim();
             return text || this._fallbackDisplayText(query, context);
-        } catch {
+        } catch (error) {
+            if (isAbortError(error, signal)) throw error;
             return this._fallbackDisplayText(query, context);
         }
     }
@@ -938,24 +960,29 @@ class MemoryRetriever {
      * @param {string} [conversationText] - recent conversation for reference resolution
      * @returns {Promise<import('../types.js').AdaptiveRetrievalResult | null>}
      */
-    async retrieveAdaptively(query, alreadyRetrievedContext, conversationText) {
+    async retrieveAdaptively(query, alreadyRetrievedContext, conversationText, options = {}) {
         if (!query || !query.trim()) return null;
 
         const onProgress = this._onProgress;
         const onModelText = this._onModelText;
+        const signal = options.signal || null;
 
+        throwIfAborted(signal);
         // No prior context → plain retrieval, wrapped in the adaptive result shape.
         if (!alreadyRetrievedContext || !alreadyRetrievedContext.trim()) {
             onProgress?.({ stage: 'init', message: 'Reading memory index...' });
             await this._backend.init();
+            throwIfAborted(signal);
             const index = await this._backend.getTree();
+            throwIfAborted(signal);
             if (!index || await this._isMemoryEmpty(index)) return null;
 
             try {
                 onProgress?.({ stage: 'retrieval', message: 'Selecting relevant memory files...' });
                 const result = await this._toolCallingRetrieval(query, index, onProgress, conversationText, onModelText, {
                     mode: 'retrieve',
-                    returnEmptyTerminalAssessment: true
+                    returnEmptyTerminalAssessment: true,
+                    signal
                 });
                 if (!result) return this._noRelevantMemoryResult();
                 const retrievalResult = /** @type {RetrievalResult} */ (result);
@@ -975,16 +1002,19 @@ class MemoryRetriever {
                 }
                 return { ...retrievalResult, skipped: false };
             } catch (err) {
+                if (isAbortError(err, signal)) throw err;
                 const message = err instanceof Error ? err.message : String(err);
                 onProgress?.({ stage: 'fallback', message: `LLM unavailable (${message}) — falling back to keyword search.` });
-                const fallback = await this._textSearchFallbackWithLoad(query, onProgress, conversationText);
+                const fallback = await this._textSearchFallbackWithLoad(query, onProgress, conversationText, signal);
                 return fallback ? { ...fallback, skipped: false } : this._noRelevantMemoryResult();
             }
         }
 
         onProgress?.({ stage: 'init', message: 'Reading memory index...' });
         await this._backend.init();
+        throwIfAborted(signal);
         const index = await this._backend.getTree();
+        throwIfAborted(signal);
         if (!index || await this._isMemoryEmpty(index)) return null;
 
         let result;
@@ -992,14 +1022,15 @@ class MemoryRetriever {
             onProgress?.({ stage: 'retrieval', message: 'Checking whether existing context is enough...' });
             let noOp = null;
             try {
-                noOp = await this._adaptiveNoOpPrecheck(query, alreadyRetrievedContext, conversationText);
+                noOp = await this._adaptiveNoOpPrecheck(query, alreadyRetrievedContext, conversationText, signal);
             } catch (err) {
+                if (isAbortError(err, signal)) throw err;
                 const message = err instanceof Error ? err.message : String(err);
                 onProgress?.({ stage: 'retrieval', message: `No-op check unavailable (${message}); continuing retrieval.` });
             }
             if (noOp?.decision === 'skip' && noOp.confidence === 'high') {
                 const skipReason = 'Already covered by retrieved context.';
-                const displayText = await this._renderDirectAnswer(query, alreadyRetrievedContext);
+                const displayText = await this._renderDirectAnswer(query, alreadyRetrievedContext, signal);
                 const assessment = this._normalizeRetrievalAssessment({
                     coverage: 'full',
                     retrieval_confidence: 'high',
@@ -1024,11 +1055,12 @@ class MemoryRetriever {
             }
 
             onProgress?.({ stage: 'retrieval', message: 'Checking existing memory context...' });
-            result = await this._adaptiveToolCallingRetrieval(query, index, onProgress, conversationText, onModelText, alreadyRetrievedContext);
+            result = await this._adaptiveToolCallingRetrieval(query, index, onProgress, conversationText, onModelText, alreadyRetrievedContext, signal);
         } catch (err) {
+            if (isAbortError(err, signal)) throw err;
             const message = err instanceof Error ? err.message : String(err);
             onProgress?.({ stage: 'fallback', message: `Adaptive retrieval unavailable (${message}) — falling back to keyword search.` });
-            const fallback = await this._adaptiveKeywordFallback(query, alreadyRetrievedContext, conversationText, onProgress);
+            const fallback = await this._adaptiveKeywordFallback(query, alreadyRetrievedContext, conversationText, onProgress, signal);
             if (fallback) return fallback;
             const assessment = this._normalizeRetrievalAssessment(null, {
                 hasContent: false,
@@ -1091,9 +1123,10 @@ class MemoryRetriever {
         };
     }
 
-    async _adaptiveNoOpPrecheck(query, alreadyRetrievedContext, conversationText) {
+    async _adaptiveNoOpPrecheck(query, alreadyRetrievedContext, conversationText, signal = null) {
         const context = String(alreadyRetrievedContext || '').trim();
         if (!query?.trim() || !context) return null;
+        throwIfAborted(signal);
 
         const truncatedRetrieved = context.length > MAX_ALREADY_RETRIEVED_CHARS
             ? context.slice(0, MAX_ALREADY_RETRIEVED_CHARS) + '...(truncated)'
@@ -1113,7 +1146,8 @@ class MemoryRetriever {
                 { role: 'user', content: prompt }
             ],
             max_tokens: DIRECT_LLM_OUTPUT_TOKENS.retrievalNoOpCheck,
-            temperature: 0
+            temperature: 0,
+            signal
         });
 
         const parts = String(response?.content || '')
@@ -1134,14 +1168,14 @@ class MemoryRetriever {
         };
     }
 
-    async _adaptiveKeywordFallback(query, alreadyRetrievedContext, conversationText, onProgress) {
+    async _adaptiveKeywordFallback(query, alreadyRetrievedContext, conversationText, onProgress, signal = null) {
         const expandedQuery = this._buildAdaptiveFallbackQuery(query, alreadyRetrievedContext);
-        const fallback = await this._textSearchFallbackWithLoad(expandedQuery, onProgress, conversationText);
+        const fallback = await this._textSearchFallbackWithLoad(expandedQuery, onProgress, conversationText, signal);
         if (!fallback?.assembledContext) return null;
 
         if (this._isContextRedundant(fallback.assembledContext, alreadyRetrievedContext)) {
             const skipReason = 'Already covered by retrieved context.';
-            const displayText = await this._renderDirectAnswer(query, alreadyRetrievedContext);
+            const displayText = await this._renderDirectAnswer(query, alreadyRetrievedContext, signal);
             const assessment = this._normalizeRetrievalAssessment({
                 coverage: 'full',
                 retrieval_confidence: 'medium',
@@ -1166,7 +1200,8 @@ class MemoryRetriever {
         return { ...fallback, skipped: false };
     }
 
-    async _adaptiveToolCallingRetrieval(query, index, onProgress, conversationText, onModelText, alreadyRetrievedContext) {
+    async _adaptiveToolCallingRetrieval(query, index, onProgress, conversationText, onModelText, alreadyRetrievedContext, signal = null) {
+        throwIfAborted(signal);
         const truncatedRetrieved = alreadyRetrievedContext.length > MAX_ALREADY_RETRIEVED_CHARS
             ? alreadyRetrievedContext.slice(0, MAX_ALREADY_RETRIEVED_CHARS) + '...(truncated)'
             : alreadyRetrievedContext;
@@ -1196,6 +1231,7 @@ class MemoryRetriever {
             maxIterations: TOOL_LOOP_ITERATIONS.retrieval,
             maxOutputTokens: TOOL_OUTPUT_TOKENS.retrieval,
             temperature: 0,
+            signal,
             onToolCall: (name, args, result, meta) => {
                 const toolState = meta?.status || 'finished';
                 const progressResult = toolState === 'started' ? '' : (result || '');
@@ -1231,7 +1267,7 @@ class MemoryRetriever {
 
             const confidentPriorSkip = assessment.coverage === 'full' && assessment.retrievalConfidence !== 'low';
             if (!confidentPriorSkip && !retrievalWasAttempted) {
-                const fallback = await this._adaptiveKeywordFallback(query, alreadyRetrievedContext, conversationText, onProgress);
+                const fallback = await this._adaptiveKeywordFallback(query, alreadyRetrievedContext, conversationText, onProgress, signal);
                 if (fallback) return fallback;
             }
 
@@ -1253,7 +1289,7 @@ class MemoryRetriever {
                 };
             }
 
-            const displayText = await this._renderDirectAnswer(query, alreadyRetrievedContext);
+            const displayText = await this._renderDirectAnswer(query, alreadyRetrievedContext, signal);
             onProgress?.({ stage: 'complete', message: `Retrieval skipped: ${skipReason}` });
             return {
                 files: [],
@@ -1273,7 +1309,7 @@ class MemoryRetriever {
         // Terminal was called but nothing new was found
         if (terminalToolResult && !assembledContext) {
             const reason = 'No new relevant memory found.';
-            const displayText = await this._renderDirectAnswer(query, alreadyRetrievedContext);
+            const displayText = await this._renderDirectAnswer(query, alreadyRetrievedContext, signal);
             const assessment = this._normalizeRetrievalAssessment(args, {
                 hasContent: false,
                 skipped: true,
@@ -1293,7 +1329,7 @@ class MemoryRetriever {
 
         if (files.length === 0 && !assembledContext) {
             const reason = 'No new relevant memory found.';
-            const displayText = await this._renderDirectAnswer(query, alreadyRetrievedContext);
+            const displayText = await this._renderDirectAnswer(query, alreadyRetrievedContext, signal);
             const assessment = this._normalizeRetrievalAssessment(args, {
                 hasContent: false,
                 skipped: true,
@@ -1346,7 +1382,7 @@ class MemoryRetriever {
 
         if (this._isContextRedundant(finalContext, alreadyRetrievedContext)) {
             const skipReason = 'Already covered by retrieved context.';
-            const displayText = await this._renderDirectAnswer(query, alreadyRetrievedContext);
+            const displayText = await this._renderDirectAnswer(query, alreadyRetrievedContext, signal);
             const skipAssessment = this._normalizeRetrievalAssessment({
                 ...args,
                 coverage: 'full',
@@ -1370,7 +1406,7 @@ class MemoryRetriever {
         }
 
         const displayText = snippetContext && !assembledContext
-            ? await this._renderDirectAnswer(query, snippetContext)
+            ? await this._renderDirectAnswer(query, snippetContext, signal)
             : null;
 
         return {
@@ -1461,6 +1497,23 @@ class MemoryRetriever {
         if (!text) return text;
         return text.replace(/\[\[user_data\]\]/g, '').replace(/\[\[\/user_data\]\]/g, '');
     }
+}
+
+function createAbortError() {
+    const error = new Error('Memory retrieval aborted.');
+    error.name = 'AbortError';
+    error.aborted = true;
+    return error;
+}
+
+function throwIfAborted(signal) {
+    if (signal?.aborted) {
+        throw createAbortError();
+    }
+}
+
+function isAbortError(error, signal) {
+    return !!signal?.aborted || error?.name === 'AbortError' || error?.aborted === true;
 }
 
 export { MemoryRetriever };
