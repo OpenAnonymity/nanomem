@@ -198,3 +198,29 @@ export function detectCompactionMutations(before, after, at) {
 
     return entries;
 }
+
+/**
+ * Emit 'created' vlog entries for bullets that appear in `after` but not in `before`.
+ * This transparently bootstraps versioning for legacy bullets receiving IDs during a write.
+ * Skips history bullets and any ID already present in the vlog.
+ *
+ * @param {StorageBackend} backend
+ * @param {string} memoryPath
+ * @param {import('../types.js').Bullet[]} before - parsed bullets before the write
+ * @param {import('../types.js').Bullet[]} after - parsed bullets after the write
+ * @param {string} at - ISO datetime
+ * @returns {Promise<void>}
+ */
+export async function bootstrapCreatedEntries(backend, memoryPath, before, after, at) {
+    const beforeIds = new Set(before.filter((b) => b.id).map((b) => b.id));
+    const newBullets = after.filter((b) => b.id && !beforeIds.has(b.id) && b.section !== 'history');
+    if (newBullets.length === 0) return;
+
+    const existingVlog = await readVlog(backend, memoryPath);
+    const loggedIds = new Set(existingVlog.map((e) => e.id));
+
+    for (const bullet of newBullets) {
+        if (loggedIds.has(bullet.id)) continue;
+        await appendVlogEntry(backend, memoryPath, buildCreatedEntry(bullet, at));
+    }
+}

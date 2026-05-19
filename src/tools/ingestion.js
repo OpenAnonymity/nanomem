@@ -20,6 +20,7 @@ import {
     renderCompactedDocument,
     nowIsoDateTime
 } from '../internal/format/index.js';
+import { bootstrapCreatedEntries } from '../internal/vlog.js';
 
 const MAX_CONVERSATION_CHARS = 128000;
 
@@ -275,6 +276,16 @@ class MemoryIngester {
 
         const writeTools = ['create_new_file', 'append_memory', 'update_bullets', 'archive_memory', 'delete_memory'];
         const writeCalls = toolCallLog.filter(e => writeTools.includes(e.name));
+
+        for (const { path, before, after } of writes) {
+            if (!after) continue;
+            await bootstrapCreatedEntries(
+                this._backend, path,
+                parseBullets(String(before || '')),
+                parseBullets(String(after || '')),
+                updatedAt
+            );
+        }
 
         return { status: 'processed', writeCalls: writeCalls.length, writes };
     }
