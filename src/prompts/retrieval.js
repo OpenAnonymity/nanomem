@@ -180,6 +180,9 @@ Core rules:
 - Include only the minimum user-specific data required to answer well.
 - If memory is not actually needed, keep the prompt generic.
 - Keep the user's current request in normal prose.
+- Preserve the user's grammatical perspective from the current request. If the user asked in first person ("I", "me", "my", "we", "our"), write the final prompt in first person.
+- When adding memory facts to a first-person request, convert them into first-person wording inside [[user_data]] tags, as if the user said them. Prefer "[[user_data]]I experience...[[/user_data]]" over "[[user_data]]The user experiences...[[/user_data]]".
+- Use third-person wording only when the original user request is third-person or the task explicitly requires third-person framing.
 - Every additional fact sourced from memory files or recent conversation that you include must be wrapped in [[user_data]]...[[/user_data]].
 - Do not wrap generic instructions, output-format guidance, or your own reasoning in tags.
 - Strip personal identifiers unless they are strictly necessary.
