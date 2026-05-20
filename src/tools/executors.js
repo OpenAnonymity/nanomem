@@ -98,6 +98,7 @@ function buildCrafterInput({ userQuery, files, conversationText }) {
     sections.push(`Produce the JSON now. Remember:
 - reviewPrompt should be the exact final prompt that will be shown to the user
 - keep the current user request in normal prose
+- preserve the user's grammatical perspective; for first-person requests, added memory facts should also be first-person
 - any extra facts injected from memory or recent conversation must stay wrapped in [[user_data]] tags
 - if a memory fact only restates the domain already obvious from the query, omit it
 - omit names, relationship labels, and locations unless the prompt really needs them`);
