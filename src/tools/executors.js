@@ -28,6 +28,7 @@ import {
     buildContentUpdateEntries,
     buildCreatedEntry,
     buildDeletedEntry,
+    getCurrentV,
 } from '../internal/vlog.js';
 import { trimRecentConversation } from '../internal/recentConversation.js';
 import { augmentCrafterPrompt } from '../prompts/retrieval.js';
@@ -471,13 +472,14 @@ export function createExtractionExecutors(backend, hooks = {}) {
                     : rawNewFact;
                 const oldConfidence = oldBullet.confidence;
                 const decayedConfidence = bumpDownConfidence(oldConfidence);
+                const oldBulletV = await getCurrentV(backend, path, oldBullet.id);
                 parsed[idx] = {
                     ...oldBullet,
                     status: 'superseded',
                     tier: 'history',
                     confidence: decayedConfidence,
                     prevConfidence: oldConfidence,
-                    v: (oldBullet.v || 1) + 1,
+                    v: oldBulletV + 1,
                 };
                 const newBullet = ensureBulletMetadata(
                     {
@@ -494,7 +496,7 @@ export function createExtractionExecutors(backend, hooks = {}) {
                 parsed.push(newBullet);
 
                 const { oldEntry, newEntry } = buildContentUpdateEntries(
-                    newBullet, oldBullet.id, oldConfidence, effectiveUpdatedAt
+                    newBullet, oldBullet.id, oldBulletV, oldConfidence, effectiveUpdatedAt
                 );
                 await appendVlogEntry(backend, path, oldEntry);
                 await appendVlogEntry(backend, path, newEntry);
@@ -540,7 +542,7 @@ export function createExtractionExecutors(backend, hooks = {}) {
             const defaultTopic = inferTopicFromPath(path);
             const effectiveUpdatedAt = updatedAt || nowIsoDateTime();
 
-            const nextV = (matched.v || 1) + 1;
+            const nextV = (await getCurrentV(backend, path, matched.id)) + 1;
             parsed[idx] = wasInHistory
                 ? {
                     ...matched,
@@ -602,7 +604,8 @@ export function createExtractionExecutors(backend, hooks = {}) {
                 const at = updatedAt || nowIsoDateTime();
                 const bullets = parseBullets(content).filter(b => b.id && b.section !== 'history');
                 for (const bullet of bullets) {
-                    await appendVlogEntry(backend, path, buildDeletedEntry(bullet, at));
+                    const currentV = await getCurrentV(backend, path, bullet.id);
+                    await appendVlogEntry(backend, path, buildDeletedEntry({ ...bullet, v: currentV }, at));
                 }
             }
             await backend.delete(path);
@@ -667,7 +670,8 @@ export function createDeletionExecutors(backend, hooks = {}) {
             }
 
             if (deletedBullet?.id) {
-                await appendVlogEntry(backend, path, buildDeletedEntry(deletedBullet, nowIsoDateTime()));
+                const currentV = await getCurrentV(backend, path, deletedBullet.id);
+                await appendVlogEntry(backend, path, buildDeletedEntry({ ...deletedBullet, v: currentV }, nowIsoDateTime()));
             }
 
             // If no bullets remain, delete the file entirely instead of leaving empty headers.

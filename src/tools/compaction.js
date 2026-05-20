@@ -24,7 +24,7 @@ import {
     nowIsoDateTime,
     renderCompactedDocument
 } from '../internal/format/index.js';
-import { appendVlogEntry, bootstrapCreatedEntries, detectCompactionMutations } from '../internal/vlog.js';
+import { appendVlogEntry, bootstrapCreatedEntries, detectCompactionMutations, readVlog } from '../internal/vlog.js';
 import { compactionPrompt, contradictionReviewPrompt, semanticReviewPrompt } from '../prompts/compaction.js';
 import { DIRECT_LLM_OUTPUT_TOKENS } from '../internal/limits.js';
 
@@ -71,8 +71,9 @@ class MemoryCompactor {
                 const bulletsBefore = parseBullets(file.content || '');
                 const bulletsAfter = parseBullets(compacted);
                 const at = nowIsoDateTime();
+                const existingVlog = await readVlog(this._backend, file.path);
                 await bootstrapCreatedEntries(this._backend, file.path, bulletsBefore, bulletsAfter, at);
-                const vlogEntries = detectCompactionMutations(bulletsBefore, bulletsAfter, at);
+                const vlogEntries = detectCompactionMutations(bulletsBefore, bulletsAfter, at, existingVlog);
                 for (const entry of vlogEntries) {
                     await appendVlogEntry(this._backend, file.path, entry);
                 }
@@ -248,7 +249,6 @@ class MemoryCompactor {
                     section: 'history',
                     prevConfidence: b.confidence,
                     confidence: bumpDownConfidence(b.confidence),
-                    v: (b.v || 1) + 1,
                 };
             }
             return b;
@@ -292,7 +292,6 @@ class MemoryCompactor {
                     section: 'history',
                     prevConfidence: b.confidence,
                     confidence: bumpDownConfidence(b.confidence),
-                    v: (b.v || 1) + 1,
                 };
             }
             return b;

@@ -158,7 +158,6 @@ export function renderBullet(bullet) {
     if (clean.reviewAt) metadata.push(`review_at=${clean.reviewAt}`);
     if (clean.expiresAt) metadata.push(`expires_at=${clean.expiresAt}`);
     metadata.push(`id=${clean.id}`);
-    metadata.push(`v=${clean.v}`);
     if (clean.supersedes) metadata.push(`supersedes=${clean.supersedes}`);
     if (typeof clean.prevConfidence === 'number') metadata.push(`prev_confidence=${clean.prevConfidence}`);
     return `- ${clean.text} | ${metadata.join(' | ')}`;

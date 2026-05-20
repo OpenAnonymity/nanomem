@@ -87,7 +87,7 @@ export function getTrajectory(entries, bulletId) {
 export function buildCreatedEntry(bullet, at) {
     return {
         id: bullet.id,
-        v: bullet.v,
+        v: 1,
         event: 'created',
         at,
         confidence: bullet.confidence,
@@ -119,15 +119,16 @@ export function buildConfidenceEntry(bullet, prevConfidence, event, at) {
  * The old bullet gets a 'contradiction' entry; the new bullet gets a 'content_update' entry.
  * @param {import('../types.js').Bullet} newBullet - the replacement bullet
  * @param {string} oldId - ID of the bullet being replaced
+ * @param {number} oldBulletV - current version of the old bullet (before this mutation)
  * @param {number | null} oldConfidence
  * @param {string} at
  * @returns {{ oldEntry: VersionLogEntry, newEntry: VersionLogEntry }}
  */
-export function buildContentUpdateEntries(newBullet, oldId, oldConfidence, at) {
+export function buildContentUpdateEntries(newBullet, oldId, oldBulletV, oldConfidence, at) {
     return {
         oldEntry: {
             id: oldId,
-            v: newBullet.v,
+            v: oldBulletV + 1,
             event: 'contradiction',
             at,
             confidence: newBullet.prevConfidence,
@@ -162,15 +163,43 @@ export function buildDeletedEntry(bullet, at) {
 }
 
 /**
+ * Returns the current version number for a bullet by reading its vlog.
+ * Returns 1 if the bullet has no vlog entries yet.
+ * @param {StorageBackend} backend
+ * @param {string} memoryPath
+ * @param {string} bulletId
+ * @returns {Promise<number>}
+ */
+export async function getCurrentV(backend, memoryPath, bulletId) {
+    const entries = await readVlog(backend, memoryPath);
+    let maxV = 0;
+    for (const entry of entries) {
+        if (entry.id === bulletId && Number.isFinite(entry.v) && entry.v > maxV) {
+            maxV = entry.v;
+        }
+    }
+    return maxV || 1;
+}
+
+/**
  * Compares bullets before and after compaction (by ID) and returns vlog entries
  * for any confidence mutations that compaction introduced.
  *
  * @param {import('../types.js').Bullet[]} before - bullets parsed before compaction
  * @param {import('../types.js').Bullet[]} after - bullets parsed after compaction
  * @param {string} at
+ * @param {VersionLogEntry[]} existingVlog - existing vlog entries used to derive current v
  * @returns {VersionLogEntry[]}
  */
-export function detectCompactionMutations(before, after, at) {
+export function detectCompactionMutations(before, after, at, existingVlog = []) {
+    const maxVById = new Map();
+    for (const entry of existingVlog) {
+        if (entry.id && Number.isFinite(entry.v)) {
+            const cur = maxVById.get(entry.id) || 0;
+            if (entry.v > cur) maxVById.set(entry.id, entry.v);
+        }
+    }
+
     const beforeById = new Map(before.filter(b => b.id).map(b => [b.id, b]));
     const afterById = new Map(after.filter(b => b.id).map(b => [b.id, b]));
     const entries = [];
@@ -188,7 +217,7 @@ export function detectCompactionMutations(before, after, at) {
 
         entries.push({
             id,
-            v: afterBullet.v,
+            v: (maxVById.get(id) || 1) + 1,
             event,
             at,
             confidence: nextConf,
