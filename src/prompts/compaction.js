@@ -50,10 +50,10 @@ Active bullets:
 {NUMBERED_BULLETS}
 
 Rules:
-- Only mark a bullet SUPERSEDED if another bullet in this list directly contradicts it (different value for the same singleton attribute).
-- When two bullets contradict, mark the OLDER one superseded (earlier updated_at or lower confidence). If timestamps are the same, mark the one with lower confidence.
-- Do NOT mark bullets superseded just because they seem similar or redundant — only for direct contradictions.
-- Additive facts (multiple allergies, multiple skills, multiple past events) are not contradictions.
+- Default to KEEP. Only mark SUPERSEDED when you are certain of a direct contradiction — two bullets claiming different values for the same singleton attribute at the same point in time. Uncertainty means KEEP.
+- When two bullets genuinely contradict, always mark the one with the earlier updated_at as SUPERSEDED. This rule is strict: never supersede the bullet with the later updated_at, regardless of which fact appears more stable or established.
+- If updated_at is identical, mark the lower-confidence one as SUPERSEDED.
+- Two bullets are NOT contradictions if they cover different time periods, describe different aspects of the same topic, or are additive (multiple skills, past events, preferences, etc.).
 
 For each numbered bullet, output exactly one line:
 N: KEEP
