@@ -50,7 +50,7 @@ class MemoryCompactor {
         try {
             await this._backend.init();
             const allFiles = await this._backend.exportAll();
-            const realFiles = allFiles.filter((file) => !file.path.endsWith('_tree.md'));
+            const realFiles = allFiles.filter((file) => !file.path.endsWith('_tree.md') && !file.path.startsWith('_vlog/'));
 
             // Collect one-liner summaries for cross-file context in semantic review.
             this._fileSummaries = realFiles
@@ -94,7 +94,7 @@ class MemoryCompactor {
     async pruneExpired() {
         await this._backend.init();
         const allFiles = await this._backend.exportAll();
-        const realFiles = allFiles.filter(f => !f.path.endsWith('_tree.md'));
+        const realFiles = allFiles.filter(f => !f.path.endsWith('_tree.md') && !f.path.startsWith('_vlog/'));
 
         const today = todayIsoDate();
         let totalArchived = 0;
