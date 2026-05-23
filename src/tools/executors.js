@@ -293,24 +293,32 @@ const MAX_SEARCH_LINES_PER_FILE = 8;
  * @param {StorageBackend} backend
  */
 export function createRetrievalExecutors(backend) {
+    const isVlog = (p) => typeof p === 'string' && (p === '_vlog' || p.startsWith('_vlog/'));
     return {
         list_directory: async ({ dir_path }) => {
             const { files, dirs } = await backend.ls(dir_path || '');
-            return JSON.stringify({ files, dirs });
+            return JSON.stringify({
+                files: files.filter((f) => !isVlog(f)),
+                dirs: dirs.filter((d) => !isVlog(d))
+            });
         },
         search_memory: async ({ query }) => {
             const trimmed = String(query || '').trim();
             if (!trimmed) return JSON.stringify({ results: [], count: 0 });
 
             const hits = await backend.search(trimmed);
-            const results = hits.slice(0, MAX_SEARCH_RESULT_FILES).map(({ path, lines }) => ({
-                path,
-                lines: lines.slice(0, MAX_SEARCH_LINES_PER_FILE)
-            }));
+            const results = hits
+                .filter(({ path }) => !isVlog(path))
+                .slice(0, MAX_SEARCH_RESULT_FILES)
+                .map(({ path, lines }) => ({
+                    path,
+                    lines: lines.slice(0, MAX_SEARCH_LINES_PER_FILE)
+                }));
 
             return JSON.stringify({ results, count: results.length });
         },
         read_file: async ({ path }) => {
+            if (isVlog(path)) return JSON.stringify({ error: `File not found: ${path}` });
             const resolvedPath = typeof backend.resolvePath === 'function'
                 ? await backend.resolvePath(path)
                 : null;
@@ -342,7 +350,7 @@ export function createRetrievalExecutors(backend) {
 export function createAugmentQueryExecutor({ backend, llmClient, model, query, conversationText, onProgress }) {
     return async ({ user_query, memory_files }) => {
         const selectedPaths = Array.isArray(memory_files)
-            ? [...new Set(memory_files.filter((path) => typeof path === 'string' && path.trim()))].slice(0, MAX_AUGMENT_QUERY_FILES)
+            ? [...new Set(memory_files.filter((path) => typeof path === 'string' && path.trim() && !path.startsWith('_vlog/')))].slice(0, MAX_AUGMENT_QUERY_FILES)
             : [];
         const originalQuery = normalizeQueryText(query);
         const providedQuery = normalizeQueryText(user_query);

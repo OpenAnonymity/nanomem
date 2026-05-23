@@ -27,8 +27,7 @@ Do NOT save:
 - Sensitive secrets (passwords, tokens, keys)
 
 Bullet format: "- Fact text | topic=topic-name | source=user_statement | confidence=SCORE | updated_at=YYYY-MM-DDTHH:MM"
-Set confidence (0.4–1.0) based on how reliably this memory can be used later. Consider how explicitly the user stated it, how likely it is to remain true, and how much inference was required. Examples: ~1.0 = stated plainly and permanent; ~0.7 = contextual or may evolve; ~0.4 = weak inference or transient. Pick the number that best fits — do not round to these examples. Do not save below 0.4.
-Prefer not saving over saving weak or transient details.
+Set confidence (0.1–1.0) based on how reliably this memory can be used later. Consider how explicitly the user stated it, how likely it is to remain true, and how much inference was required. Examples: ~1.0 = stated plainly and permanent; ~0.7 = contextual or may evolve; ~0.4 = weak inference or transient; ~0.2 = user hedged or expressed uncertainty ("might", "possibly", "not sure"). Pick the number that best fits — do not round to these examples.
 For time-bound facts (medical events, temporary situations, short-term plans), append: | expires_at=YYYY-MM-DD
 
 If nothing new is worth saving, stop without calling any tools.`;
@@ -59,7 +58,7 @@ Rules:
 - Pass old_fact exactly as it appears in the file (including pipe-delimited metadata is fine).
 - Pass new_fact as plain text only — no metadata.
 - When appending or creating, use this bullet format: "- Fact text | topic=topic-name | source=user_statement | confidence=SCORE | updated_at=YYYY-MM-DDTHH:MM"
-  Set confidence (0.4–1.0) based on how reliably this memory can be used later. Consider how explicitly the user stated it, how likely it is to remain true, and how much inference was required. Examples: ~1.0 = stated plainly and permanent; ~0.7 = contextual or may evolve; ~0.4 = weak inference or transient. Pick the number that best fits — do not round to these examples. Do not save below 0.4. Prefer not saving over saving weak or transient details.
+  Set confidence (0.1–1.0) based on how reliably this memory can be used later. Consider how explicitly the user stated it, how likely it is to remain true, and how much inference was required. Examples: ~1.0 = stated plainly and permanent; ~0.7 = contextual or may evolve; ~0.4 = weak inference or transient; ~0.2 = user hedged or expressed uncertainty ("might", "possibly", "not sure"). Pick the number that best fits — do not round to these examples.
   For time-bound facts (medical events, temporary situations, short-term plans), append: | expires_at=YYYY-MM-DD
 
 If nothing new or changed is worth saving, stop without calling any tools.`;
@@ -103,14 +102,14 @@ Instructions:
 6. Source values:
    - source=user_statement — the user directly said this. This is the PRIMARY source. Use it for the vast majority of saved facts.
    - source=llm_infer — use when (a) combining multiple explicit user statements into an obvious conclusion (e.g. user said "I work at Acme" and "Acme is in SF" → "Works in SF"), or (b) a specific statement reveals a stable preference or behavioral tendency worth abstracting beyond the immediate context. Test for (b): "If I were helping this person with a completely different request next month, would knowing this preference change my answer?" If yes, save the abstracted preference as a separate durable fact alongside the specific one. A one-off event or task-specific detail fails this test; a stable tendency passes it. Never guess or fill gaps. When in doubt, do not save. Set confidence lower (0.5–0.7) for inferred facts.
-7. Set confidence (0.4–1.0) based on how reliably this memory can be used later. Consider how explicitly the user stated it, how likely it is to remain true, and how much inference was required. Examples: ~1.0 = stated plainly and permanent; ~0.7 = contextual or may evolve; ~0.4 = weak inference or transient. Pick the number that best fits — do not round to these examples. Do not save below 0.4. Prefer not saving over saving weak or transient details.
+7. Set confidence (0.1–1.0) based on how reliably this memory can be used later. Consider how explicitly the user stated it, how likely it is to remain true, and how much inference was required. Examples: ~1.0 = stated plainly and permanent; ~0.7 = contextual or may evolve; ~0.4 = weak inference or transient; ~0.2 = user hedged or expressed uncertainty ("might", "possibly", "not sure"). Pick the number that best fits — do not round to these examples.
 8. Tier reflects how durable a fact is, not whether it is currently true. Use tier=working only for genuinely transient states that will no longer be relevant within weeks (e.g. a temporary injury, a trip in progress, a one-off task). Announced future states that are permanent once they occur — a new job, a move, a relationship change — are long-term facts even if the change hasn't happened yet. If you are unsure, omit tier.
 9. Facts worth saving: allergies, health conditions, location, job/role, tech stack, pets, family members, durable preferences, explicit sentiments the user attaches to stable facts in their life (how they feel about their job, home, relationships, or interests), active plans, and explicit state changes to named tasks or entities the user is tracking (cases, assignments, project milestones, scheduled meetings) — but ONLY if the user explicitly mentioned them.
 10. For time-bound facts, set expires_at=YYYY-MM-DD. Ask yourself: "After what date would this fact no longer be true or relevant?" Set expires_at to that date. If the fact is stable and has no natural end (job, home city, preference, chronic condition, relationship), omit expires_at. If the expiry is genuinely unclear, include date context in the fact text and omit expires_at.
 11. If nothing new is worth remembering, simply stop without calling any write tools. Saving nothing is better than saving something wrong.
 
 Rules:
-- Write facts in a timeless, archival format: use absolute dates (YYYY-MM-DD) rather than relative terms like "recently", "currently", "just", or "last week". A fact must be interpretable correctly even years after it was written.
+- Write facts in a timeless, archival format. Only use a specific date (YYYY-MM-DD) when the user explicitly stated one — never compute or infer a calendar date from a day name alone ("Wednesday at 2 PM" stays as "Wednesday at 2 PM"). Drop temporal language that is relative to the moment of speaking and would lose meaning later; keep day names, times, and month/year references the user actually used.
 - Favor broad thematic files. A file can hold multiple related sub-topics — only truly unrelated facts need separate files.
 - Only create a new file when nothing in the index is thematically close. When in doubt, append.
 - When creating a new file, choose a name that is descriptive but not overly specific — it should reflect a reusable theme, not a single event or detail. Too generic: "conditions.md", "events.md", "info.md". Too specific: "bee-sting.md", "portland-trip.md". Just right: "allergies.md", "fitness.md", "diet.md", "side-projects.md".
