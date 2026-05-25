@@ -163,7 +163,7 @@ export class BaseStorage {
     // ─── Shared helpers ──────────────────────────────────────────
 
     _isInternalPath(path) {
-        return path === '_tree.md';
+        return path === '_tree.md' || (typeof path === 'string' && path.startsWith('_vlog/'));
     }
 
     /** Override for efficient path listing. Default uses exportAll(). */

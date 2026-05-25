@@ -14,6 +14,7 @@ import { runAgenticToolLoop } from '../internal/toolLoop.js';
 import { createDeletionExecutors } from './executors.js';
 import { resolvePromptSet } from '../prompts/index.js';
 import { TOOL_OUTPUT_TOKENS, TOOL_LOOP_ITERATIONS } from '../internal/limits.js';
+import { isVlogPath } from '../internal/vlog.js';
 
 /** Tools used in default (index-guided) delete mode. */
 const DELETION_TOOLS = [
@@ -131,7 +132,7 @@ export class MemoryDeleter {
         const allFiles = await this._backend.exportAll();
         const paths = allFiles
             .map(f => f.path)
-            .filter(p => !p.endsWith('_tree.md'))
+            .filter(p => !p.endsWith('_tree.md') && !isVlogPath(p))
             .sort();
 
         if (paths.length === 0) {

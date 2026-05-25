@@ -12,6 +12,8 @@ import {
     buildDeletedEntry,
 } from '../../src/internal/vlog.js';
 import { createExtractionExecutors, createDeletionExecutors } from '../../src/tools/executors.js';
+import { InMemoryStorage } from '../../src/internal/storage/ram.js';
+import { serialize } from '../../src/internal/portability.js';
 
 function makeBackend(initial = {}) {
     const files = new Map(Object.entries(initial));
@@ -75,6 +77,42 @@ describe('appendVlogEntry / readVlog', () => {
     it('returns empty array when no vlog exists', async () => {
         const entries = await readVlog(backend, 'nonexistent.md');
         assert.deepEqual(entries, []);
+    });
+});
+
+describe('vlog internal storage visibility', () => {
+    it('keeps vlog files out of agent-visible indexes and exports', async () => {
+        const storage = new InMemoryStorage();
+        await storage.write('work/role.md', `# Memory: Role
+
+## Long-term memory (stable facts that are unlikely to change)
+- Works at Stripe | topic=work | tier=long_term | status=active | source=user_statement | confidence=1 | updated_at=2026-01-01T00:00 | id=role123 | v=1
+`);
+
+        await appendVlogEntry(storage, 'work/role.md', {
+            id: 'role123',
+            v: 2,
+            event: 'deleted',
+            at: '2026-05-25T10:00',
+            confidence: 1
+        });
+
+        const vlogContent = await storage.read('_vlog/work/role.jsonl');
+        assert.match(vlogContent, /"event":"deleted"/);
+
+        const tree = await storage.getTree();
+        assert.doesNotMatch(tree || '', /_vlog/);
+
+        const searchResults = await storage.search('deleted');
+        assert.deepEqual(searchResults, []);
+
+        const listing = await storage.ls('');
+        assert.ok(!listing.dirs.includes('_vlog'));
+        assert.ok(!listing.files.some(path => path.startsWith('_vlog/')));
+
+        const exported = await storage.exportAll();
+        assert.ok(exported.some(record => record.path === '_vlog/work/role.jsonl'));
+        assert.doesNotMatch(serialize(exported), /_vlog/);
     });
 });
 

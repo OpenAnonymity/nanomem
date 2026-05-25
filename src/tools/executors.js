@@ -29,6 +29,7 @@ import {
     buildCreatedEntry,
     buildDeletedEntry,
     getCurrentV,
+    isVlogPath,
 } from '../internal/vlog.js';
 import { trimRecentConversation } from '../internal/recentConversation.js';
 import { augmentCrafterPrompt } from '../prompts/retrieval.js';
@@ -382,7 +383,7 @@ export function createAugmentQueryExecutor({ backend, llmClient, model, query, c
     return async ({ user_query, memory_files }) => {
         throwIfAborted(signal);
         const selectedPaths = Array.isArray(memory_files)
-            ? [...new Set(memory_files.filter((path) => typeof path === 'string' && path.trim() && !path.startsWith('_vlog/')))].slice(0, MAX_AUGMENT_QUERY_FILES)
+            ? [...new Set(memory_files.filter((path) => typeof path === 'string' && path.trim() && !isVlogPath(path)))].slice(0, MAX_AUGMENT_QUERY_FILES)
             : [];
         const originalQuery = normalizeQueryText(query);
         const providedQuery = normalizeQueryText(user_query);
@@ -639,7 +640,7 @@ export function createExtractionExecutors(backend, hooks = {}) {
             return JSON.stringify({ success: true, path, action: 'archived', removed: item_text });
         },
         delete_memory: async ({ path }) => {
-            if (path.endsWith('_tree.md')) {
+            if (path.endsWith('_tree.md') || isVlogPath(path)) {
                 return JSON.stringify({ error: 'Cannot delete index files' });
             }
             const content = await backend.read(path);
@@ -678,7 +679,7 @@ export function createDeletionExecutors(backend, hooks = {}) {
             const allFiles = await backend.exportAll();
             const queryLower = query.toLowerCase();
             const pathMatches = allFiles
-                .filter(f => !f.path.endsWith('_tree.md') && f.path.toLowerCase().includes(queryLower))
+                .filter(f => !f.path.endsWith('_tree.md') && !isVlogPath(f.path) && f.path.toLowerCase().includes(queryLower))
                 .map(f => f.path);
 
             const seen = new Set();

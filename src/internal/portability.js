@@ -9,10 +9,15 @@
  *   [{ path: string, content: string }, ...]
  */
 /** @import { ExportRecord } from '../types.js' */
+import { isVlogPath } from './vlog.js';
 
 // ─── Text serialization ───────────────────────────────────────────────────────
 
 const FILE_PREFIX = '--- FILE: ';
+
+function isPortablePath(path) {
+    return typeof path === 'string' && !path.endsWith('_tree.md') && !isVlogPath(path);
+}
 
 /**
  * Convert an array of {path, content} records into a single portable string.
@@ -30,7 +35,7 @@ const FILE_PREFIX = '--- FILE: ';
  */
 export function serialize(records) {
     return records
-        .filter(({ path }) => !path.endsWith('_tree.md'))
+        .filter(({ path }) => isPortablePath(path))
         .map(({ path, content }) => `${FILE_PREFIX}${path}\n${content ?? ''}`)
         .join('\n');
 }
@@ -107,7 +112,7 @@ export function toZip(records) {
     const localParts = [];   // raw bytes for local file entries
     const centralParts = []; // raw bytes for central directory entries
     let localOffset = 0;
-    const filtered = records.filter(r => !r.path.endsWith('_tree.md'));
+    const filtered = records.filter(r => isPortablePath(r.path));
 
     for (const { path, content } of filtered) {
         const name = enc.encode(path);

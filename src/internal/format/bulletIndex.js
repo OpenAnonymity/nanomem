@@ -1,5 +1,6 @@
 /** @import { Bullet, BulletItem, StorageBackend } from '../../types.js' */
 import { parseBullets, nowIsoDateTime } from './index.js';
+import { isVlogPath } from '../vlog.js';
 
 class MemoryBulletIndex {
     /**
@@ -36,7 +37,7 @@ class MemoryBulletIndex {
         this._pathToUpdatedAt.clear();
 
         for (const file of all) {
-            if (file.path.endsWith('_tree.md')) continue;
+            if (file.path.endsWith('_tree.md') || isVlogPath(file.path)) continue;
             const bullets = this._parseForIndex(file.path, file.content || '');
             this._pathToBullets.set(file.path, bullets);
             this._pathToUpdatedAt.set(file.path, file.updatedAt || Date.now());
@@ -86,7 +87,7 @@ class MemoryBulletIndex {
      */
     async refreshPath(path) {
         await this.init();
-        if (!path || path.endsWith('_tree.md')) return;
+        if (!path || path.endsWith('_tree.md') || isVlogPath(path)) return;
 
         const content = await this._backend.read(path);
         if (content === null) {

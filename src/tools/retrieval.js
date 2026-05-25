@@ -23,6 +23,7 @@ import {
     scoreBullet,
     tokenizeQuery
 } from '../internal/format/index.js';
+import { isVlogPath } from '../internal/vlog.js';
 
 const MAX_FILES_TO_LOAD = 8;
 const MAX_TOTAL_CONTEXT_CHARS = 4000;
@@ -944,7 +945,7 @@ class MemoryRetriever {
 
     async _isMemoryEmpty(index) {
         const all = await this._backend.exportAll();
-        const realFiles = all.filter(f => !f.path.endsWith('_tree.md'));
+        const realFiles = all.filter(f => !f.path.endsWith('_tree.md') && !isVlogPath(f.path));
         if (realFiles.length === 0) return true;
         return !realFiles.some(f => (f.itemCount || 0) > 0);
     }
