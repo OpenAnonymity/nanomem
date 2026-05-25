@@ -42,6 +42,12 @@ const AUGMENT_CRAFTER_RETRY_BASE_DELAY_MS = 350;
 
 const AUGMENT_QUERY_EXECUTOR_SYSTEM_PROMPT = augmentCrafterPrompt;
 
+async function getCurrentBulletVersion(backend, path, bullet) {
+    const logV = bullet?.id ? await getCurrentV(backend, path, bullet.id) : 1;
+    const storedV = Number.isFinite(bullet?.v) ? bullet.v : 1;
+    return Math.max(logV, storedV, 1);
+}
+
 function clipText(value, limit) {
     const text = typeof value === 'string' ? value.trim() : '';
     if (!text) return '';
@@ -509,7 +515,7 @@ export function createExtractionExecutors(backend, hooks = {}) {
                     : rawNewFact;
                 const oldConfidence = oldBullet.confidence;
                 const decayedConfidence = bumpDownConfidence(oldConfidence);
-                const oldBulletV = await getCurrentV(backend, path, oldBullet.id);
+                const oldBulletV = await getCurrentBulletVersion(backend, path, oldBullet);
                 parsed[idx] = {
                     ...oldBullet,
                     status: 'superseded',
@@ -579,7 +585,7 @@ export function createExtractionExecutors(backend, hooks = {}) {
             const defaultTopic = inferTopicFromPath(path);
             const effectiveUpdatedAt = updatedAt || nowIsoDateTime();
 
-            const nextV = (await getCurrentV(backend, path, matched.id)) + 1;
+            const nextV = (await getCurrentBulletVersion(backend, path, matched)) + 1;
             parsed[idx] = wasInHistory
                 ? {
                     ...matched,
@@ -641,7 +647,7 @@ export function createExtractionExecutors(backend, hooks = {}) {
                 const at = updatedAt || nowIsoDateTime();
                 const bullets = parseBullets(content).filter(b => b.id && b.section !== 'history');
                 for (const bullet of bullets) {
-                    const currentV = await getCurrentV(backend, path, bullet.id);
+                    const currentV = await getCurrentBulletVersion(backend, path, bullet);
                     await appendVlogEntry(backend, path, buildDeletedEntry({ ...bullet, v: currentV }, at));
                 }
             }
@@ -707,7 +713,7 @@ export function createDeletionExecutors(backend, hooks = {}) {
             }
 
             if (deletedBullet?.id) {
-                const currentV = await getCurrentV(backend, path, deletedBullet.id);
+                const currentV = await getCurrentBulletVersion(backend, path, deletedBullet);
                 await appendVlogEntry(backend, path, buildDeletedEntry({ ...deletedBullet, v: currentV }, nowIsoDateTime()));
             }
 
