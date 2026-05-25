@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { validateOmf } from '../src/internal/omf.js';
+import { buildOmfExport, importOmf, validateOmf } from '../src/internal/omf.js';
+import { InMemoryStorage } from '../src/internal/storage/ram.js';
 
 function makeDoc(overrides = {}) {
     return {
@@ -91,5 +92,37 @@ describe('validateOmf', () => {
         }));
         assert.equal(result.valid, false);
         assert.ok(result.error.includes('index 2'));
+    });
+});
+
+describe('OMF vlog round-trip', () => {
+    it('canonicalizes restored vlog extension paths as internal records', async () => {
+        const storage = new InMemoryStorage();
+        await importOmf(storage, {
+            omf: '1.0',
+            exported_at: '2026-05-25T00:00:00.000Z',
+            source: { app: 'nanomem' },
+            memories: [
+                { content: 'Works at Stripe', category: 'work' }
+            ],
+            extensions: {
+                nanomem: {
+                    vlogs: {
+                        './_vlog/work/about.jsonl': '{"id":"role123","v":2,"event":"deleted"}'
+                    }
+                }
+            }
+        });
+
+        assert.equal(await storage.read('_vlog/work/about.jsonl'), '{"id":"role123","v":2,"event":"deleted"}');
+        assert.equal(await storage.read('./_vlog/work/about.jsonl'), '{"id":"role123","v":2,"event":"deleted"}');
+
+        const all = await storage.exportAll();
+        assert.ok(all.some(record => record.path === '_vlog/work/about.jsonl'));
+        assert.ok(!all.some(record => record.path === './_vlog/work/about.jsonl'));
+
+        const exported = await buildOmfExport(storage);
+        assert.equal(exported.extensions.nanomem.vlogs['_vlog/work/about.jsonl'], '{"id":"role123","v":2,"event":"deleted"}');
+        assert.ok(!exported.memories.some(item => item.extensions?.nanomem?.file_path === '_vlog/work/about.jsonl'));
     });
 });

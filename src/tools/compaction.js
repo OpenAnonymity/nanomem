@@ -24,7 +24,7 @@ import {
     nowIsoDateTime,
     renderCompactedDocument
 } from '../internal/format/index.js';
-import { appendVlogEntry, bootstrapCreatedEntries, detectCompactionMutations, readVlog } from '../internal/vlog.js';
+import { appendVlogEntry, bootstrapCreatedEntries, detectCompactionMutations, isVlogPath, readVlog } from '../internal/vlog.js';
 import { compactionPrompt, contradictionReviewPrompt, semanticReviewPrompt } from '../prompts/compaction.js';
 import { DIRECT_LLM_OUTPUT_TOKENS } from '../internal/limits.js';
 
@@ -50,7 +50,7 @@ class MemoryCompactor {
         try {
             await this._backend.init();
             const allFiles = await this._backend.exportAll();
-            const realFiles = allFiles.filter((file) => !file.path.endsWith('_tree.md') && !file.path.startsWith('_vlog/'));
+            const realFiles = allFiles.filter((file) => !file.path.endsWith('_tree.md') && !isVlogPath(file.path));
 
             // Collect one-liner summaries for cross-file context in semantic review.
             this._fileSummaries = realFiles
@@ -94,7 +94,7 @@ class MemoryCompactor {
     async pruneExpired() {
         await this._backend.init();
         const allFiles = await this._backend.exportAll();
-        const realFiles = allFiles.filter(f => !f.path.endsWith('_tree.md') && !f.path.startsWith('_vlog/'));
+        const realFiles = allFiles.filter(f => !f.path.endsWith('_tree.md') && !isVlogPath(f.path));
 
         const today = todayIsoDate();
         let totalArchived = 0;

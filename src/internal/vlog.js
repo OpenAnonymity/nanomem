@@ -30,7 +30,23 @@ export function vlogPath(memoryPath) {
  * @returns {boolean}
  */
 export function isVlogPath(path) {
-    return path.startsWith(VLOG_PREFIX);
+    const normalized = String(path || '')
+        .trim()
+        .replace(/\\/g, '/')
+        .replace(/^\/+/, '')
+        .replace(/\/+/g, '/')
+        .split('/')
+        .reduce((parts, part) => {
+            if (!part || part === '.') return parts;
+            if (part === '..') {
+                parts.pop();
+                return parts;
+            }
+            parts.push(part);
+            return parts;
+        }, [])
+        .join('/');
+    return normalized === '_vlog' || normalized.startsWith(VLOG_PREFIX);
 }
 
 /**

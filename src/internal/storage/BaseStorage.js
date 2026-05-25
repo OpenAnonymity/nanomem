@@ -108,8 +108,10 @@ export class BaseStorage {
      * @returns {Promise<void>}
      */
     async write(path, content) {
-        if (this._isInternalPath(path)) {
-            await this._writeRaw(path, String(content || ''), {});
+        const requestedPath = this._normalizeRequestedPath(path);
+        if (!requestedPath) return;
+        if (this._isInternalPath(requestedPath)) {
+            await this._writeRaw(requestedPath, String(content || ''), {});
             return;
         }
         const str = String(content || '');
@@ -118,7 +120,7 @@ export class BaseStorage {
             itemCount: countBullets(str),
             titles: extractTitles(str),
         };
-        await this._writeRaw(path, str, meta);
+        await this._writeRaw(requestedPath, str, meta);
         await this.rebuildTree();
     }
 
