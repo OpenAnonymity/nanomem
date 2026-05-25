@@ -137,6 +137,7 @@ describe('detectCompactionMutations', () => {
         assert.equal(entries.length, 1);
         assert.equal(entries[0].event, 'tier_transition');
         assert.equal(entries[0].id, 'abc');
+        assert.equal(entries[0].v, 3);
         assert.equal(entries[0].prev, 0.7);
         assert.equal(entries[0].confidence, 0.35);
     });
@@ -159,6 +160,24 @@ describe('detectCompactionMutations', () => {
         const before = [{ id: null, v: 1, section: 'long_term', confidence: 0.7, text: 'foo' }];
         const after  = [{ id: null, v: 2, section: 'history',   confidence: 0.35, text: 'foo' }];
         assert.equal(detectCompactionMutations(before, after, '2026-05-18T10:00').length, 0);
+    });
+
+    it('uses stored bullet versions when no vlog entries exist', () => {
+        const before = [{ id: 'abc', v: 5, section: 'long_term', confidence: 0.7, text: 'foo' }];
+        const after = [{ id: 'abc', v: 5, section: 'history', confidence: 0.35, text: 'foo' }];
+        const entries = detectCompactionMutations(before, after, '2026-05-18T10:00');
+        assert.equal(entries.length, 1);
+        assert.equal(entries[0].v, 6);
+    });
+
+    it('uses the greatest known version from bullets and existing vlog entries', () => {
+        const before = [{ id: 'abc', v: 5, section: 'long_term', confidence: 0.7, text: 'foo' }];
+        const after = [{ id: 'abc', v: 6, section: 'history', confidence: 0.35, text: 'foo' }];
+        const entries = detectCompactionMutations(before, after, '2026-05-18T10:00', [
+            { id: 'abc', v: 8, event: 'corroboration', at: '2026-05-01T10:00', confidence: 0.7 }
+        ]);
+        assert.equal(entries.length, 1);
+        assert.equal(entries[0].v, 9);
     });
 });
 

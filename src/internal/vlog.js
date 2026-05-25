@@ -214,10 +214,14 @@ export function detectCompactionMutations(before, after, at, existingVlog = []) 
 
         const movedToHistory = afterBullet.section === 'history' && beforeBullet.section !== 'history';
         const event = movedToHistory ? 'tier_transition' : 'compaction';
+        const beforeV = Number.isFinite(beforeBullet.v) ? beforeBullet.v : 1;
+        const afterV = Number.isFinite(afterBullet.v) ? afterBullet.v : 1;
+        const vlogV = maxVById.get(id) || 1;
+        const currentV = Math.max(beforeV, afterV, vlogV, 1);
 
         entries.push({
             id,
-            v: (maxVById.get(id) || 1) + 1,
+            v: currentV + 1,
             event,
             at,
             confidence: nextConf,
