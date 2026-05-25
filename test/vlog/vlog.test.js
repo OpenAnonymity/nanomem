@@ -11,7 +11,7 @@ import {
     buildConfidenceEntry,
     buildDeletedEntry,
 } from '../../src/internal/vlog.js';
-import { createExtractionExecutors, createDeletionExecutors } from '../../src/tools/executors.js';
+import { createRetrievalExecutors, createExtractionExecutors, createDeletionExecutors } from '../../src/tools/executors.js';
 import { InMemoryStorage } from '../../src/internal/storage/ram.js';
 import { serialize } from '../../src/internal/portability.js';
 
@@ -113,6 +113,35 @@ describe('vlog internal storage visibility', () => {
         const exported = await storage.exportAll();
         assert.ok(exported.some(record => record.path === '_vlog/work/role.jsonl'));
         assert.doesNotMatch(serialize(exported), /_vlog/);
+    });
+
+    it('blocks normalized internal paths from agent-facing tools', async () => {
+        const storage = new InMemoryStorage();
+        await storage.write('work/role.md', `# Memory: Role
+
+## Long-term memory (stable facts that are unlikely to change)
+- Works at Stripe | topic=work | tier=long_term | status=active | source=user_statement | confidence=1 | updated_at=2026-01-01T00:00 | id=role123 | v=1
+`);
+        await appendVlogEntry(storage, 'work/role.md', {
+            id: 'role123',
+            v: 2,
+            event: 'deleted',
+            at: '2026-05-25T10:00',
+            confidence: 1
+        });
+
+        const retrieval = createRetrievalExecutors(storage);
+        const extraction = createExtractionExecutors(storage);
+        const deletion = createDeletionExecutors(storage);
+
+        assert.match(await retrieval.read_file({ path: './_vlog/work/role.jsonl' }), /File not found/);
+        assert.match(await retrieval.read_file({ path: 'work/../_vlog/work/role.jsonl' }), /File not found/);
+        assert.match(await extraction.read_file({ path: './_vlog/work/role.jsonl' }), /File not found/);
+        assert.match(await deletion.read_file({ path: './_vlog/work/role.jsonl' }), /File not found/);
+        assert.match(await extraction.append_memory({ path: './_vlog/work/role.jsonl', content: '- bad' }), /Cannot write internal file/);
+        assert.match(await extraction.create_new_file({ path: './_vlog/new.jsonl', content: '- bad' }), /Cannot write internal file/);
+        assert.match(await extraction.delete_memory({ path: './_vlog/work/role.jsonl' }), /Cannot delete index files/);
+        assert.match(await deletion.delete_bullet({ path: './_vlog/work/role.jsonl', bullet_text: 'deleted' }), /File not found/);
     });
 });
 

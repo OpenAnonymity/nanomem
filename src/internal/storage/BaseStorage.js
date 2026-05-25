@@ -22,6 +22,29 @@
 /** @import { ExportRecord, ListResult, SearchResult, StorageMetadata } from '../../types.js' */
 import { parseBullets, extractTitles, countBullets, normalizeFactText } from '../format/index.js';
 
+export function normalizeStoragePath(path) {
+    const normalized = String(path || '')
+        .trim()
+        .replace(/\\/g, '/')
+        .replace(/^\/+/, '')
+        .replace(/\/+/g, '/');
+    const parts = [];
+    for (const part of normalized.split('/')) {
+        if (!part || part === '.') continue;
+        if (part === '..') {
+            parts.pop();
+            continue;
+        }
+        parts.push(part);
+    }
+    return parts.join('/');
+}
+
+export function isInternalStoragePath(path) {
+    const normalized = normalizeStoragePath(path);
+    return normalized === '_tree.md' || normalized === '_vlog' || normalized.startsWith('_vlog/');
+}
+
 export class BaseStorage {
 
     // ─── Abstract (backends must implement) ─────────────────────
@@ -163,7 +186,7 @@ export class BaseStorage {
     // ─── Shared helpers ──────────────────────────────────────────
 
     _isInternalPath(path) {
-        return path === '_tree.md' || (typeof path === 'string' && path.startsWith('_vlog/'));
+        return isInternalStoragePath(path);
     }
 
     /** Override for efficient path listing. Default uses exportAll(). */
@@ -188,12 +211,7 @@ export class BaseStorage {
     }
 
     _normalizeRequestedPath(path) {
-        return String(path || '')
-            .trim()
-            .replace(/\\/g, '/')
-            .replace(/^\.\//, '')
-            .replace(/^\/+/, '')
-            .replace(/\/+/g, '/');
+        return normalizeStoragePath(path);
     }
 
     _normalizeLookupKey(path, { stripExtension = false } = {}) {

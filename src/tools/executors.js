@@ -29,8 +29,8 @@ import {
     buildCreatedEntry,
     buildDeletedEntry,
     getCurrentV,
-    isVlogPath,
 } from '../internal/vlog.js';
+import { isInternalStoragePath, normalizeStoragePath } from '../internal/storage/BaseStorage.js';
 import { trimRecentConversation } from '../internal/recentConversation.js';
 import { augmentCrafterPrompt } from '../prompts/retrieval.js';
 
@@ -324,13 +324,12 @@ const MAX_SEARCH_LINES_PER_FILE = 8;
  * @param {StorageBackend} backend
  */
 export function createRetrievalExecutors(backend) {
-    const isVlog = (p) => typeof p === 'string' && (p === '_vlog' || p.startsWith('_vlog/'));
     return {
         list_directory: async ({ dir_path }) => {
             const { files, dirs } = await backend.ls(dir_path || '');
             return JSON.stringify({
-                files: files.filter((f) => !isVlog(f)),
-                dirs: dirs.filter((d) => !isVlog(d))
+                files: files.filter((f) => !isInternalStoragePath(f)),
+                dirs: dirs.filter((d) => !isInternalStoragePath(d))
             });
         },
         search_memory: async ({ query }) => {
@@ -339,7 +338,7 @@ export function createRetrievalExecutors(backend) {
 
             const hits = await backend.search(trimmed);
             const results = hits
-                .filter(({ path }) => !isVlog(path))
+                .filter(({ path }) => !isInternalStoragePath(path))
                 .slice(0, MAX_SEARCH_RESULT_FILES)
                 .map(({ path, lines }) => ({
                     path,
@@ -349,11 +348,13 @@ export function createRetrievalExecutors(backend) {
             return JSON.stringify({ results, count: results.length });
         },
         read_file: async ({ path }) => {
-            if (isVlog(path)) return JSON.stringify({ error: `File not found: ${path}` });
+            const requestedPath = normalizeStoragePath(path);
+            if (isInternalStoragePath(requestedPath)) return JSON.stringify({ error: `File not found: ${path}` });
             const resolvedPath = typeof backend.resolvePath === 'function'
-                ? await backend.resolvePath(path)
+                ? await backend.resolvePath(requestedPath)
                 : null;
-            const content = await backend.read(resolvedPath || path);
+            if (isInternalStoragePath(resolvedPath || requestedPath)) return JSON.stringify({ error: `File not found: ${path}` });
+            const content = await backend.read(resolvedPath || requestedPath);
             if (content === null) return JSON.stringify({ error: `File not found: ${path}` });
             const active = stripHistorySection(content);
             return active.length > MAX_READ_FILE_CHARS
@@ -383,7 +384,10 @@ export function createAugmentQueryExecutor({ backend, llmClient, model, query, c
     return async ({ user_query, memory_files }) => {
         throwIfAborted(signal);
         const selectedPaths = Array.isArray(memory_files)
-            ? [...new Set(memory_files.filter((path) => typeof path === 'string' && path.trim() && !isVlogPath(path)))].slice(0, MAX_AUGMENT_QUERY_FILES)
+            ? [...new Set(memory_files
+                .filter((path) => typeof path === 'string')
+                .map((path) => normalizeStoragePath(path))
+                .filter((path) => path && !isInternalStoragePath(path)))].slice(0, MAX_AUGMENT_QUERY_FILES)
             : [];
         const originalQuery = normalizeQueryText(query);
         const providedQuery = normalizeQueryText(user_query);
@@ -460,36 +464,44 @@ export function createExtractionExecutors(backend, hooks = {}) {
 
     return {
         read_file: async ({ path }) => {
-            const content = await backend.read(path);
+            const requestedPath = normalizeStoragePath(path);
+            if (isInternalStoragePath(requestedPath)) return JSON.stringify({ error: `File not found: ${path}` });
+            const content = await backend.read(requestedPath);
             if (content === null) return JSON.stringify({ error: `File not found: ${path}` });
             return content.length > MAX_READ_FILE_CHARS ? content.slice(0, MAX_READ_FILE_CHARS) + '...(truncated)' : content;
         },
         create_new_file: async ({ path, content }) => {
-            const exists = await backend.exists(path);
+            const requestedPath = normalizeStoragePath(path);
+            if (isInternalStoragePath(requestedPath)) return JSON.stringify({ error: `Cannot write internal file: ${path}` });
+            const exists = await backend.exists(requestedPath);
             if (exists) return JSON.stringify({ error: `File already exists: ${path}. Use append_memory or update_bullets instead.` });
-            const normalized = normalizeContent ? normalizeContent(content, path) : content;
-            await backend.write(path, normalized);
-            if (refreshIndex) await refreshIndex(path);
-            onWrite?.(path, '', normalized);
-            return JSON.stringify({ success: true, path });
+            const normalized = normalizeContent ? normalizeContent(content, requestedPath) : content;
+            await backend.write(requestedPath, normalized);
+            if (refreshIndex) await refreshIndex(requestedPath);
+            onWrite?.(requestedPath, '', normalized);
+            return JSON.stringify({ success: true, path: requestedPath });
         },
         append_memory: async ({ path, content }) => {
-            const existing = await backend.read(path);
+            const requestedPath = normalizeStoragePath(path);
+            if (isInternalStoragePath(requestedPath)) return JSON.stringify({ error: `Cannot write internal file: ${path}` });
+            const existing = await backend.read(requestedPath);
             const newContent = mergeWithExisting
-                ? mergeWithExisting(existing, content, path)
+                ? mergeWithExisting(existing, content, requestedPath)
                 : (existing ? existing + '\n\n' + content : content);
-            await backend.write(path, newContent);
-            if (refreshIndex) await refreshIndex(path);
-            onWrite?.(path, existing ?? '', newContent);
-            return JSON.stringify({ success: true, path, action: 'appended' });
+            await backend.write(requestedPath, newContent);
+            if (refreshIndex) await refreshIndex(requestedPath);
+            onWrite?.(requestedPath, existing ?? '', newContent);
+            return JSON.stringify({ success: true, path: requestedPath, action: 'appended' });
         },
         update_bullets: async ({ path, updates }) => {
-            const before = await backend.read(path);
+            const requestedPath = normalizeStoragePath(path);
+            if (isInternalStoragePath(requestedPath)) return JSON.stringify({ error: `File not found: ${path}` });
+            const before = await backend.read(requestedPath);
             if (!before) return JSON.stringify({ error: `File not found: ${path}` });
             if (!Array.isArray(updates) || updates.length === 0) return JSON.stringify({ error: 'updates must be a non-empty array' });
 
             const parsed = parseBullets(before);
-            const defaultTopic = inferTopicFromPath(path);
+            const defaultTopic = inferTopicFromPath(requestedPath);
             const effectiveUpdatedAt = updatedAt || nowIsoDateTime();
             let matchedCount = 0;
             const errors = [];
@@ -516,7 +528,7 @@ export function createExtractionExecutors(backend, hooks = {}) {
                     : rawNewFact;
                 const oldConfidence = oldBullet.confidence;
                 const decayedConfidence = bumpDownConfidence(oldConfidence);
-                const oldBulletV = await getCurrentBulletVersion(backend, path, oldBullet);
+                const oldBulletV = await getCurrentBulletVersion(backend, requestedPath, oldBullet);
                 parsed[idx] = {
                     ...oldBullet,
                     status: 'superseded',
@@ -542,8 +554,8 @@ export function createExtractionExecutors(backend, hooks = {}) {
                 const { oldEntry, newEntry } = buildContentUpdateEntries(
                     newBullet, oldBullet.id, oldBulletV, oldConfidence, effectiveUpdatedAt
                 );
-                await appendVlogEntry(backend, path, oldEntry);
-                await appendVlogEntry(backend, path, newEntry);
+                await appendVlogEntry(backend, requestedPath, oldEntry);
+                await appendVlogEntry(backend, requestedPath, newEntry);
                 matchedCount++;
             }
 
@@ -556,15 +568,17 @@ export function createExtractionExecutors(backend, hooks = {}) {
                 compacted.working, compacted.longTerm, compacted.history,
                 { titleTopic: defaultTopic }
             );
-            await backend.write(path, after);
-            if (refreshIndex) await refreshIndex(path);
-            onWrite?.(path, before, after);
-            const result = { success: true, path, action: 'bullets_updated', updated: matchedCount };
+            await backend.write(requestedPath, after);
+            if (refreshIndex) await refreshIndex(requestedPath);
+            onWrite?.(requestedPath, before, after);
+            const result = { success: true, path: requestedPath, action: 'bullets_updated', updated: matchedCount };
             if (errors.length) result.errors = errors;
             return JSON.stringify(result);
         },
         corroborate_bullet: async ({ path, fact_text }) => {
-            const before = await backend.read(path);
+            const requestedPath = normalizeStoragePath(path);
+            if (isInternalStoragePath(requestedPath)) return JSON.stringify({ error: `File not found: ${path}` });
+            const before = await backend.read(requestedPath);
             if (!before) return JSON.stringify({ error: `File not found: ${path}` });
 
             const factText = typeof fact_text === 'string' && fact_text.includes('|')
@@ -575,7 +589,7 @@ export function createExtractionExecutors(backend, hooks = {}) {
 
             const parsed = parseBullets(before);
             const idx = parsed.findIndex((b) => normalizeFactText(b.text) === target);
-            if (idx === -1) return JSON.stringify({ error: `No matching bullet in ${path} for: ${factText}` });
+            if (idx === -1) return JSON.stringify({ error: `No matching bullet in ${requestedPath} for: ${factText}` });
 
             // Ensure legacy bullets (no id in storage) get a stable ID before mutation.
             const matched = { ...parsed[idx], id: parsed[idx].id || generateBulletId() };
@@ -583,10 +597,10 @@ export function createExtractionExecutors(backend, hooks = {}) {
             const wasInHistory = matched.tier === 'history' || matched.status === 'superseded';
             const confidenceBefore = matched.confidence;
             const confidenceAfter = bumpUpConfidence(matched.confidence);
-            const defaultTopic = inferTopicFromPath(path);
+            const defaultTopic = inferTopicFromPath(requestedPath);
             const effectiveUpdatedAt = updatedAt || nowIsoDateTime();
 
-            const nextV = (await getCurrentBulletVersion(backend, path, matched)) + 1;
+            const nextV = (await getCurrentBulletVersion(backend, requestedPath, matched)) + 1;
             parsed[idx] = wasInHistory
                 ? {
                     ...matched,
@@ -608,7 +622,7 @@ export function createExtractionExecutors(backend, hooks = {}) {
                     explicitConfidence: true,
                 };
 
-            await appendVlogEntry(backend, path, buildConfidenceEntry(
+            await appendVlogEntry(backend, requestedPath, buildConfidenceEntry(
                 parsed[idx], confidenceBefore, 'corroboration', effectiveUpdatedAt
             ));
 
@@ -617,44 +631,47 @@ export function createExtractionExecutors(backend, hooks = {}) {
                 compacted.working, compacted.longTerm, compacted.history,
                 { titleTopic: defaultTopic }
             );
-            await backend.write(path, after);
-            if (refreshIndex) await refreshIndex(path);
-            onWrite?.(path, before, after);
+            await backend.write(requestedPath, after);
+            if (refreshIndex) await refreshIndex(requestedPath);
+            onWrite?.(requestedPath, before, after);
             return JSON.stringify({
                 success: true,
-                path,
+                path: requestedPath,
                 action: wasInHistory ? 'revived' : 'corroborated',
                 confidence_before: confidenceBefore,
                 confidence_after: confidenceAfter,
             });
         },
         archive_memory: async ({ path, item_text }) => {
-            const existing = await backend.read(path);
+            const requestedPath = normalizeStoragePath(path);
+            if (isInternalStoragePath(requestedPath)) return JSON.stringify({ error: `File not found: ${path}` });
+            const existing = await backend.read(requestedPath);
             if (!existing) return JSON.stringify({ error: `File not found: ${path}` });
-            const newContent = removeArchivedItem(existing, item_text, path);
+            const newContent = removeArchivedItem(existing, item_text, requestedPath);
             if (newContent === null) {
                 return JSON.stringify({ error: `Could not find an exact memory item match in: ${path}` });
             }
-            await backend.write(path, newContent);
-            if (refreshIndex) await refreshIndex(path);
-            return JSON.stringify({ success: true, path, action: 'archived', removed: item_text });
+            await backend.write(requestedPath, newContent);
+            if (refreshIndex) await refreshIndex(requestedPath);
+            return JSON.stringify({ success: true, path: requestedPath, action: 'archived', removed: item_text });
         },
         delete_memory: async ({ path }) => {
-            if (path.endsWith('_tree.md') || isVlogPath(path)) {
+            const requestedPath = normalizeStoragePath(path);
+            if (isInternalStoragePath(requestedPath)) {
                 return JSON.stringify({ error: 'Cannot delete index files' });
             }
-            const content = await backend.read(path);
+            const content = await backend.read(requestedPath);
             if (content) {
                 const at = updatedAt || nowIsoDateTime();
                 const bullets = parseBullets(content).filter(b => b.id && b.section !== 'history');
                 for (const bullet of bullets) {
-                    const currentV = await getCurrentBulletVersion(backend, path, bullet);
-                    await appendVlogEntry(backend, path, buildDeletedEntry({ ...bullet, v: currentV }, at));
+                    const currentV = await getCurrentBulletVersion(backend, requestedPath, bullet);
+                    await appendVlogEntry(backend, requestedPath, buildDeletedEntry({ ...bullet, v: currentV }, at));
                 }
             }
-            await backend.delete(path);
-            if (refreshIndex) await refreshIndex(path);
-            return JSON.stringify({ success: true, path, action: 'deleted' });
+            await backend.delete(requestedPath);
+            if (refreshIndex) await refreshIndex(requestedPath);
+            return JSON.stringify({ success: true, path: requestedPath, action: 'deleted' });
         }
     };
 }
@@ -679,7 +696,7 @@ export function createDeletionExecutors(backend, hooks = {}) {
             const allFiles = await backend.exportAll();
             const queryLower = query.toLowerCase();
             const pathMatches = allFiles
-                .filter(f => !f.path.endsWith('_tree.md') && !isVlogPath(f.path) && f.path.toLowerCase().includes(queryLower))
+                .filter(f => !isInternalStoragePath(f.path) && f.path.toLowerCase().includes(queryLower))
                 .map(f => f.path);
 
             const seen = new Set();
@@ -691,12 +708,16 @@ export function createDeletionExecutors(backend, hooks = {}) {
             return JSON.stringify({ paths: paths.slice(0, 5), count: Math.min(paths.length, 5) });
         },
         read_file: async ({ path }) => {
-            const content = await backend.read(path);
+            const requestedPath = normalizeStoragePath(path);
+            if (isInternalStoragePath(requestedPath)) return JSON.stringify({ error: `File not found: ${path}` });
+            const content = await backend.read(requestedPath);
             if (content === null) return JSON.stringify({ error: `File not found: ${path}` });
             return content;
         },
         delete_bullet: async ({ path, bullet_text }) => {
-            const before = await backend.read(path);
+            const requestedPath = normalizeStoragePath(path);
+            if (isInternalStoragePath(requestedPath)) return JSON.stringify({ error: `File not found: ${path}` });
+            const before = await backend.read(requestedPath);
             if (!before) return JSON.stringify({ error: `File not found: ${path}` });
             // Strip pipe-delimited metadata if present — removeArchivedItem matches
             // against bullet.text (fact text only), not the full line with metadata.
@@ -708,28 +729,28 @@ export function createDeletionExecutors(backend, hooks = {}) {
             const target = normalizeFactText(factText);
             const deletedBullet = allBullets.find(b => normalizeFactText(b.text) === target);
 
-            const after = removeArchivedItem(before, factText, path);
+            const after = removeArchivedItem(before, factText, requestedPath);
             if (after === null) {
-                return JSON.stringify({ error: `No exact match found for the given bullet text in: ${path}` });
+                return JSON.stringify({ error: `No exact match found for the given bullet text in: ${requestedPath}` });
             }
 
             if (deletedBullet?.id) {
-                const currentV = await getCurrentBulletVersion(backend, path, deletedBullet);
-                await appendVlogEntry(backend, path, buildDeletedEntry({ ...deletedBullet, v: currentV }, nowIsoDateTime()));
+                const currentV = await getCurrentBulletVersion(backend, requestedPath, deletedBullet);
+                await appendVlogEntry(backend, requestedPath, buildDeletedEntry({ ...deletedBullet, v: currentV }, nowIsoDateTime()));
             }
 
             // If no bullets remain, delete the file entirely instead of leaving empty headers.
             const remaining = parseBullets(after);
             if (remaining.length === 0) {
-                await backend.delete(path);
-                if (refreshIndex) await refreshIndex(path);
-                onWrite?.(path, before, null);
-                return JSON.stringify({ success: true, path, action: 'file_deleted', removed: factText });
+                await backend.delete(requestedPath);
+                if (refreshIndex) await refreshIndex(requestedPath);
+                onWrite?.(requestedPath, before, null);
+                return JSON.stringify({ success: true, path: requestedPath, action: 'file_deleted', removed: factText });
             }
-            await backend.write(path, after);
-            if (refreshIndex) await refreshIndex(path);
-            onWrite?.(path, before, after);
-            return JSON.stringify({ success: true, path, action: 'deleted', removed: factText });
+            await backend.write(requestedPath, after);
+            if (refreshIndex) await refreshIndex(requestedPath);
+            onWrite?.(requestedPath, before, after);
+            return JSON.stringify({ success: true, path: requestedPath, action: 'deleted', removed: factText });
         },
     };
 }
