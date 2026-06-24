@@ -34,14 +34,6 @@ const REDUNDANT_CONTEXT_OVERLAP_THRESHOLD = 0.82;
 const NO_OP_CONFIDENCE_LEVELS = new Set(['high', 'medium', 'low']);
 const RETRIEVAL_COVERAGE_LEVELS = new Set(['full', 'partial', 'none']);
 const ADAPTIVE_NO_OP_DECISIONS = new Set(['skip', 'retrieve']);
-const ADAPTIVE_FALLBACK_STOPWORDS = new Set([
-    'what', 'when', 'where', 'which', 'who', 'whom', 'whose', 'why', 'how',
-    'have', 'has', 'had', 'with', 'from', 'into', 'onto', 'about', 'there',
-    'their', 'them', 'they', 'those', 'these', 'this', 'that', 'your', 'yours',
-    'project', 'projects', 'deadline', 'deadlines', 'current', 'currently',
-    'main', 'more', 'focus', 'using', 'built', 'typical', 'stack', 'recipe',
-    'recipes', 'alpha', 'launch', 'app', 'apps'
-]);
 
 /** @type {ToolDefinition[]} */
 const RETRIEVAL_TOOLS = [
@@ -67,7 +59,7 @@ const RETRIEVAL_TOOLS = [
             parameters: {
                 type: 'object',
                 properties: {
-                    query: { type: 'string', description: 'Single short keyword to search for (e.g. "yoga", "Berkeley", "cooking"). Multi-word phrases are matched as literal substrings, so prefer one keyword at a time and call again for additional terms.' }
+                    query: { type: 'string', description: 'Single short keyword to search for (e.g. "yoga", "Berkeley", "cooking"). Results are ranked by relevance, so prefer one keyword at a time and call again for additional terms.' }
                 },
                 required: ['query']
             }
@@ -625,61 +617,37 @@ class MemoryRetriever {
     }
 
     async _textSearchFallback(query) {
-        const words = query.split(/\s+/).filter(w => w.length > 3).slice(0, 3);
-        const allPaths = new Set();
-
-        for (const word of words) {
-            const results = await this._backend.search(word);
-            for (const r of results) {
-                allPaths.add(r.path);
-            }
+        // search() now ranks with BM25, so a single call returns the most
+        // relevant files first; take the top slice rather than splitting words.
+        const results = await this._backend.search(query);
+        const paths = [];
+        const seen = new Set();
+        for (const r of results) {
+            if (seen.has(r.path)) continue;
+            seen.add(r.path);
+            paths.push(r.path);
+            if (paths.length >= MAX_FILES_TO_LOAD) break;
         }
-
-        return [...allPaths].slice(0, MAX_FILES_TO_LOAD);
+        return paths;
     }
 
-    _buildAdaptiveFallbackQuery(query, alreadyRetrievedContext) {
-        const baseTerms = tokenizeQuery(query);
-        if (!alreadyRetrievedContext || !alreadyRetrievedContext.trim()) {
-            return query;
-        }
-
-        const hasReferentialLanguage = /\b(it|its|they|them|their|that|those|these|this|same|former|latter)\b/i.test(query);
-        const hasSpecificTerms = baseTerms.some((term) => !ADAPTIVE_FALLBACK_STOPWORDS.has(term));
-        if (!hasReferentialLanguage && hasSpecificTerms) {
-            return query;
-        }
-
-        const candidates = [];
-        const seen = new Set(baseTerms);
-        const pushCandidate = (raw) => {
-            const token = String(raw || '').trim();
-            if (!token) return;
-            const normalized = token.toLowerCase();
-            if (normalized.length < 3) return;
-            if (ADAPTIVE_FALLBACK_STOPWORDS.has(normalized)) return;
-            if (seen.has(normalized)) return;
-            seen.add(normalized);
-            candidates.push(token);
-        };
-
-        for (const match of alreadyRetrievedContext.matchAll(/\*\*([^*]+)\*\*/g)) {
-            const phrase = match[1]?.trim();
-            if (!phrase) continue;
-            for (const token of phrase.split(/[^A-Za-z0-9_-]+/)) {
-                pushCandidate(token);
-            }
-        }
-
-        for (const match of alreadyRetrievedContext.matchAll(/\b[A-Z][A-Za-z0-9_-]{2,}\b/g)) {
-            pushCandidate(match[0]);
-        }
-
-        if (candidates.length === 0) {
-            return query;
-        }
-
-        return `${query} ${candidates.slice(0, 6).join(' ')}`.trim();
+    /**
+     * Build the keyword-search query for the adaptive fallback.
+     *
+     * A follow-up is often referential ("tell me more", "what about those?") and
+     * too barebone to retrieve on its own — the referent lives in the recent
+     * conversation. So we fold a recent window of the conversation into the query.
+     * BM25's IDF down-weights the filler words, so the informative tokens (entities,
+     * topics) drive the ranking without needing a hand-maintained stopword list.
+     *
+     * @param {string} query
+     * @param {string} [conversationText]
+     * @returns {string}
+     */
+    _buildAdaptiveFallbackQuery(query, conversationText) {
+        const recent = this._buildRecentContext(conversationText);
+        if (!recent) return query;
+        return `${query}\n${recent}`.trim();
     }
 
     async _renderDirectAnswer(query, sourceContext) {
@@ -1143,7 +1111,7 @@ class MemoryRetriever {
     }
 
     async _adaptiveKeywordFallback(query, alreadyRetrievedContext, conversationText, onProgress) {
-        const expandedQuery = this._buildAdaptiveFallbackQuery(query, alreadyRetrievedContext);
+        const expandedQuery = this._buildAdaptiveFallbackQuery(query, conversationText);
         const fallback = await this._textSearchFallbackWithLoad(expandedQuery, onProgress, conversationText);
         if (!fallback?.assembledContext) return null;
 

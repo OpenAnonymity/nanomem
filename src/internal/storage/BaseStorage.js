@@ -20,7 +20,7 @@
  *   getTree()      → string
  */
 /** @import { ExportRecord, ListResult, SearchResult, StorageMetadata } from '../../types.js' */
-import { parseBullets, extractTitles, countBullets, normalizeFactText } from '../format/index.js';
+import { parseBullets, extractTitles, countBullets, normalizeFactText, rankBM25, tokenizeQuery } from '../format/index.js';
 
 export class BaseStorage {
 
@@ -112,28 +112,28 @@ export class BaseStorage {
      */
     async search(query) {
         if (!query?.trim()) return [];
-        const lowerQuery = query.toLowerCase();
         const all = await this.exportAll();
-        const results = [];
-
+        const docs = [];
         for (const rec of all) {
             if (this._isInternalPath(rec.path)) continue;
-            const content = rec.content || '';
-            if (!content.toLowerCase().includes(lowerQuery)) continue;
-
-            // Return all lines that contain the query
-            const matchingLines = content.split('\n')
-                .filter(line => line.toLowerCase().includes(lowerQuery))
-                .map(line => line.trim())
-                .filter(Boolean);
-
-            results.push({
-                path: rec.path,
-                lines: matchingLines,
-            });
+            if (typeof rec.content !== 'string') continue;
+            docs.push({ path: rec.path, content: rec.content });
         }
 
-        return results;
+        const queryTokens = tokenizeQuery(query);
+        const ranked = queryTokens.length ? rankBM25(query, docs) : [];
+
+        if (ranked.length > 0) {
+            const byPath = new Map(docs.map((d) => [d.path, d.content]));
+            return ranked.map(({ path }) => ({
+                path,
+                lines: matchingLines(byPath.get(path), queryTokens),
+            }));
+        }
+
+        // No token-level matches (partial words, sub-3-char queries): fall back to
+        // a literal substring scan so we don't lose recall the way pure BM25 would.
+        return substringSearch(query, docs);
     }
 
     /**
@@ -318,4 +318,32 @@ export class BaseStorage {
         }
         return content.slice(0, 120);
     }
+}
+
+/** Lines from a document that contain any query token (for the result snippet). */
+function matchingLines(content, queryTokens) {
+    const tokens = queryTokens.filter(Boolean);
+    if (!tokens.length) return [];
+    const lines = [];
+    for (const raw of String(content || '').split('\n')) {
+        const line = raw.trim();
+        if (!line) continue;
+        const lower = line.toLowerCase();
+        if (tokens.some((token) => lower.includes(token))) lines.push(line);
+    }
+    return lines;
+}
+
+/** Legacy literal-substring scan, used only when BM25 finds no token matches. */
+function substringSearch(query, docs) {
+    const lowerQuery = query.toLowerCase();
+    const results = [];
+    for (const { path, content } of docs) {
+        if (!content.toLowerCase().includes(lowerQuery)) continue;
+        const lines = content.split('\n')
+            .map((line) => line.trim())
+            .filter((line) => line && line.toLowerCase().includes(lowerQuery));
+        results.push({ path, lines });
+    }
+    return results;
 }

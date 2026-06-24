@@ -1,9 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { MemoryRetriever } from '../../src/tools/retrieval.js';
+import { InMemoryStorage } from '../../src/internal/storage/ram.js';
 
-function createRetriever({ searchResults = [], readContent = null, bulletIndex = null, llmClient = null } = {}) {
-    const backend = {
+function createRetriever({ searchResults = [], readContent = null, bulletIndex = null, llmClient = null, backend = null } = {}) {
+    const resolvedBackend = backend || {
         async init() {},
         async getTree() {
             return 'work/projects.md';
@@ -37,7 +38,7 @@ function createRetriever({ searchResults = [], readContent = null, bulletIndex =
     };
 
     return new MemoryRetriever({
-        backend,
+        backend: resolvedBackend,
         bulletIndex: resolvedBulletIndex,
         llmClient: resolvedLlmClient,
         model: 'test-model'
@@ -105,16 +106,38 @@ describe('retrieveAdaptively', () => {
         assert.deepEqual(result.missingVariables, []);
     });
 
-    it('expands referential fallback queries with salient entities from prior retrieved context', () => {
+    it('returns the query unchanged when there is no conversation history to fold in', () => {
         const retriever = createRetriever();
 
-        const query = retriever._buildAdaptiveFallbackQuery(
-            'what deadlines do those projects have?',
-            'You have two projects: **NomNom** and **Mise**.'
-        );
+        assert.equal(retriever._buildAdaptiveFallbackQuery('what deadlines?', ''), 'what deadlines?');
+        assert.equal(retriever._buildAdaptiveFallbackQuery('what deadlines?', null), 'what deadlines?');
+    });
 
-        assert.match(query, /\bNomNom\b/);
-        assert.match(query, /\bMise\b/);
+    it('folding conversation history lets a content-free follow-up retrieve the referenced files', async () => {
+        const backend = new InMemoryStorage();
+        await backend.init();
+        await backend.write('work/nomnom.md', '# NomNom\n- NomNom ships June 15. The deadline is firm.');
+        await backend.write('work/mise.md', '# Mise\n- Mise is in early alpha.');
+        await backend.write('health/yoga.md', '# Yoga\n- Practices yoga every morning at the studio.');
+
+        const retriever = createRetriever({ backend });
+        const conversation = [
+            'User: What am I working on?',
+            'Assistant: You have two projects: NomNom and Mise.',
+            'User: tell me more'
+        ].join('\n');
+
+        // The bare follow-up has no content tokens, so keyword search finds nothing.
+        assert.deepEqual(await retriever._textSearchFallback('tell me more'), []);
+
+        // Folding the conversation in surfaces the referenced files via BM25 (the
+        // referent tokens now match the file content), and not the unrelated one.
+        const expanded = retriever._buildAdaptiveFallbackQuery('tell me more', conversation);
+        const paths = await retriever._textSearchFallback(expanded);
+
+        assert.ok(paths.includes('work/nomnom.md'));
+        assert.ok(paths.includes('work/mise.md'));
+        assert.ok(!paths.includes('health/yoga.md'));
     });
 
     it('skips adaptive retrieval when the no-op precheck is high confidence', async () => {

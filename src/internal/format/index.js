@@ -14,3 +14,4 @@ export * from './normalize.js';
 export * from './parser.js';
 export * from './scoring.js';
 export * from './compaction.js';
+export * from './bm25.js';
