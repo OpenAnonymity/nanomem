@@ -44,6 +44,11 @@ function createRetriever({ searchResults = [], readContent = null, bulletIndex =
     });
 }
 
+function assertConfidenceScore(value) {
+    assert.equal(typeof value, 'number');
+    assert.ok(value >= 0 && value <= 1);
+}
+
 describe('retrieveAdaptively', () => {
     it('returns normalized no-memory metadata when first-turn adaptive retrieval finds nothing', async () => {
         const retriever = createRetriever({
@@ -59,7 +64,7 @@ describe('retrieveAdaptively', () => {
                                     name: 'assemble_context',
                                     arguments: JSON.stringify({
                                         content: '',
-                                        retrieval_confidence: 'none',
+                                        retrieval_confidence: 0,
                                         coverage: 'none',
                                         missing_variables: ['dietary preferences'],
                                         confidence_reason: 'No relevant personal memory was found.'
@@ -79,7 +84,7 @@ describe('retrieveAdaptively', () => {
         assert.equal(result.skipped, true);
         assert.equal(result.skipReason, 'No new relevant memory found.');
         assert.equal(result.coverage, 'none');
-        assert.equal(result.retrievalConfidence, 'low');
+        assert.equal(result.retrievalConfidence, 0);
         assert.deepEqual(result.missingVariables, ['dietary preferences']);
         assert.equal(result.retrievalReason, 'No relevant personal memory was found.');
     });
@@ -95,7 +100,7 @@ describe('retrieveAdaptively', () => {
 
         assert.equal(result.skipped, true);
         assert.equal(result.skipReason, 'No new relevant memory found.');
-        assert.equal(result.retrievalConfidence, 'low');
+        assert.equal(result.retrievalConfidence, 0);
         assert.equal(result.coverage, 'none');
         assert.deepEqual(result.missingVariables, []);
     });
@@ -139,7 +144,7 @@ describe('retrieveAdaptively', () => {
         assert.equal(result.skipped, true);
         assert.equal(result.skipReason, 'Already covered by retrieved context.');
         assert.equal(result.coverage, 'full');
-        assert.equal(result.retrievalConfidence, 'high');
+        assert.equal(result.retrievalConfidence, null);
         assert.equal(result.retrievalReason, 'The deadline is already present in the retrieved context.');
         assert.equal(result.displayText, 'NomNom has a June 15 launch deadline.');
         assert.equal(calls.length, 2);
@@ -167,7 +172,7 @@ describe('retrieveAdaptively', () => {
                                 name: 'assemble_context',
                                 arguments: JSON.stringify({
                                     content: 'Mise is in early alpha.',
-                                    retrieval_confidence: 'medium',
+                                    retrieval_confidence: 0.62,
                                     coverage: 'partial',
                                     missing_variables: [],
                                     confidence_reason: 'The retrieved context adds a project status.'
@@ -210,7 +215,7 @@ describe('retrieveAdaptively', () => {
                                 name: 'assemble_context',
                                 arguments: JSON.stringify({
                                     content: 'Mise is in early alpha.',
-                                    retrieval_confidence: 'medium',
+                                    retrieval_confidence: 0.62,
                                     coverage: 'partial',
                                     confidence_reason: 'The retrieved context adds a project status.'
                                 })
@@ -257,7 +262,7 @@ describe('retrieveAdaptively', () => {
                                         content: '',
                                         skipped: true,
                                         skip_reason: 'Existing context is related but incomplete.',
-                                        retrieval_confidence: 'medium',
+                                        retrieval_confidence: 0.58,
                                         coverage: 'partial',
                                         missing_variables: ['other project statuses'],
                                         confidence_reason: 'Other projects may be missing.'
@@ -281,7 +286,72 @@ describe('retrieveAdaptively', () => {
         assert.equal(result.skipped, false);
         assert.match(result.assembledContext, /Mise is in early alpha/);
         assert.equal(result.coverage, 'partial');
-        assert.equal(result.retrievalConfidence, 'medium');
+        assert.equal(result.retrievalConfidence, null);
+    });
+
+    it('preserves skipped metadata when retrieval was attempted but found nothing new', async () => {
+        let toolCalls = 0;
+        const retriever = createRetriever({
+            searchResults: [{ path: 'work/projects.md' }],
+            llmClient: {
+                async createChatCompletion(request) {
+                    if (!request.tools) {
+                        return {
+                            content: 'retrieve | high | Check for missing project details.',
+                            tool_calls: []
+                        };
+                    }
+
+                    toolCalls += 1;
+                    if (toolCalls === 1) {
+                        return {
+                            content: '',
+                            tool_calls: [{
+                                id: 'call-search',
+                                type: 'function',
+                                function: {
+                                    name: 'search_memory',
+                                    arguments: JSON.stringify({ query: 'Mise' })
+                                }
+                            }]
+                        };
+                    }
+
+                    return {
+                        content: '',
+                        tool_calls: [{
+                            id: 'call-assemble',
+                            type: 'function',
+                            function: {
+                                name: 'assemble_context',
+                                arguments: JSON.stringify({
+                                    content: '',
+                                    skipped: true,
+                                    skip_reason: 'No new relevant memory found.',
+                                    retrieval_confidence: 0.42,
+                                    coverage: 'partial',
+                                    missing_variables: ['project owner'],
+                                    confidence_reason: 'Prior context is useful, but owner was not found.'
+                                })
+                            }
+                        }]
+                    };
+                }
+            }
+        });
+
+        const result = await retriever.retrieveAdaptively(
+            'who owns those projects?',
+            '**NomNom** has a June 15 launch deadline. **Mise** is in early alpha.',
+            null
+        );
+
+        assert.equal(result.skipped, true);
+        assert.equal(result.skipReason, 'No new relevant memory found.');
+        assert.equal(result.coverage, 'partial');
+        assert.equal(result.retrievalConfidence, 0.42);
+        assert.deepEqual(result.missingVariables, ['project owner']);
+        assert.equal(result.retrievalReason, 'Prior context is useful, but owner was not found.');
     });
 
     it('detects newly assembled context that duplicates prior retrieved context', () => {
@@ -316,7 +386,7 @@ describe('retrieveAdaptively', () => {
                                 name: 'assemble_context',
                                 arguments: JSON.stringify({
                                     content: 'Follows a gluten-free diet and prefers warm savory meat-forward East Asian options.',
-                                    retrieval_confidence: 'high',
+                                    retrieval_confidence: 0.88,
                                     coverage: 'full',
                                     missing_variables: [],
                                     confidence_reason: 'The retrieved context answers the food preference query.'
@@ -337,7 +407,7 @@ describe('retrieveAdaptively', () => {
         assert.equal(result.skipped, true);
         assert.equal(result.skipReason, 'Already covered by retrieved context.');
         assert.equal(result.coverage, 'full');
-        assert.equal(result.retrievalConfidence, 'medium');
+        assertConfidenceScore(result.retrievalConfidence);
     });
 
     it('suppresses retrieved context when the model assesses coverage as none', async () => {
@@ -360,7 +430,7 @@ describe('retrieveAdaptively', () => {
                                 name: 'assemble_context',
                                 arguments: JSON.stringify({
                                     content: 'The user once mentioned a loosely related project.',
-                                    retrieval_confidence: 'high',
+                                    retrieval_confidence: 0.83,
                                     coverage: 'none',
                                     missing_variables: [],
                                     confidence_reason: 'The retrieved memory does not help answer the query.'
@@ -381,7 +451,7 @@ describe('retrieveAdaptively', () => {
         assert.equal(result.skipped, true);
         assert.equal(result.skipReason, 'No new relevant memory found.');
         assert.equal(result.coverage, 'none');
-        assert.equal(result.retrievalConfidence, 'low');
+        assert.equal(result.retrievalConfidence, 0);
         assert.equal(result.assembledContext, null);
     });
 
@@ -398,7 +468,7 @@ describe('retrieveAdaptively', () => {
                                 name: 'assemble_context',
                                 arguments: JSON.stringify({
                                     content: 'NomNom has a June 15 launch deadline.',
-                                    retrieval_confidence: 'high',
+                                    retrieval_confidence: 0.91,
                                     coverage: 'full',
                                     missing_variables: [],
                                     confidence_reason: 'The retrieved memory directly answers the deadline question.'
@@ -413,13 +483,13 @@ describe('retrieveAdaptively', () => {
         const result = await retriever.retrieveForQuery('what is the NomNom deadline?');
 
         assert.equal(result.assembledContext, 'NomNom has a June 15 launch deadline.');
-        assert.equal(result.retrievalConfidence, 'high');
+        assertConfidenceScore(result.retrievalConfidence);
         assert.equal(result.coverage, 'full');
         assert.deepEqual(result.missingVariables, []);
         assert.equal(result.retrievalReason, 'The retrieved memory directly answers the deadline question.');
     });
 
-    it('normalizes missing retrieval confidence metadata conservatively', () => {
+    it('normalizes numeric retrieval confidence metadata conservatively', () => {
         const retriever = createRetriever();
 
         assert.deepEqual(
@@ -429,7 +499,7 @@ describe('retrieveAdaptively', () => {
                 hasPriorContext: false
             }),
             {
-                retrievalConfidence: 'low',
+                retrievalConfidence: 0,
                 coverage: 'none',
                 missingVariables: [],
                 retrievalReason: null,
@@ -439,7 +509,7 @@ describe('retrieveAdaptively', () => {
 
         assert.deepEqual(
             retriever._normalizeRetrievalAssessment({
-                retrieval_confidence: 'high',
+                retrieval_confidence: '1.2',
                 coverage: 'partial',
                 missing_variables: ['current location'],
                 confidence_reason: 'Location is still missing.'
@@ -449,10 +519,48 @@ describe('retrieveAdaptively', () => {
                 hasPriorContext: true
             }),
             {
-                retrievalConfidence: 'medium',
+                retrievalConfidence: 1,
                 coverage: 'partial',
                 missingVariables: ['current location'],
                 retrievalReason: 'Location is still missing.',
+                uncertainFacts: []
+            }
+        );
+
+        assert.deepEqual(
+            retriever._normalizeRetrievalAssessment({
+                coverage: 'full',
+                missing_variables: [],
+                confidence_reason: 'Existing context answers the query.'
+            }, {
+                hasContent: false,
+                skipped: true,
+                hasPriorContext: true
+            }),
+            {
+                retrievalConfidence: null,
+                coverage: 'full',
+                missingVariables: [],
+                retrievalReason: 'Existing context answers the query.',
+                uncertainFacts: []
+            }
+        );
+
+        assert.deepEqual(
+            retriever._normalizeRetrievalAssessment({
+                coverage: 'full',
+                missing_variables: [],
+                confidence_reason: 'Confidence omitted by model.'
+            }, {
+                hasContent: true,
+                skipped: false,
+                hasPriorContext: false
+            }),
+            {
+                retrievalConfidence: null,
+                coverage: 'full',
+                missingVariables: [],
+                retrievalReason: 'Confidence omitted by model.',
                 uncertainFacts: []
             }
         );
@@ -471,7 +579,7 @@ describe('retrieveAdaptively', () => {
                                 name: 'assemble_context',
                                 arguments: JSON.stringify({
                                     content: 'Follows a gluten-free diet and has a severe peanut allergy.',
-                                    retrieval_confidence: 'high',
+                                    retrieval_confidence: 0.84,
                                     coverage: 'full',
                                     missing_variables: [],
                                     confidence_reason: 'The new allergy detail completes the restaurant constraints.'
@@ -491,7 +599,7 @@ describe('retrieveAdaptively', () => {
 
         assert.equal(result.skipped, false);
         assert.equal(result.assembledContext, 'Follows a gluten-free diet and has a severe peanut allergy.');
-        assert.equal(result.retrievalConfidence, 'high');
+        assertConfidenceScore(result.retrievalConfidence);
         assert.equal(result.coverage, 'full');
     });
 
@@ -511,7 +619,7 @@ describe('retrieveAdaptively', () => {
                                         content: '',
                                         skipped: true,
                                         skip_reason: 'Existing context is related but incomplete.',
-                                        retrieval_confidence: 'high',
+                                        retrieval_confidence: 0.87,
                                         coverage: 'partial',
                                         missing_variables: ['current budget'],
                                         confidence_reason: 'Budget is still missing.'
@@ -534,7 +642,7 @@ describe('retrieveAdaptively', () => {
 
         assert.equal(result.skipped, true);
         assert.equal(result.skipReason, 'No new relevant memory found.');
-        assert.equal(result.retrievalConfidence, 'low');
+        assert.equal(result.retrievalConfidence, 0);
         assert.equal(result.coverage, 'none');
         assert.deepEqual(result.missingVariables, []);
     });

@@ -145,6 +145,8 @@
  * @property {string} [description]
  * @property {object} [items]
  * @property {string[]} [enum]
+ * @property {number} [minimum]
+ * @property {number} [maximum]
  */
 
 /**
@@ -243,7 +245,7 @@
  * @property {{ path: string; content: string }[]} files
  * @property {string[]} paths
  * @property {string | null} assembledContext
- * @property {'high' | 'medium' | 'low'} [retrievalConfidence]
+ * @property {number | null} [retrievalConfidence] - numeric confidence in [0, 1], or null when not applicable
  * @property {'full' | 'partial' | 'none'} [coverage]
  * @property {string[]} [missingVariables]
  * @property {string | null} [retrievalReason]
@@ -256,9 +258,9 @@
  * @property {string[]} paths
  * @property {string | null} assembledContext
  * @property {string} [displayText]
- * @property {boolean} skipped - true when existing context already covered the query
+ * @property {boolean} skipped - true when adaptive retrieval delivered no new context
  * @property {string} [skipReason] - explanation when skipped=true
- * @property {'high' | 'medium' | 'low'} [retrievalConfidence]
+ * @property {number | null} [retrievalConfidence] - numeric confidence in [0, 1], or null when no retrieval-confidence judgment is available or applicable
  * @property {'full' | 'partial' | 'none'} [coverage]
  * @property {string[]} [missingVariables]
  * @property {string | null} [retrievalReason]
@@ -282,9 +284,9 @@
  * @property {string | null} apiPrompt
  * @property {string | null} assembledContext
  * @property {string} [displayText]
- * @property {boolean} skipped - true when existing context already covered the query
+ * @property {boolean} skipped - true when adaptive retrieval delivered no new context
  * @property {string} [skipReason] - explanation when skipped=true
- * @property {'high' | 'medium' | 'low'} [retrievalConfidence]
+ * @property {number | null} [retrievalConfidence] - numeric confidence in [0, 1], or null when no retrieval-confidence judgment is available or applicable
  * @property {'full' | 'partial' | 'none'} [coverage]
  * @property {string[]} [missingVariables]
  * @property {string | null} [retrievalReason]

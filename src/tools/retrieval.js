@@ -31,7 +31,7 @@ const MAX_RECENT_CONTEXT_CHARS = 2000;
 const MAX_DISPLAY_CONTEXT_CHARS = 2500;
 const REDUNDANT_CONTEXT_MIN_TOKENS = 4;
 const REDUNDANT_CONTEXT_OVERLAP_THRESHOLD = 0.82;
-const RETRIEVAL_CONFIDENCE_LEVELS = new Set(['high', 'medium', 'low']);
+const NO_OP_CONFIDENCE_LEVELS = new Set(['high', 'medium', 'low']);
 const RETRIEVAL_COVERAGE_LEVELS = new Set(['full', 'partial', 'none']);
 const ADAPTIVE_NO_OP_DECISIONS = new Set(['skip', 'retrieve']);
 const ADAPTIVE_FALLBACK_STOPWORDS = new Set([
@@ -96,7 +96,7 @@ const RETRIEVAL_TOOLS = [
                 type: 'object',
                 properties: {
                     content: { type: 'string', description: 'A synthesized, human-readable answer to the query derived from the memory files. Write prose, not raw bullet dumps. If nothing relevant was found, pass an empty string.' },
-                    retrieval_confidence: { type: 'string', enum: ['high', 'medium', 'low'], description: 'Confidence that the delivered memory context is sufficient for this user turn. This is not the confidence of individual stored facts. Use low when coverage is none.' },
+                    retrieval_confidence: { type: 'number', minimum: 0, maximum: 1, description: 'Numeric confidence from 0.0 to 1.0 that the delivered memory context is reliable and useful enough for this user turn, considering both answer coverage and stored confidence metadata for the facts used. Use 0.0 when coverage is none.' },
                     coverage: { type: 'string', enum: ['full', 'partial', 'none'], description: 'How completely the delivered memory context answers the current query.' },
                     missing_variables: { type: 'array', items: { type: 'string' }, description: 'Personal variables that would materially improve the answer but were not found. Empty array when coverage is full.' },
                     confidence_reason: { type: 'string', description: 'Brief reason for retrieval_confidence and coverage.' },
@@ -143,20 +143,20 @@ const ADAPTIVE_RETRIEVAL_TOOLS = RETRIEVAL_TOOLS.map(tool => {
         function: {
             name: 'assemble_context',
             description: tool.function.description +
-                ' When skipping because existing context already covers the query, set skipped=true and provide a skip_reason instead of fetching any files.',
+                ' When no new context should be delivered, set skipped=true and provide a skip_reason.',
             parameters: {
                 type: 'object',
                 properties: {
                     content: { type: 'string', description: 'Newly retrieved facts as synthesized prose. Empty string when skipped.' },
-                    skipped: { type: 'boolean', description: 'True when existing context already covers the query and no new retrieval was done.' },
+                    skipped: { type: 'boolean', description: 'True when adaptive retrieval should deliver no new context, either because existing context is sufficient or no new relevant memory was found.' },
                     skip_reason: { type: 'string', description: 'Brief explanation of why retrieval was skipped. Required when skipped=true.' },
-                    retrieval_confidence: { type: 'string', enum: ['high', 'medium', 'low'], description: 'Confidence that the delivered or already-retrieved memory context is sufficient for this user turn. This is not the confidence of individual stored facts. Use low when coverage is none.' },
+                    retrieval_confidence: { type: 'number', minimum: 0, maximum: 1, description: 'Numeric confidence from 0.0 to 1.0 that the delivered or already-retrieved memory context is reliable and useful enough for this user turn, considering both answer coverage and stored confidence metadata for the facts used. Omit this when skipped=true because existing context was enough and no retrieval tools were used. Use 0.0 when retrieval was attempted and coverage is none.' },
                     coverage: { type: 'string', enum: ['full', 'partial', 'none'], description: 'How completely the delivered or already-retrieved memory context answers the current query.' },
                     missing_variables: { type: 'array', items: { type: 'string' }, description: 'Personal variables that would materially improve the answer but were not found. Empty array when coverage is full.' },
                     confidence_reason: { type: 'string', description: 'Brief reason for retrieval_confidence and coverage.' },
                     uncertain_facts: { type: 'array', items: { type: 'string' }, description: 'Specific claims from your assembled answer that came from bullets with low stored confidence (confidence= below 0.7). Quote or paraphrase the uncertain portion concisely — not the full bullet text. Empty array when all included facts are high-confidence or when no confidence metadata was present.' }
                 },
-                required: ['content', 'retrieval_confidence', 'coverage', 'missing_variables', 'confidence_reason']
+                required: ['content', 'coverage', 'missing_variables', 'confidence_reason']
             }
         }
     };
@@ -183,6 +183,14 @@ async function collectReadFiles(toolCallLog, backend) {
         files.push({ path, content: entry.result });
     }
     return files;
+}
+
+function parseRetrievalConfidence(value) {
+    const numeric = typeof value === 'number'
+        ? value
+        : (typeof value === 'string' && value.trim() !== '' ? Number(value) : NaN);
+    if (!Number.isFinite(numeric)) return null;
+    return Math.min(1, Math.max(0, numeric));
 }
 
 
@@ -931,7 +939,8 @@ class MemoryRetriever {
      * Adaptive retrieval for multi-turn sessions. Looks at the current query plus
      * memory context already delivered in this session and only retrieves if
      * something genuinely new is needed. Returns an AdaptiveRetrievalResult that
-     * is never null — when retrieval is skipped, skipped=true and skipReason explains why.
+     * is never null — when no new context is delivered, skipped=true and
+     * skipReason explains why.
      *
      * @param {string} query - the user's current message
      * @param {string} [alreadyRetrievedContext] - memory context already in the session
@@ -966,7 +975,7 @@ class MemoryRetriever {
                         assembledContext: null,
                         skipped: true,
                         skipReason: 'No new relevant memory found.',
-                        retrievalConfidence: retrievalResult.retrievalConfidence || 'low',
+                        retrievalConfidence: retrievalResult.retrievalConfidence ?? 0,
                         coverage: retrievalResult.coverage || 'none',
                         missingVariables: retrievalResult.missingVariables || [],
                         retrievalReason: retrievalResult.retrievalReason || null,
@@ -1002,7 +1011,6 @@ class MemoryRetriever {
                 const displayText = await this._renderDirectAnswer(query, alreadyRetrievedContext);
                 const assessment = this._normalizeRetrievalAssessment({
                     coverage: 'full',
-                    retrieval_confidence: 'high',
                     confidence_reason: noOp.reason || skipReason,
                     missing_variables: [],
                     uncertain_facts: []
@@ -1125,7 +1133,7 @@ class MemoryRetriever {
         const decision = parts[0].toLowerCase();
         const confidence = parts[1].toLowerCase();
         if (!ADAPTIVE_NO_OP_DECISIONS.has(decision)) return null;
-        if (!RETRIEVAL_CONFIDENCE_LEVELS.has(confidence)) return null;
+        if (!NO_OP_CONFIDENCE_LEVELS.has(confidence)) return null;
 
         return {
             decision,
@@ -1144,7 +1152,6 @@ class MemoryRetriever {
             const displayText = await this._renderDirectAnswer(query, alreadyRetrievedContext);
             const assessment = this._normalizeRetrievalAssessment({
                 coverage: 'full',
-                retrieval_confidence: 'medium',
                 confidence_reason: skipReason,
             }, {
                 hasContent: false,
@@ -1229,19 +1236,30 @@ class MemoryRetriever {
                 hasPriorContext: true,
             });
 
-            const confidentPriorSkip = assessment.coverage === 'full' && assessment.retrievalConfidence !== 'low';
-            if (!confidentPriorSkip && !retrievalWasAttempted) {
-                const fallback = await this._adaptiveKeywordFallback(query, alreadyRetrievedContext, conversationText, onProgress);
-                if (fallback) return fallback;
-            }
+            const priorContextCoversQuery = assessment.coverage === 'full';
+            if (!priorContextCoversQuery) {
+                if (!retrievalWasAttempted) {
+                    const fallback = await this._adaptiveKeywordFallback(query, alreadyRetrievedContext, conversationText, onProgress);
+                    if (fallback) return fallback;
 
-            if (!confidentPriorSkip) {
+                    const reason = 'No new relevant memory found.';
+                    const missAssessment = this._normalizeRetrievalAssessment(null, {
+                        hasContent: false,
+                        skipped: true,
+                        hasPriorContext: false,
+                    });
+                    onProgress?.({ stage: 'complete', message: `Retrieval skipped: ${reason}` });
+                    return {
+                        files: [],
+                        paths: [],
+                        assembledContext: null,
+                        skipped: true,
+                        skipReason: reason,
+                        ...missAssessment
+                    };
+                }
+
                 const reason = 'No new relevant memory found.';
-                const missAssessment = this._normalizeRetrievalAssessment(null, {
-                    hasContent: false,
-                    skipped: true,
-                    hasPriorContext: false,
-                });
                 onProgress?.({ stage: 'complete', message: `Retrieval skipped: ${reason}` });
                 return {
                     files: [],
@@ -1249,7 +1267,7 @@ class MemoryRetriever {
                     assembledContext: null,
                     skipped: true,
                     skipReason: reason,
-                    ...missAssessment
+                    ...assessment
                 };
             }
 
@@ -1350,7 +1368,6 @@ class MemoryRetriever {
             const skipAssessment = this._normalizeRetrievalAssessment({
                 ...args,
                 coverage: 'full',
-                retrieval_confidence: 'medium',
                 confidence_reason: skipReason,
             }, {
                 hasContent: false,
@@ -1384,9 +1401,6 @@ class MemoryRetriever {
     }
 
     _normalizeRetrievalAssessment(args, { hasContent = false, skipped = false, hasPriorContext = false } = {}) {
-        const rawConfidence = typeof args?.retrieval_confidence === 'string'
-            ? args.retrieval_confidence.toLowerCase()
-            : '';
         const rawCoverage = typeof args?.coverage === 'string'
             ? args.coverage.toLowerCase()
             : '';
@@ -1400,20 +1414,13 @@ class MemoryRetriever {
             else coverage = 'none';
         }
 
-        let retrievalConfidence = RETRIEVAL_CONFIDENCE_LEVELS.has(rawConfidence) ? rawConfidence : null;
-        if (!retrievalConfidence) {
-            if (coverage === 'none') retrievalConfidence = 'low';
-            else if (coverage === 'full') retrievalConfidence = skipped ? 'medium' : 'high';
-            else retrievalConfidence = hasContent ? 'medium' : 'low';
-        }
+        let retrievalConfidence = parseRetrievalConfidence(args?.retrieval_confidence);
 
         if (!hasAnyContext) {
             coverage = 'none';
-            retrievalConfidence = 'low';
+            retrievalConfidence = 0;
         } else if (coverage === 'none') {
-            retrievalConfidence = 'low';
-        } else if (coverage !== 'full' && retrievalConfidence === 'high') {
-            retrievalConfidence = 'medium';
+            retrievalConfidence = 0;
         }
 
         const missingVariables = Array.isArray(args?.missing_variables)
