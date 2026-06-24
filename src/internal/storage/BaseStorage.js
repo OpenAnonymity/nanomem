@@ -339,7 +339,8 @@ function matchingLines(content, queryTokens) {
     return lines;
 }
 
-/** Legacy literal-substring scan, used only when BM25 finds no token matches. */
+/** Literal-substring scan; results are unioned onto the BM25 ranking so partial
+ *  words ("cook"→"cooking") and sub-3-char queries keep their recall. */
 function substringSearch(query, docs) {
     const lowerQuery = query.toLowerCase();
     const results = [];
