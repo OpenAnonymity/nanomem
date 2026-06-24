@@ -209,6 +209,27 @@ describe('vlog written by update_bullets', () => {
         const content = await backend.read('work/role.md');
         assert.match(content, /supersedes=oldid123/);
     });
+
+    it('uses replacement confidence from new_fact metadata when provided', async () => {
+        await backend.write('work/location.md', `# Memory: Location
+
+## Long-term memory (stable facts that are unlikely to change)
+- Lives in Portland | topic=location | tier=long_term | status=active | source=user_statement | confidence=0.35 | updated_at=2026-01-01T00:00 | id=oldid456 | v=1
+`);
+        await executors.update_bullets({
+            path: 'work/location.md',
+            updates: [{ old_fact: 'Lives in Portland', new_fact: 'Lives in Seattle | confidence=0.94' }],
+        });
+
+        const content = await backend.read('work/location.md');
+        const activeSection = content.split('## History')[0];
+        assert.match(activeSection, /Lives in Seattle/);
+        assert.match(activeSection, /confidence=0.94/);
+
+        const entries = await readVlog(backend, 'work/location.md');
+        const contentUpdate = entries.find(e => e.event === 'content_update');
+        assert.equal(contentUpdate.confidence, 0.94);
+    });
 });
 
 describe('vlog written by delete_bullet', () => {
@@ -223,13 +244,13 @@ describe('vlog written by delete_bullet', () => {
         backend.files.set('work/role.md', `# Memory: Role
 
 ## Long-term memory (stable facts that are unlikely to change)
-- Works at Stripe | topic=work | tier=long_term | status=active | source=user_statement | confidence=1 | updated_at=2026-01-01T00:00 | id=delid123 | v=2
+- Works at Stripe | topic=work | tier=long_term | status=active | source=user_statement | confidence=1 | updated_at=2026-01-01T00:00 | id=delid123
 `);
         await executors.delete_bullet({ path: 'work/role.md', bullet_text: 'Works at Stripe' });
         const entries = await readVlog(backend, 'work/role.md');
         assert.equal(entries.length, 1);
         assert.equal(entries[0].event, 'deleted');
         assert.equal(entries[0].id, 'delid123');
-        assert.equal(entries[0].v, 3);
+        assert.equal(entries[0].v, 2);
     });
 });

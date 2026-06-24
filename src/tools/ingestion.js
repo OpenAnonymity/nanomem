@@ -91,7 +91,7 @@ const T_UPDATE_BULLETS = {
                         type: 'object',
                         properties: {
                             old_fact: { type: 'string', description: 'Exact fact text of the bullet to replace (pipe-delimited metadata is fine)' },
-                            new_fact: { type: 'string', description: 'Corrected fact text (plain text only, no metadata)' }
+                            new_fact: { type: 'string', description: 'Corrected fact text. May include pipe-delimited metadata such as confidence=SCORE; confidence is preserved when provided.' }
                         },
                         required: ['old_fact', 'new_fact']
                     }

@@ -56,7 +56,7 @@ Rules:
 - Only change bullets that are directly contradicted or corrected by the new information.
 - Do not touch any other bullets in the file.
 - Pass old_fact exactly as it appears in the file (including pipe-delimited metadata is fine).
-- Pass new_fact as plain text only — no metadata.
+- Pass new_fact as the corrected fact text. Include pipe-delimited confidence=SCORE when you can assess replacement confidence from the new user statement; other metadata is optional and may be ignored.
 - When appending or creating, use this bullet format: "- Fact text | topic=topic-name | source=user_statement | confidence=SCORE | updated_at=YYYY-MM-DDTHH:MM"
   Set confidence (0.1–1.0) based on how reliably this memory can be used later. Consider how explicitly the user stated it, how likely it is to remain true, and how much inference was required. Examples: ~1.0 = stated plainly and permanent; ~0.7 = contextual or may evolve; ~0.4 = weak inference or transient; ~0.2 = user hedged or expressed uncertainty ("might", "possibly", "not sure"). Pick the number that best fits — do not round to these examples.
   For time-bound facts (medical events, temporary situations, short-term plans), append: | expires_at=YYYY-MM-DD
@@ -122,6 +122,7 @@ Rules:
   - **Ambiguous → default to append_memory**: No explicit signal either way. When it is unclear whether the user is replacing or extending an existing fact, always append rather than supersede. Supersession is irreversible by the LLM; a duplicate is far easier to clean up than an incorrectly deleted fact.
 - A general intention or direction ("working toward X", "trying to do Y", "interested in Z") does not supersede a more specific current state. Append it as a separate fact. Only use update_bullets when the new statement directly and specifically contradicts the existing one.
 - Use update_bullets only when a fact is stale or contradicted. Pass all corrections for a file in one call.
+- For update_bullets, pass replacement confidence when useful: new_fact="Corrected fact | confidence=SCORE". A direct explicit correction from the user should usually receive high confidence even if the superseded fact was low-confidence.
 - Use corroborate_bullet when the user restates a fact that's already saved (this strengthens trust in the bullet); never re-save the same fact with append_memory.
 - When a new explicit user statement contradicts an older one on the same topic, prefer the newer statement. If a user statement conflicts with an inference, the user statement always wins.
 - If a conflict is ambiguous, preserve both versions rather than deleting one.

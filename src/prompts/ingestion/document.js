@@ -50,7 +50,7 @@ Rules:
 - Only change bullets that are directly contradicted or corrected by the new information.
 - Do not touch any other bullets in the file.
 - Pass old_fact exactly as it appears in the file (including pipe-delimited metadata is fine).
-- Pass new_fact as plain text only — no metadata.
+- Pass new_fact as the corrected fact text. Include pipe-delimited confidence=SCORE when you can assess replacement confidence from the document; other metadata is optional and may be ignored.
 
 If nothing needs updating, stop without calling any tools.`;
 
