@@ -15,7 +15,7 @@
  *   write(path, content) → metadata generation + _writeRaw + rebuildTree
  *
  * BaseStorage also provides default implementations for:
- *   search(query)   → [{path, snippet}]
+ *   search(query)   → [{path, lines}]
  *   ls(dirPath)     → {files: string[], dirs: string[]}
  *   getTree()      → string
  */
