@@ -123,17 +123,22 @@ export class BaseStorage {
         const queryTokens = tokenizeQuery(query);
         const ranked = queryTokens.length ? rankBM25(query, docs) : [];
 
-        if (ranked.length > 0) {
-            const byPath = new Map(docs.map((d) => [d.path, d.content]));
-            return ranked.map(({ path }) => ({
-                path,
-                lines: matchingLines(byPath.get(path), queryTokens),
-            }));
-        }
+        const byPath = new Map(docs.map((d) => [d.path, d.content]));
+        const results = ranked.map(({ path }) => ({
+            path,
+            lines: matchingLines(byPath.get(path), queryTokens),
+        }));
 
-        // No token-level matches (partial words, sub-3-char queries): fall back to
-        // a literal substring scan so we don't lose recall the way pure BM25 would.
-        return substringSearch(query, docs);
+        // Append literal substring matches that BM25 didn't rank, so the switch
+        // from substring to token matching doesn't lose recall: partial words
+        // ("cook"→"cooking"), sub-3-char queries that tokenize to nothing, and
+        // docs that only match the query as a substring. Ranked (token) hits stay
+        // first; substring-only hits follow.
+        const seen = new Set(results.map((r) => r.path));
+        for (const hit of substringSearch(query, docs)) {
+            if (!seen.has(hit.path)) results.push(hit);
+        }
+        return results;
     }
 
     /**
