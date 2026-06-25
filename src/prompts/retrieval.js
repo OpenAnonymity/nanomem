@@ -35,45 +35,19 @@ Retrieval sufficiency metadata:
 - confidence_reason should briefly explain the sufficiency judgment.
 - uncertain_facts lists the specific claims in your assembled answer that came from bullets with confidence= below 0.7. Quote or paraphrase the uncertain portion concisely (e.g. "User lives in Seattle") — not the full bullet text. Use [] when all included facts are high-confidence or when no confidence metadata was present.
 
-CONSERVATIVE DEFAULT — when in doubt, retrieve nothing:
-- Before opening any file, ask: "Would including personal memory give a meaningfully better answer to this specific query?" If not clearly yes, call assemble_context with an empty string immediately — no file reads needed.
-- Statements of current activity ("I'm studying X", "I started learning Y", "I just watched Z") do NOT need memory retrieval unless the user also asks a specific question that depends on personal context.
-- General knowledge questions, how-to questions, and topic explanations rarely benefit from personal memory.
-- If the only files you would read are loosely topical (same domain as the query, but the facts inside wouldn't change the answer), skip them.
-- Sparse or thin memory files (few facts, unrelated to the actual question) do not raise the answer quality — do not retrieve them.
-- IMPORTANT exception: If the query is underspecified and a personal fact would resolve a missing parameter, ambiguity, or decision variable, that DOES count as meaningfully improving the answer. In those cases, retrieve the missing personal context before deciding to skip.
-- Even in those cases, stay minimal: retrieve only the specific missing variable(s), not the whole surrounding domain. But do perform at least one targeted lookup for that missing variable before deciding to skip.
+Deciding what to retrieve — work through this in order:
 
-IMPORTANT — Domain-exhaustive retrieval:
-- When a query touches a domain (health, work, personal), prefer completeness over selectivity within that domain. File descriptions may be incomplete.
-- For family-related queries: check personal/family.md AND any health files about family members.
-- File index descriptions are brief summaries — a file may contain facts relevant to the query even if its name or description does not obviously match. When a query is broad or could depend on facts spread across multiple files, read more files rather than fewer.
+1. Should you retrieve at all? Before opening any file, ask: "Would personal memory give a meaningfully better answer to THIS specific query?" If not clearly yes, call assemble_context with an empty string immediately — no reads needed.
+   - Statements of current activity ("I'm studying X", "I just watched Y") do not need retrieval unless the user also asks something that depends on personal context.
+   - General-knowledge, how-to, and topic-explanation questions rarely benefit from personal memory.
+   - A file that is only loosely topical — same domain as the query, but whose facts would not change your answer — should be skipped.
+   - Exception: if the query is underspecified and a personal fact would resolve a missing parameter, ambiguity, or decision variable, that DOES count as a yes. Handle it as an implied-context lookup (below) rather than skipping.
 
-IMPORTANT — Implied context: Many queries depend on unstated personal facts. Before reading files, ask yourself: "What personal background would a human assistant need to answer this well?" Then search for that too.
-Examples of implied needs:
-- Travel / flight / driving queries → user's home city or current location (search personal files for location, city, where they live)
-- Budget or cost questions → user's financial situation or income level
-- Restaurant or activity recommendations → user's dietary restrictions, preferences, or neighborhood
-- "Should I bring a jacket?" or weather questions → user's current location
-- Scheduling or timing questions → user's timezone or work schedule
-If the query implies a needed personal fact that isn't in the index path names, use search_memory to search for it (e.g. search_memory("location"), search_memory("city"), search_memory("home")).
+2. If you do retrieve, match breadth to the query:
+   - Direct-domain query — the user is asking about their own facts in a domain (their health, their projects, their preferences). Be exhaustive within that domain: index descriptions are brief summaries, so a relevant fact may sit in a file whose name or description does not obviously match. Within the domain the query touches, read more files rather than fewer.
+   - Implied-context lookup — the query is about something external but hinges on one or a few unstated personal facts (e.g. a travel question that needs your home city). Stay narrow: before reading, ask "What personal background would a human assistant need to answer this well?" and retrieve only that — the fewest reads, one likely file over a whole-directory sweep, stopping once the variable is resolved and expanding to a second or third file only if the first result is missing, ambiguous, or contradictory.
 
-Queries that often need implied context even when not stated explicitly:
-- price, cost, fare, budget, affordability, "how much" → location, region, travel origin, household size, or financial context
-- travel time, commute time, distance, "how long", "closest", logistics → current location, home city, usual transport mode
-- suitability questions like "is this worth it", "should I go", "is it far", "is it expensive" → preferences, budget, location, schedule, or current commitments
-
-If a likely implied fact is missing or ambiguous, do NOT immediately give up. First retrieve the relevant memory files that could contain that fact. If memory contains conflicting candidates (for example an older city and a newer city), mention the ambiguity in the assembled answer rather than pretending memory is irrelevant.
-
-Minimal implied-context retrieval rules:
-- If the query is missing a user-specific variable that would materially change the answer, do at least one targeted retrieval attempt for that variable before returning no context.
-- Retrieve the fewest files needed to resolve the missing parameter.
-- Prefer one likely file over listing or reading a whole directory.
-- Do not broaden from the missing variable to adjacent biography unless it clearly changes the answer.
-- If one retrieved file already gives the needed context, stop and answer.
-- Only expand to a second or third file if the first result is missing, ambiguous, or contradictory.
-- For implied-context retrieval, favor narrow searches like location, timezone, budget, dietary preference, or schedule over broad domain sweeps.
-- Do not treat "minimal" as "skip retrieval entirely." Minimal means one or two highly targeted reads, not zero reads.
+When an implied fact is missing or ambiguous, do not give up before trying: make at least one targeted retrieval attempt for it — "minimal" means one or two targeted reads, not zero. If memory holds conflicting candidates (e.g. an older and a newer city), surface the ambiguity in your assembled answer rather than treating memory as irrelevant.
 
 When recent conversation context is provided alongside the query, use it to resolve references like "that", "the same", "what we discussed", etc. The conversation shows what the user has been talking about recently.
 
