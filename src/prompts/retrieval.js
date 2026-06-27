@@ -49,6 +49,8 @@ Deciding what to retrieve — work through this in order:
 
 When an implied fact is missing or ambiguous, do not give up before trying: make at least one targeted retrieval attempt for it — "minimal" means one or two targeted reads, not zero. If memory holds conflicting candidates (e.g. an older and a newer city), surface the ambiguity in your assembled answer rather than treating memory as irrelevant.
 
+Fact status: a fact marked status=expired — or shown under a "Past" heading — has a date that has passed but was never retracted; it is still valid for recall, so use it when it answers the query, note that it is past, and rank it below active facts. A fact marked status=superseded was replaced by a newer fact — do not present it as the current state.
+
 When recent conversation context is provided alongside the query, use it to resolve references like "that", "the same", "what we discussed", etc. The conversation shows what the user has been talking about recently.
 
 Only include content that genuinely helps answer this specific query. Do not include unrelated files from other domains.`;
@@ -110,6 +112,8 @@ Conservative default: Before retrieving anything new, ask "Would personal memory
 Implied context: When a query does warrant retrieval, consider what unstated personal facts it depends on. Travel/flight queries need the user's home city; cost questions may need financial context; recommendations need location or preferences. More generally, "how much", "how long", "is it worth it", "closest", "affordable", and similar queries often depend on user-specific context that is not stated explicitly. Retrieve those implied facts if they are missing from already-retrieved context.
 
 When recent conversation is provided alongside the query, use it to resolve references like "that", "the same", "what we discussed", etc.
+
+Fact status: a fact marked status=expired — or shown under a "Past" heading — has a date that has passed but was never retracted; it is still valid for recall, so use it when it answers the query, note that it is past, and rank it below active facts. A fact marked status=superseded was replaced by a newer fact — do not present it as the current state.
 
 Only retrieve content that genuinely adds to what is already in the session context.`;
 

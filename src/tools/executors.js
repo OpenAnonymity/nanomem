@@ -49,10 +49,21 @@ function clipText(value, limit) {
     return `${text.slice(0, limit)}\n...(truncated)`;
 }
 
+// Hide the History section from retrieval, with one exception: facts marked
+// status=expired are past but were never retracted (their date simply passed), so they
+// remain valid answers for direct recall ("what was my deadline?"). Keep those, re-surfaced
+// under a non-dismissive "Past" header; drop superseded (replaced) and other archived facts.
 function stripHistorySection(content) {
     if (typeof content !== 'string') return content;
     const historyIdx = content.search(/^## History/im);
-    return historyIdx === -1 ? content : content.slice(0, historyIdx).trimEnd();
+    if (historyIdx === -1) return content;
+    const head = content.slice(0, historyIdx).trimEnd();
+    const keptExpired = content
+        .slice(historyIdx)
+        .split('\n')
+        .filter((line) => /^- /.test(line) && /\bstatus=expired\b/.test(line));
+    if (keptExpired.length === 0) return head;
+    return `${head}\n\n## Past (still on record, no longer the live state)\n${keptExpired.join('\n')}`.trimEnd();
 }
 
 function wordOverlap(a, b) {
