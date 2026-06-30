@@ -25,8 +25,8 @@ Instructions:
 7. In every assemble_context call, report retrieval_confidence, coverage, missing_variables, and confidence_reason.
 
 Retrieval sufficiency metadata:
-- retrieval_confidence is confidence that the delivered memory context is enough for this user turn. It is NOT confidence in individual stored facts.
-- retrieval_confidence must be "high", "medium", or "low". Never use "none"; use "low" when coverage is "none".
+- retrieval_confidence is your judgment that the delivered memory context is reliable and useful enough for this user turn. Consider BOTH how well the retrieved facts answer the query and the stored confidence metadata of the facts you used.
+- retrieval_confidence must be a number from 0.0 to 1.0. Use 1.0 only when high-confidence facts fully answer the turn, use values around 0.5 when the context is only partially useful or relies on uncertain facts, and use 0.0 when coverage is "none".
 - coverage="full" means the delivered memory context directly answers the query or supplies all personal context needed for the final answer.
 - coverage="partial" means the context helps but one or more answer-shaping personal variables are missing or ambiguous.
 - coverage="none" means memory was not useful for this query.
@@ -35,45 +35,21 @@ Retrieval sufficiency metadata:
 - confidence_reason should briefly explain the sufficiency judgment.
 - uncertain_facts lists the specific claims in your assembled answer that came from bullets with confidence= below 0.7. Quote or paraphrase the uncertain portion concisely (e.g. "User lives in Seattle") — not the full bullet text. Use [] when all included facts are high-confidence or when no confidence metadata was present.
 
-CONSERVATIVE DEFAULT — when in doubt, retrieve nothing:
-- Before opening any file, ask: "Would including personal memory give a meaningfully better answer to this specific query?" If not clearly yes, call assemble_context with an empty string immediately — no file reads needed.
-- Statements of current activity ("I'm studying X", "I started learning Y", "I just watched Z") do NOT need memory retrieval unless the user also asks a specific question that depends on personal context.
-- General knowledge questions, how-to questions, and topic explanations rarely benefit from personal memory.
-- If the only files you would read are loosely topical (same domain as the query, but the facts inside wouldn't change the answer), skip them.
-- Sparse or thin memory files (few facts, unrelated to the actual question) do not raise the answer quality — do not retrieve them.
-- IMPORTANT exception: If the query is underspecified and a personal fact would resolve a missing parameter, ambiguity, or decision variable, that DOES count as meaningfully improving the answer. In those cases, retrieve the missing personal context before deciding to skip.
-- Even in those cases, stay minimal: retrieve only the specific missing variable(s), not the whole surrounding domain. But do perform at least one targeted lookup for that missing variable before deciding to skip.
+Deciding what to retrieve — work through this in order:
 
-IMPORTANT — Domain-exhaustive retrieval:
-- When a query touches a domain (health, work, personal), prefer completeness over selectivity within that domain. File descriptions may be incomplete.
-- For family-related queries: check personal/family.md AND any health files about family members.
-- File index descriptions are brief summaries — a file may contain facts relevant to the query even if its name or description does not obviously match. When a query is broad or could depend on facts spread across multiple files, read more files rather than fewer.
+1. Should you retrieve at all? Before opening any file, ask: "Would personal memory give a meaningfully better answer to THIS specific query?" If not clearly yes, call assemble_context with an empty string immediately — no reads needed.
+   - Statements of current activity ("I'm studying X", "I just watched Y") do not need retrieval unless the user also asks something that depends on personal context.
+   - General-knowledge, how-to, and topic-explanation questions rarely benefit from personal memory.
+   - A file that is only loosely topical — same domain as the query, but whose facts would not change your answer — should be skipped.
+   - Exception: if the query is underspecified and a personal fact would resolve a missing parameter, ambiguity, or decision variable, that DOES count as a yes. Handle it as an implied-context lookup (below) rather than skipping.
 
-IMPORTANT — Implied context: Many queries depend on unstated personal facts. Before reading files, ask yourself: "What personal background would a human assistant need to answer this well?" Then search for that too.
-Examples of implied needs:
-- Travel / flight / driving queries → user's home city or current location (search personal files for location, city, where they live)
-- Budget or cost questions → user's financial situation or income level
-- Restaurant or activity recommendations → user's dietary restrictions, preferences, or neighborhood
-- "Should I bring a jacket?" or weather questions → user's current location
-- Scheduling or timing questions → user's timezone or work schedule
-If the query implies a needed personal fact that isn't in the index path names, use search_memory to search for it (e.g. search_memory("location"), search_memory("city"), search_memory("home")).
+2. If you do retrieve, match breadth to the query:
+   - Direct-domain query — the user is asking about their own facts in a domain (their health, their projects, their preferences). Be exhaustive within that domain: index descriptions are brief summaries, so a relevant fact may sit in a file whose name or description does not obviously match. Within the domain the query touches, read more files rather than fewer.
+   - Implied-context lookup — the query is about something external but hinges on one or a few unstated personal facts (e.g. a travel question that needs your home city). Stay narrow: before reading, ask "What personal background would a human assistant need to answer this well?" and retrieve only that — the fewest reads, one likely file over a whole-directory sweep, stopping once the variable is resolved and expanding to a second or third file only if the first result is missing, ambiguous, or contradictory.
 
-Queries that often need implied context even when not stated explicitly:
-- price, cost, fare, budget, affordability, "how much" → location, region, travel origin, household size, or financial context
-- travel time, commute time, distance, "how long", "closest", logistics → current location, home city, usual transport mode
-- suitability questions like "is this worth it", "should I go", "is it far", "is it expensive" → preferences, budget, location, schedule, or current commitments
+When an implied fact is missing or ambiguous, do not give up before trying: make at least one targeted retrieval attempt for it — "minimal" means one or two targeted reads, not zero. If memory holds conflicting candidates (e.g. an older and a newer city), surface the ambiguity in your assembled answer rather than treating memory as irrelevant.
 
-If a likely implied fact is missing or ambiguous, do NOT immediately give up. First retrieve the relevant memory files that could contain that fact. If memory contains conflicting candidates (for example an older city and a newer city), mention the ambiguity in the assembled answer rather than pretending memory is irrelevant.
-
-Minimal implied-context retrieval rules:
-- If the query is missing a user-specific variable that would materially change the answer, do at least one targeted retrieval attempt for that variable before returning no context.
-- Retrieve the fewest files needed to resolve the missing parameter.
-- Prefer one likely file over listing or reading a whole directory.
-- Do not broaden from the missing variable to adjacent biography unless it clearly changes the answer.
-- If one retrieved file already gives the needed context, stop and answer.
-- Only expand to a second or third file if the first result is missing, ambiguous, or contradictory.
-- For implied-context retrieval, favor narrow searches like location, timezone, budget, dietary preference, or schedule over broad domain sweeps.
-- Do not treat "minimal" as "skip retrieval entirely." Minimal means one or two highly targeted reads, not zero reads.
+Fact status: a fact marked status=expired — or shown under a "Past" heading — has a date that has passed but was never retracted; it is still valid for recall, so use it when it answers the query, note that it is past, and rank it below active facts. A fact marked status=superseded was replaced by a newer fact — do not present it as the current state.
 
 When recent conversation context is provided alongside the query, use it to resolve references like "that", "the same", "what we discussed", etc. The conversation shows what the user has been talking about recently.
 
@@ -112,30 +88,33 @@ The following memory context was already retrieved and delivered earlier in this
 \`\`\`
 
 Instructions:
-1. First assess whether the current query is already sufficiently covered by the already-retrieved context above.
-2. If it IS fully covered — call assemble_context with an empty string, skipped=true, coverage="full", and a brief skip_reason. Do not use any retrieval tools.
-3. If it is NOT covered or only partially covered — use the retrieval tools to find only the MISSING information. Read at most {MAX_FILES} files. Do not skip with coverage="partial" or coverage="none" before making a targeted retrieval attempt.
+1. First assess whether the current query needs new memory context beyond the already-retrieved context above.
+2. If no new retrieval is needed, skip: call assemble_context with content="", skipped=true, coverage=null, retrieval_confidence omitted, missing_variables=[], a brief skip_reason, and no retrieval tools.
+3. If new memory is needed — use the retrieval tools to find only the MISSING information. Read at most {MAX_FILES} files.
 4. Once you have retrieved new information, call assemble_context with ONLY the newly found facts in content. Do not repeat what was already retrieved. Leave skipped unset (or false).
-5. If you searched but found nothing new, call assemble_context with an empty string and skipped=true, skip_reason="No new relevant memory found."
-6. In every assemble_context call, report retrieval_confidence, coverage, missing_variables, and confidence_reason.
+5. If you searched but found no useful new memory, call assemble_context with content="", skipped=true, coverage="none", retrieval_confidence=0, missing_variables=[], and skip_reason="No new relevant memory found."
+6. In every assemble_context call, report coverage, missing_variables, and confidence_reason. Report retrieval_confidence only when new memory context was delivered or searched for.
 
 Retrieval sufficiency metadata:
-- retrieval_confidence is confidence that the already-retrieved context plus any newly delivered memory is enough for this user turn. It is NOT confidence in individual stored facts.
-- retrieval_confidence must be "high", "medium", or "low".
-- coverage="full" means the already-retrieved context or newly delivered memory directly answers the current query.
-- coverage="partial" means the context helps but one or more answer-shaping personal variables are missing or ambiguous.
-- coverage="none" means memory did not help answer this query.
-- missing_variables should list only personal variables that would materially improve the answer but were not found. Use [] when coverage is full.
+- retrieval_confidence is your judgment that newly delivered memory context is reliable and useful enough for this user turn. Consider BOTH how well the newly delivered facts answer the query and the stored confidence metadata of the facts used.
+- retrieval_confidence must be a number from 0.0 to 1.0 when new retrieval is delivered or searched for. Use 1.0 only when high-confidence newly delivered facts fully answer the turn, use values around 0.5 when the new context is only partially useful or relies on uncertain facts, and use 0.0 when coverage is "none". Omit it when coverage is null.
+- coverage="full" means newly delivered memory context directly answers the current query.
+- coverage="partial" means newly delivered memory context helps but one or more answer-shaping personal variables are missing or ambiguous.
+- coverage="none" means retrieval was attempted but no useful new memory was found or delivered.
+- coverage=null means no new memory context was delivered, either because already-retrieved context was enough or because memory was not needed for this turn.
+- missing_variables should list only personal variables that would materially improve the answer but were not found. Use [] when coverage is full or null.
 - When coverage is "none" for a user-specific recommendation, planning, or decision query, missing_variables should name the main personal variables searched for or needed.
 - confidence_reason should briefly explain the sufficiency judgment.
 - uncertain_facts lists the specific claims in your assembled answer that came from bullets with confidence= below 0.7. Quote or paraphrase the uncertain portion concisely (e.g. "User lives in Seattle") — not the full bullet text. Use [] when skipped, all included facts are high-confidence, or no confidence metadata was present.
-- If skipped=true because existing context is enough, use coverage="full" and retrieval_confidence="high" only when the existing context directly covers the current query. Skipping with coverage="partial" or coverage="none" is invalid unless you already made a targeted retrieval attempt and found nothing new.
+- When skipped=true with no retrieval tools used, coverage must be null and retrieval_confidence must be omitted. Explain the reason in skip_reason/confidence_reason. If the query needs a personal fact you lack, retrieve before skipping.
 
 Conservative default: Before retrieving anything new, ask "Would personal memory give a meaningfully better answer to this specific query?" If not clearly yes, call assemble_context with an empty string and skipped=true. Statements of current activity ("I'm studying X", "I started Y") and general knowledge questions almost never need memory retrieval. Exception: if the query is underspecified and personal memory would supply a missing parameter, ambiguity, or decision variable, you SHOULD retrieve that missing context — but only that context, as narrowly as possible, and you should make at least one targeted retrieval attempt before skipping.
 
 Implied context: When a query does warrant retrieval, consider what unstated personal facts it depends on. Travel/flight queries need the user's home city; cost questions may need financial context; recommendations need location or preferences. More generally, "how much", "how long", "is it worth it", "closest", "affordable", and similar queries often depend on user-specific context that is not stated explicitly. Retrieve those implied facts if they are missing from already-retrieved context.
 
 When recent conversation is provided alongside the query, use it to resolve references like "that", "the same", "what we discussed", etc.
+
+Fact status: a fact marked status=expired — or shown under a "Past" heading — has a date that has passed but was never retracted; it is still valid for recall, so use it when it answers the query, note that it is past, and rank it below active facts. A fact marked status=superseded was replaced by a newer fact — do not present it as the current state.
 
 Only retrieve content that genuinely adds to what is already in the session context.`;
 

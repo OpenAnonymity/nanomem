@@ -54,13 +54,18 @@ describe('compactBullets', () => {
         assert.equal(result.longTerm.length, 0);
     });
 
-    it('places an expired bullet into history', () => {
+    it('marks a date-expired active bullet as expired, keeping its confidence', () => {
+        // Regression: an active bullet whose expires_at has passed must be labeled
+        // 'expired' (its date passed — nothing replaced it), NOT 'superseded', and must
+        // keep its confidence (expiry is not a contradiction, so no decay).
         const result = compactBullets(
-            [makeBullet({ text: 'Expired task', expiresAt: '2020-01-01' })],
+            [makeBullet({ text: 'Expired task', confidence: 0.9, expiresAt: '2020-01-01' })],
             { today: '2024-01-01' }
         );
         assert.equal(result.history.length, 1);
         assert.equal(result.longTerm.length, 0);
+        assert.equal(result.history[0].status, 'expired');
+        assert.equal(result.history[0].confidence, 0.9);
     });
 
     it('deduplicates bullets with identical normalized text, keeping the stronger one', () => {

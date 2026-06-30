@@ -97,7 +97,7 @@ export function createMemoryBank(config = {}) {
          * Adaptive retrieval for multi-turn sessions. Only fetches new memory if
          * alreadyRetrievedContext does not already cover the current query.
          * Returns AdaptiveRetrievalResult (never null on success) — check .skipped
-         * and .skipReason to know if retrieval was bypassed.
+         * and .skipReason to know why no new context was delivered.
          * @param {string} query
          * @param {string} [alreadyRetrievedContext] memory already in the session
          * @param {string} [conversationText] recent conversation for reference resolution

@@ -49,10 +49,21 @@ function clipText(value, limit) {
     return `${text.slice(0, limit)}\n...(truncated)`;
 }
 
+// Hide the History section from retrieval, with one exception: facts marked
+// status=expired are past but were never retracted (their date simply passed), so they
+// remain valid answers for direct recall ("what was my deadline?"). Keep those, re-surfaced
+// under a non-dismissive "Past" header; drop superseded (replaced) and other archived facts.
 function stripHistorySection(content) {
     if (typeof content !== 'string') return content;
     const historyIdx = content.search(/^## History/im);
-    return historyIdx === -1 ? content : content.slice(0, historyIdx).trimEnd();
+    if (historyIdx === -1) return content;
+    const head = content.slice(0, historyIdx).trimEnd();
+    const keptExpired = content
+        .slice(historyIdx)
+        .split('\n')
+        .filter((line) => /^- /.test(line) && /\bstatus=expired\b/.test(line));
+    if (keptExpired.length === 0) return head;
+    return `${head}\n\n## Past (still on record, no longer the live state)\n${keptExpired.join('\n')}`.trimEnd();
 }
 
 function wordOverlap(a, b) {
@@ -70,6 +81,15 @@ function fuzzyFindBullet(parsed, target) {
         .filter(({ b, score }) => b.section !== 'history' && score >= 0.5)
         .sort((a, b) => b.score - a.score);
     return candidates.length > 0 ? candidates[0].i : -1;
+}
+
+function parseFactWithOptionalMetadata(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return { text: '', bullet: null };
+    const parsed = parseBullets(raw.startsWith('- ') ? raw : `- ${raw}`);
+    const bullet = parsed[0] || null;
+    const text = bullet?.text?.trim() || (raw.includes('|') ? raw.split('|')[0].trim() : raw);
+    return { text, bullet };
 }
 
 function renderFiles(files) {
@@ -471,14 +491,11 @@ export function createExtractionExecutors(backend, hooks = {}) {
                 if (idx === -1) { errors.push(`No match: ${factText}`); continue; }
 
                 // Supersede the old bullet and push a new active replacement.
-                // Strip any metadata the LLM may have included in new_fact.
+                // Preserve replacement confidence when the LLM supplies it in new_fact.
                 // Stamp ID onto legacy bullets (no id in storage) before superseding.
                 if (!parsed[idx].id) parsed[idx] = { ...parsed[idx], id: generateBulletId() };
                 const oldBullet = parsed[idx];
-                const rawNewFact = String(new_fact || '').trim();
-                const cleanNewFact = rawNewFact.includes('|')
-                    ? rawNewFact.split('|')[0].trim()
-                    : rawNewFact;
+                const { text: cleanNewFact, bullet: parsedNewFact } = parseFactWithOptionalMetadata(new_fact);
                 const oldConfidence = oldBullet.confidence;
                 const decayedConfidence = bumpDownConfidence(oldConfidence);
                 const oldBulletV = await getCurrentV(backend, path, oldBullet.id);
@@ -494,8 +511,8 @@ export function createExtractionExecutors(backend, hooks = {}) {
                     {
                         text: cleanNewFact,
                         topic: oldBullet.topic,
-                        source: oldBullet.source,
-                        confidence: oldBullet.confidence,
+                        source: parsedNewFact?.explicitSource ? parsedNewFact.source : oldBullet.source,
+                        confidence: parsedNewFact?.explicitConfidence ? parsedNewFact.confidence : oldBullet.confidence,
                         id: generateBulletId(),
                         v: 1,
                         supersedes: oldBullet.id,
