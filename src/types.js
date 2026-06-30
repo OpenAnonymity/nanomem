@@ -141,10 +141,12 @@
 
 /**
  * @typedef {object} ToolParameterSchema
- * @property {string} type
+ * @property {string | string[]} type
  * @property {string} [description]
  * @property {object} [items]
- * @property {string[]} [enum]
+ * @property {(string | null)[]} [enum]
+ * @property {number} [minimum]
+ * @property {number} [maximum]
  */
 
 /**
