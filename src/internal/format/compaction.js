@@ -61,13 +61,18 @@ export function compactBullets(bullets, options = {}) {
         const status = normalizeStatus(bullet.status || inferStatusFromSection(normalizeTierToSection(tier)));
 
         if (tier === 'history' || status === 'superseded' || status === 'expired' || isExpiredBullet(bullet, today)) {
-            const transitioning = status === 'active';
+            // An active bullet can reach history two ways: its date passed (expired —
+            // nothing replaced it, so it stays true and keeps its confidence) or it was
+            // supplanted by a newer fact (superseded — a contradiction, so it decays).
+            // Only the latter should be relabeled 'superseded' and decayed.
+            const expiredByDate = status === 'active' && isExpiredBullet(bullet, today);
+            const supersededWhileActive = status === 'active' && !expiredByDate;
             history.push({
                 ...bullet,
                 tier: 'history',
-                status: transitioning ? 'superseded' : status,
+                status: expiredByDate ? 'expired' : (supersededWhileActive ? 'superseded' : status),
                 section: 'history',
-                ...(transitioning ? { confidence: bumpDownConfidence(bullet.confidence) } : {}),
+                ...(supersededWhileActive ? { confidence: bumpDownConfidence(bullet.confidence) } : {}),
             });
             continue;
         }

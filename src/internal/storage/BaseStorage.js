@@ -15,12 +15,12 @@
  *   write(path, content) → metadata generation + _writeRaw + rebuildTree
  *
  * BaseStorage also provides default implementations for:
- *   search(query)   → [{path, snippet}]
+ *   search(query)   → [{path, lines}]
  *   ls(dirPath)     → {files: string[], dirs: string[]}
  *   getTree()      → string
  */
 /** @import { ExportRecord, ListResult, SearchResult, StorageMetadata } from '../../types.js' */
-import { parseBullets, extractTitles, countBullets, normalizeFactText } from '../format/index.js';
+import { parseBullets, extractTitles, countBullets, normalizeFactText, rankBM25, tokenizeQuery } from '../format/index.js';
 
 export class BaseStorage {
 
@@ -112,27 +112,32 @@ export class BaseStorage {
      */
     async search(query) {
         if (!query?.trim()) return [];
-        const lowerQuery = query.toLowerCase();
         const all = await this.exportAll();
-        const results = [];
-
+        const docs = [];
         for (const rec of all) {
             if (this._isInternalPath(rec.path)) continue;
-            const content = rec.content || '';
-            if (!content.toLowerCase().includes(lowerQuery)) continue;
-
-            // Return all lines that contain the query
-            const matchingLines = content.split('\n')
-                .filter(line => line.toLowerCase().includes(lowerQuery))
-                .map(line => line.trim())
-                .filter(Boolean);
-
-            results.push({
-                path: rec.path,
-                lines: matchingLines,
-            });
+            if (typeof rec.content !== 'string') continue;
+            docs.push({ path: rec.path, content: rec.content });
         }
 
+        const queryTokens = tokenizeQuery(query);
+        const ranked = queryTokens.length ? rankBM25(query, docs) : [];
+
+        const byPath = new Map(docs.map((d) => [d.path, d.content]));
+        const results = ranked.map(({ path }) => ({
+            path,
+            lines: matchingLines(byPath.get(path), queryTokens),
+        }));
+
+        // Append literal substring matches that BM25 didn't rank, so the switch
+        // from substring to token matching doesn't lose recall: partial words
+        // ("cook"→"cooking"), sub-3-char queries that tokenize to nothing, and
+        // docs that only match the query as a substring. Ranked (token) hits stay
+        // first; substring-only hits follow.
+        const seen = new Set(results.map((r) => r.path));
+        for (const hit of substringSearch(query, docs)) {
+            if (!seen.has(hit.path)) results.push(hit);
+        }
         return results;
     }
 
@@ -318,4 +323,33 @@ export class BaseStorage {
         }
         return content.slice(0, 120);
     }
+}
+
+/** Lines from a document that contain any query token (for the result snippet). */
+function matchingLines(content, queryTokens) {
+    const tokens = queryTokens.filter(Boolean);
+    if (!tokens.length) return [];
+    const lines = [];
+    for (const raw of String(content || '').split('\n')) {
+        const line = raw.trim();
+        if (!line) continue;
+        const lower = line.toLowerCase();
+        if (tokens.some((token) => lower.includes(token))) lines.push(line);
+    }
+    return lines;
+}
+
+/** Literal-substring scan; results are unioned onto the BM25 ranking so partial
+ *  words ("cook"→"cooking") and sub-3-char queries keep their recall. */
+function substringSearch(query, docs) {
+    const lowerQuery = query.toLowerCase();
+    const results = [];
+    for (const { path, content } of docs) {
+        if (!content.toLowerCase().includes(lowerQuery)) continue;
+        const lines = content.split('\n')
+            .map((line) => line.trim())
+            .filter((line) => line && line.toLowerCase().includes(lowerQuery));
+        results.push({ path, lines });
+    }
+    return results;
 }
