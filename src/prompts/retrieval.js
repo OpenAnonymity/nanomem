@@ -88,24 +88,25 @@ The following memory context was already retrieved and delivered earlier in this
 \`\`\`
 
 Instructions:
-1. First assess whether the current query is already sufficiently covered by the already-retrieved context above.
-2. If it IS fully covered — call assemble_context with an empty string, skipped=true, coverage="full", and a brief skip_reason. Do not use any retrieval tools.
-3. If it is NOT covered or only partially covered — use the retrieval tools to find only the MISSING information. Read at most {MAX_FILES} files. Do not skip with coverage="partial" or coverage="none" before making a targeted retrieval attempt.
+1. First assess whether the current query needs new memory context beyond the already-retrieved context above.
+2. If no new retrieval is needed, skip: call assemble_context with content="", skipped=true, coverage=null, retrieval_confidence omitted, missing_variables=[], a brief skip_reason, and no retrieval tools.
+3. If new memory is needed — use the retrieval tools to find only the MISSING information. Read at most {MAX_FILES} files.
 4. Once you have retrieved new information, call assemble_context with ONLY the newly found facts in content. Do not repeat what was already retrieved. Leave skipped unset (or false).
-5. If you searched but found nothing new, call assemble_context with an empty string and skipped=true, skip_reason="No new relevant memory found."
-6. In every assemble_context call, report coverage, missing_variables, and confidence_reason. Report retrieval_confidence unless skipped=true because existing context was already enough and you did not use retrieval tools.
+5. If you searched but found no useful new memory, call assemble_context with content="", skipped=true, coverage="none", retrieval_confidence=0, missing_variables=[], and skip_reason="No new relevant memory found."
+6. In every assemble_context call, report coverage, missing_variables, and confidence_reason. Report retrieval_confidence only when new memory context was delivered or searched for.
 
 Retrieval sufficiency metadata:
-- retrieval_confidence is your judgment that the already-retrieved context plus any newly delivered memory is reliable and useful enough for this user turn. Consider BOTH how well the facts answer the query and the stored confidence metadata of the facts used.
-- retrieval_confidence must be a number from 0.0 to 1.0 when new retrieval is delivered or searched for. Use 1.0 only when high-confidence facts fully answer the turn, use values around 0.5 when the context is only partially useful or relies on uncertain facts, and use 0.0 when coverage is "none".
-- coverage="full" means the already-retrieved context or newly delivered memory directly answers the current query.
-- coverage="partial" means the context helps but one or more answer-shaping personal variables are missing or ambiguous.
-- coverage="none" means memory did not help answer this query.
-- missing_variables should list only personal variables that would materially improve the answer but were not found. Use [] when coverage is full.
+- retrieval_confidence is your judgment that newly delivered memory context is reliable and useful enough for this user turn. Consider BOTH how well the newly delivered facts answer the query and the stored confidence metadata of the facts used.
+- retrieval_confidence must be a number from 0.0 to 1.0 when new retrieval is delivered or searched for. Use 1.0 only when high-confidence newly delivered facts fully answer the turn, use values around 0.5 when the new context is only partially useful or relies on uncertain facts, and use 0.0 when coverage is "none". Omit it when coverage is null.
+- coverage="full" means newly delivered memory context directly answers the current query.
+- coverage="partial" means newly delivered memory context helps but one or more answer-shaping personal variables are missing or ambiguous.
+- coverage="none" means retrieval was attempted but no useful new memory was found or delivered.
+- coverage=null means no new memory context was delivered, either because already-retrieved context was enough or because memory was not needed for this turn.
+- missing_variables should list only personal variables that would materially improve the answer but were not found. Use [] when coverage is full or null.
 - When coverage is "none" for a user-specific recommendation, planning, or decision query, missing_variables should name the main personal variables searched for or needed.
 - confidence_reason should briefly explain the sufficiency judgment.
 - uncertain_facts lists the specific claims in your assembled answer that came from bullets with confidence= below 0.7. Quote or paraphrase the uncertain portion concisely (e.g. "User lives in Seattle") — not the full bullet text. Use [] when skipped, all included facts are high-confidence, or no confidence metadata was present.
-- If skipped=true because existing context is enough and no retrieval tools were used, use coverage="full" and omit retrieval_confidence; callers will report it as N/A. Skipping with coverage="partial" or coverage="none" is invalid unless you already made a targeted retrieval attempt and found nothing new.
+- When skipped=true with no retrieval tools used, coverage must be null and retrieval_confidence must be omitted. Explain the reason in skip_reason/confidence_reason. If the query needs a personal fact you lack, retrieve before skipping.
 
 Conservative default: Before retrieving anything new, ask "Would personal memory give a meaningfully better answer to this specific query?" If not clearly yes, call assemble_context with an empty string and skipped=true. Statements of current activity ("I'm studying X", "I started Y") and general knowledge questions almost never need memory retrieval. Exception: if the query is underspecified and personal memory would supply a missing parameter, ambiguity, or decision variable, you SHOULD retrieve that missing context — but only that context, as narrowly as possible, and you should make at least one targeted retrieval attempt before skipping.
 

@@ -142,9 +142,9 @@ const ADAPTIVE_RETRIEVAL_TOOLS = RETRIEVAL_TOOLS.map(tool => {
                     content: { type: 'string', description: 'Newly retrieved facts as synthesized prose. Empty string when skipped.' },
                     skipped: { type: 'boolean', description: 'True when adaptive retrieval should deliver no new context, either because existing context is sufficient or no new relevant memory was found.' },
                     skip_reason: { type: 'string', description: 'Brief explanation of why retrieval was skipped. Required when skipped=true.' },
-                    retrieval_confidence: { type: 'number', minimum: 0, maximum: 1, description: 'Numeric confidence from 0.0 to 1.0 that the delivered or already-retrieved memory context is reliable and useful enough for this user turn, considering both answer coverage and stored confidence metadata for the facts used. Omit this when skipped=true because existing context was enough and no retrieval tools were used. Use 0.0 when retrieval was attempted and coverage is none.' },
-                    coverage: { type: 'string', enum: ['full', 'partial', 'none'], description: 'How completely the delivered or already-retrieved memory context answers the current query.' },
-                    missing_variables: { type: 'array', items: { type: 'string' }, description: 'Personal variables that would materially improve the answer but were not found. Empty array when coverage is full.' },
+                    retrieval_confidence: { type: 'number', minimum: 0, maximum: 1, description: 'Numeric confidence from 0.0 to 1.0 that newly delivered memory context is reliable and useful enough for this user turn. Omit this when skipped=true and no new memory context is delivered. Use 0.0 when retrieval was attempted and coverage is none.' },
+                    coverage: { type: ['string', 'null'], enum: ['full', 'partial', 'none', null], description: 'How completely newly delivered memory context answers the current query. Use null when skipped=true and no new memory context is delivered.' },
+                    missing_variables: { type: 'array', items: { type: 'string' }, description: 'Personal variables that would materially improve the answer but were not found. Empty array when coverage is full or null.' },
                     confidence_reason: { type: 'string', description: 'Brief reason for retrieval_confidence and coverage.' },
                     uncertain_facts: { type: 'array', items: { type: 'string' }, description: 'Specific claims from your assembled answer that came from bullets with low stored confidence (confidence= below 0.7). Quote or paraphrase the uncertain portion concisely — not the full bullet text. Empty array when all included facts are high-confidence or when no confidence metadata was present.' }
                 },
@@ -234,7 +234,6 @@ class MemoryRetriever {
                 Object.assign(result, this._normalizeRetrievalAssessment(null, {
                     hasContent: false,
                     skipped: false,
-                    hasPriorContext: false,
                 }));
             }
         }
@@ -410,7 +409,6 @@ class MemoryRetriever {
                 const assessment = this._normalizeRetrievalAssessment(terminalArgs, {
                     hasContent: false,
                     skipped: true,
-                    hasPriorContext: false,
                 });
                 return { files: [], paths: [], assembledContext: null, ...assessment };
             }
@@ -424,7 +422,6 @@ class MemoryRetriever {
         const assessment = this._normalizeRetrievalAssessment(terminalArgs, {
             hasContent: Boolean(finalContext),
             skipped: false,
-            hasPriorContext: false,
         });
 
         onProgress?.({
@@ -605,7 +602,6 @@ class MemoryRetriever {
         const assessment = this._normalizeRetrievalAssessment(null, {
             hasContent: Boolean(assembled),
             skipped: false,
-            hasPriorContext: false,
         });
         return {
             files,
@@ -978,14 +974,14 @@ class MemoryRetriever {
                 const skipReason = 'Already covered by retrieved context.';
                 const displayText = await this._renderDirectAnswer(query, alreadyRetrievedContext);
                 const assessment = this._normalizeRetrievalAssessment({
-                    coverage: 'full',
+                    coverage: null,
+                    retrieval_confidence: null,
                     confidence_reason: noOp.reason || skipReason,
                     missing_variables: [],
                     uncertain_facts: []
                 }, {
                     hasContent: false,
                     skipped: true,
-                    hasPriorContext: true,
                 });
                 onProgress?.({ stage: 'complete', message: `Retrieval skipped: ${skipReason}` });
                 return {
@@ -1009,7 +1005,6 @@ class MemoryRetriever {
             const assessment = this._normalizeRetrievalAssessment(null, {
                 hasContent: false,
                 skipped: true,
-                hasPriorContext: false,
             });
             return {
                 files: [],
@@ -1025,7 +1020,6 @@ class MemoryRetriever {
             const assessment = this._normalizeRetrievalAssessment(null, {
                 hasContent: false,
                 skipped: true,
-                hasPriorContext: false,
             });
             return {
                 files: [],
@@ -1043,7 +1037,6 @@ class MemoryRetriever {
                 Object.assign(result, this._normalizeRetrievalAssessment(null, {
                     hasContent: false,
                     skipped: false,
-                    hasPriorContext: Boolean(alreadyRetrievedContext?.trim()),
                 }));
             }
         }
@@ -1055,7 +1048,6 @@ class MemoryRetriever {
         const assessment = this._normalizeRetrievalAssessment(null, {
             hasContent: false,
             skipped: true,
-            hasPriorContext: false,
         });
         return {
             files: [],
@@ -1119,12 +1111,12 @@ class MemoryRetriever {
             const skipReason = 'Already covered by retrieved context.';
             const displayText = await this._renderDirectAnswer(query, alreadyRetrievedContext);
             const assessment = this._normalizeRetrievalAssessment({
-                coverage: 'full',
+                coverage: null,
+                retrieval_confidence: null,
                 confidence_reason: skipReason,
             }, {
                 hasContent: false,
                 skipped: true,
-                hasPriorContext: true,
             });
             onProgress?.({ stage: 'complete', message: `Retrieval skipped: ${skipReason}` });
             return {
@@ -1191,55 +1183,17 @@ class MemoryRetriever {
         });
 
         const args = terminalToolResult?.arguments || {};
-        const retrievalWasAttempted = toolCallLog.some((entry) =>
-            entry.name === 'search_memory' || entry.name === 'read_file' || entry.name === 'list_directory'
-        );
-
         // LLM explicitly signalled skip
         if (args.skipped === true) {
-            const skipReason = args.skip_reason || 'Already covered by retrieved context.';
+            const skipReason = args.skip_reason || 'Retrieval skipped.';
             const assessment = this._normalizeRetrievalAssessment(args, {
                 hasContent: false,
                 skipped: true,
-                hasPriorContext: true,
             });
 
-            const priorContextCoversQuery = assessment.coverage === 'full';
-            if (!priorContextCoversQuery) {
-                if (!retrievalWasAttempted) {
-                    const fallback = await this._adaptiveKeywordFallback(query, alreadyRetrievedContext, conversationText, onProgress);
-                    if (fallback) return fallback;
-
-                    const reason = 'No new relevant memory found.';
-                    const missAssessment = this._normalizeRetrievalAssessment(null, {
-                        hasContent: false,
-                        skipped: true,
-                        hasPriorContext: false,
-                    });
-                    onProgress?.({ stage: 'complete', message: `Retrieval skipped: ${reason}` });
-                    return {
-                        files: [],
-                        paths: [],
-                        assembledContext: null,
-                        skipped: true,
-                        skipReason: reason,
-                        ...missAssessment
-                    };
-                }
-
-                const reason = 'No new relevant memory found.';
-                onProgress?.({ stage: 'complete', message: `Retrieval skipped: ${reason}` });
-                return {
-                    files: [],
-                    paths: [],
-                    assembledContext: null,
-                    skipped: true,
-                    skipReason: reason,
-                    ...assessment
-                };
-            }
-
-            const displayText = await this._renderDirectAnswer(query, alreadyRetrievedContext);
+            const displayText = assessment.coverage === 'full'
+                ? await this._renderDirectAnswer(query, alreadyRetrievedContext)
+                : null;
             onProgress?.({ stage: 'complete', message: `Retrieval skipped: ${skipReason}` });
             return {
                 files: [],
@@ -1258,13 +1212,14 @@ class MemoryRetriever {
 
         // Terminal was called but nothing new was found
         if (terminalToolResult && !assembledContext) {
-            const reason = 'No new relevant memory found.';
-            const displayText = await this._renderDirectAnswer(query, alreadyRetrievedContext);
             const assessment = this._normalizeRetrievalAssessment(args, {
                 hasContent: false,
                 skipped: true,
-                hasPriorContext: true,
             });
+            const reason = args.skip_reason || 'No new relevant memory found.';
+            const displayText = assessment.coverage === 'full'
+                ? await this._renderDirectAnswer(query, alreadyRetrievedContext)
+                : null;
             onProgress?.({ stage: 'complete', message: `Retrieval skipped: ${reason}` });
             return {
                 files: [],
@@ -1279,11 +1234,9 @@ class MemoryRetriever {
 
         if (files.length === 0 && !assembledContext) {
             const reason = 'No new relevant memory found.';
-            const displayText = await this._renderDirectAnswer(query, alreadyRetrievedContext);
             const assessment = this._normalizeRetrievalAssessment(args, {
                 hasContent: false,
                 skipped: true,
-                hasPriorContext: true,
             });
             onProgress?.({ stage: 'complete', message: `Retrieval skipped: ${reason}` });
             return {
@@ -1293,7 +1246,6 @@ class MemoryRetriever {
                 skipped: true,
                 skipReason: reason,
                 ...assessment,
-                ...(displayText ? { displayText } : {})
             };
         }
 
@@ -1309,38 +1261,19 @@ class MemoryRetriever {
         const assessment = this._normalizeRetrievalAssessment(args, {
             hasContent: Boolean(finalContext),
             skipped: false,
-            hasPriorContext: true,
         });
-
-        if (assessment.coverage === 'none') {
-            const skipReason = 'No new relevant memory found.';
-            const missAssessment = this._normalizeRetrievalAssessment(args, {
-                hasContent: false,
-                skipped: true,
-                hasPriorContext: false,
-            });
-            onProgress?.({ stage: 'complete', message: `Retrieval skipped: ${skipReason}` });
-            return {
-                files: [],
-                paths: [],
-                assembledContext: null,
-                skipped: true,
-                skipReason,
-                ...missAssessment
-            };
-        }
 
         if (this._isContextRedundant(finalContext, alreadyRetrievedContext)) {
             const skipReason = 'Already covered by retrieved context.';
             const displayText = await this._renderDirectAnswer(query, alreadyRetrievedContext);
             const skipAssessment = this._normalizeRetrievalAssessment({
                 ...args,
-                coverage: 'full',
+                coverage: null,
+                retrieval_confidence: null,
                 confidence_reason: skipReason,
             }, {
                 hasContent: false,
                 skipped: true,
-                hasPriorContext: true,
             });
             onProgress?.({ stage: 'complete', message: `Retrieval skipped: ${skipReason}` });
             return {
@@ -1368,25 +1301,22 @@ class MemoryRetriever {
         };
     }
 
-    _normalizeRetrievalAssessment(args, { hasContent = false, skipped = false, hasPriorContext = false } = {}) {
+    _normalizeRetrievalAssessment(args, { hasContent = false, skipped = false } = {}) {
         const rawCoverage = typeof args?.coverage === 'string'
             ? args.coverage.toLowerCase()
             : '';
-        const hasAnyContext = Boolean(hasContent || hasPriorContext);
 
         let coverage = RETRIEVAL_COVERAGE_LEVELS.has(rawCoverage) ? rawCoverage : null;
-        if (!coverage) {
-            if (!hasAnyContext) coverage = 'none';
-            else if (skipped && hasPriorContext) coverage = 'full';
-            else if (hasContent) coverage = 'partial';
-            else coverage = 'none';
+        if (skipped && !hasContent && !coverage) {
+            coverage = null;
+        } else if (!coverage) {
+            coverage = hasContent ? 'partial' : 'none';
         }
 
         let retrievalConfidence = parseRetrievalConfidence(args?.retrieval_confidence);
 
-        if (!hasAnyContext) {
-            coverage = 'none';
-            retrievalConfidence = 0;
+        if (coverage === null) {
+            retrievalConfidence = null;
         } else if (coverage === 'none') {
             retrievalConfidence = 0;
         }

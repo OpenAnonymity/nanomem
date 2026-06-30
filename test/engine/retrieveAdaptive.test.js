@@ -101,8 +101,8 @@ describe('retrieveAdaptively', () => {
 
         assert.equal(result.skipped, true);
         assert.equal(result.skipReason, 'No new relevant memory found.');
-        assert.equal(result.retrievalConfidence, 0);
-        assert.equal(result.coverage, 'none');
+        assert.equal(result.retrievalConfidence, null);
+        assert.equal(result.coverage, null);
         assert.deepEqual(result.missingVariables, []);
     });
 
@@ -166,7 +166,7 @@ describe('retrieveAdaptively', () => {
 
         assert.equal(result.skipped, true);
         assert.equal(result.skipReason, 'Already covered by retrieved context.');
-        assert.equal(result.coverage, 'full');
+        assert.equal(result.coverage, null);
         assert.equal(result.retrievalConfidence, null);
         assert.equal(result.retrievalReason, 'The deadline is already present in the retrieved context.');
         assert.equal(result.displayText, 'NomNom has a June 15 launch deadline.');
@@ -260,7 +260,7 @@ describe('retrieveAdaptively', () => {
         assert.equal(calls, 2);
     });
 
-    it('uses keyword fallback when the model tries to skip with incomplete coverage before retrieving', async () => {
+    it('preserves model skip metadata with incomplete coverage before retrieving', async () => {
         const retriever = createRetriever({
             searchResults: [{ path: 'work/projects.md' }],
             readContent: {
@@ -306,10 +306,13 @@ describe('retrieveAdaptively', () => {
             null
         );
 
-        assert.equal(result.skipped, false);
-        assert.match(result.assembledContext, /Mise is in early alpha/);
+        assert.equal(result.skipped, true);
+        assert.equal(result.skipReason, 'Existing context is related but incomplete.');
+        assert.equal(result.assembledContext, null);
         assert.equal(result.coverage, 'partial');
-        assert.equal(result.retrievalConfidence, null);
+        assert.equal(result.retrievalConfidence, 0.58);
+        assert.deepEqual(result.missingVariables, ['other project statuses']);
+        assert.equal(result.retrievalReason, 'Other projects may be missing.');
     });
 
     it('preserves skipped metadata when retrieval was attempted but found nothing new', async () => {
@@ -429,11 +432,11 @@ describe('retrieveAdaptively', () => {
 
         assert.equal(result.skipped, true);
         assert.equal(result.skipReason, 'Already covered by retrieved context.');
-        assert.equal(result.coverage, 'full');
-        assertConfidenceScore(result.retrievalConfidence);
+        assert.equal(result.coverage, null);
+        assert.equal(result.retrievalConfidence, null);
     });
 
-    it('suppresses retrieved context when the model assesses coverage as none', async () => {
+    it('preserves delivered context when the model assesses coverage as none', async () => {
         const retriever = createRetriever({
             llmClient: {
                 async createChatCompletion(request) {
@@ -471,11 +474,10 @@ describe('retrieveAdaptively', () => {
             null
         );
 
-        assert.equal(result.skipped, true);
-        assert.equal(result.skipReason, 'No new relevant memory found.');
+        assert.equal(result.skipped, false);
+        assert.equal(result.assembledContext, 'The user once mentioned a loosely related project.');
         assert.equal(result.coverage, 'none');
         assert.equal(result.retrievalConfidence, 0);
-        assert.equal(result.assembledContext, null);
     });
 
     it('returns retrieval confidence metadata from normal retrieval', async () => {
@@ -518,8 +520,7 @@ describe('retrieveAdaptively', () => {
         assert.deepEqual(
             retriever._normalizeRetrievalAssessment(null, {
                 hasContent: false,
-                skipped: false,
-                hasPriorContext: false
+                skipped: false
             }),
             {
                 retrievalConfidence: 0,
@@ -538,8 +539,7 @@ describe('retrieveAdaptively', () => {
                 confidence_reason: 'Location is still missing.'
             }, {
                 hasContent: true,
-                skipped: false,
-                hasPriorContext: true
+                skipped: false
             }),
             {
                 retrievalConfidence: 1,
@@ -557,8 +557,7 @@ describe('retrieveAdaptively', () => {
                 confidence_reason: 'Existing context answers the query.'
             }, {
                 hasContent: false,
-                skipped: true,
-                hasPriorContext: true
+                skipped: true
             }),
             {
                 retrievalConfidence: null,
@@ -576,8 +575,7 @@ describe('retrieveAdaptively', () => {
                 confidence_reason: 'Confidence omitted by model.'
             }, {
                 hasContent: true,
-                skipped: false,
-                hasPriorContext: false
+                skipped: false
             }),
             {
                 retrievalConfidence: null,
@@ -626,7 +624,7 @@ describe('retrieveAdaptively', () => {
         assert.equal(result.coverage, 'full');
     });
 
-    it('does not accept partial adaptive skips without a retrieval attempt', async () => {
+    it('accepts partial adaptive skips without a retrieval attempt', async () => {
         const retriever = createRetriever({
             llmClient: {
                 async createChatCompletion(request) {
@@ -664,10 +662,11 @@ describe('retrieveAdaptively', () => {
         );
 
         assert.equal(result.skipped, true);
-        assert.equal(result.skipReason, 'No new relevant memory found.');
-        assert.equal(result.retrievalConfidence, 0);
-        assert.equal(result.coverage, 'none');
-        assert.deepEqual(result.missingVariables, []);
+        assert.equal(result.skipReason, 'Existing context is related but incomplete.');
+        assert.equal(result.retrievalConfidence, 0.87);
+        assert.equal(result.coverage, 'partial');
+        assert.deepEqual(result.missingVariables, ['current budget']);
+        assert.equal(result.retrievalReason, 'Budget is still missing.');
     });
 
     it('returns a skipped adaptive augment result when prior context is sufficient', async () => {

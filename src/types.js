@@ -261,7 +261,7 @@
  * @property {boolean} skipped - true when adaptive retrieval delivered no new context
  * @property {string} [skipReason] - explanation when skipped=true
  * @property {number | null} [retrievalConfidence] - numeric confidence in [0, 1], or null when no retrieval-confidence judgment is available or applicable
- * @property {'full' | 'partial' | 'none'} [coverage]
+ * @property {'full' | 'partial' | 'none' | null} [coverage] - coverage of newly delivered memory context, or null when no new context was delivered
  * @property {string[]} [missingVariables]
  * @property {string | null} [retrievalReason]
  * @property {string[]} [uncertainFacts] - specific claims from the assembled answer with low stored confidence
@@ -287,7 +287,7 @@
  * @property {boolean} skipped - true when adaptive retrieval delivered no new context
  * @property {string} [skipReason] - explanation when skipped=true
  * @property {number | null} [retrievalConfidence] - numeric confidence in [0, 1], or null when no retrieval-confidence judgment is available or applicable
- * @property {'full' | 'partial' | 'none'} [coverage]
+ * @property {'full' | 'partial' | 'none' | null} [coverage] - coverage of newly delivered memory context, or null when no new context was delivered
  * @property {string[]} [missingVariables]
  * @property {string | null} [retrievalReason]
  */
