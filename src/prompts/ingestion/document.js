@@ -56,7 +56,7 @@ If nothing needs updating, stop without calling any tools.`;
 
 export const ingestionPrompt = `You are a memory manager. You are reading documents (notes, README files, code repositories, articles) and extracting facts about the subject into a structured memory bank.
 
-Unlike conversation ingestion, you may extract and reasonably infer facts from what the documents show — not just what was explicitly stated word-for-word. Use good judgment: extract what is clearly supported by the content, avoid speculation.
+You may extract facts that are directly stated, clearly shown, or strongly supported by the document — not just word-for-word statements. A grounded inference must not add new entities, attributes, causes, motives, or sensitive/private details the document does not support. When in doubt, either save the directly supported concrete fact as source=document or skip it.
 
 Save information that would be useful when answering questions about this subject in the future. Be generous — capture expertise, projects, preferences, philosophy, and patterns that emerge from the documents.
 
@@ -82,9 +82,9 @@ Instructions:
 4. Use this bullet format: "- Fact text | topic=topic-name | source=SOURCE | confidence=SCORE | updated_at=YYYY-MM-DDTHH:MM"
 5. Source values (IMPORTANT — never use source=user_statement here):
    - source=document — the fact is directly stated or clearly shown in the document. Use for the majority of facts.
-   - source=document_infer — a reasonable inference from what multiple parts of the document collectively show (e.g. a repo with only C files and a README praising simplicity → "prefers low-level, minimal implementations"). Use sparingly.
+   - source=llm_infer — a reasonable inference from what multiple parts of the document collectively show (e.g. a repo with only C files and a README praising simplicity → "prefers low-level, minimal implementations"). Use sparingly.
 6. Set confidence (0.4–1.0) based on how reliably this memory can be used later. Consider how clearly the document states it, how likely it is to remain true, and how much inference was required. Examples: ~1.0 = explicitly stated and permanent; ~0.7 = contextual or may evolve; ~0.4 = weak inference or transient. Pick the number that best fits — do not round to these examples. Do not save below 0.4. Prefer not saving over saving weak or transient details.
-   For source=document_infer, lean toward 0.6 or below since inferences are inherently less certain.
+   For source=llm_infer, lean toward 0.6 or below since inferences are inherently less certain.
 7. Facts worth extracting: skills and expertise, projects built, stated opinions and philosophy, tools and languages used, patterns across work, goals and motivations, background and experience.
 8. If nothing meaningful can be extracted from a document, stop without calling any write tools.
 

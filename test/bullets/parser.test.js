@@ -10,7 +10,7 @@ const SAMPLE_DOC = `
 
 ## Long-term memory (stable facts that are unlikely to change)
 - Uses TypeScript for all new projects | topic=work | tier=long_term | status=active | source=user_statement | confidence=high | updated_at=2024-01-10
-- Prefers functional programming style | topic=work | tier=long_term | status=active | source=assistant_summary | confidence=medium | updated_at=2024-02-01
+- Prefers functional programming style | topic=work | tier=long_term | status=active | source=llm_infer | confidence=medium | updated_at=2024-02-01
 
 ## History (no longer current)
 - Was using Flow for type checking | topic=work | tier=history | status=superseded | source=user_statement | confidence=high | updated_at=2023-05-01
