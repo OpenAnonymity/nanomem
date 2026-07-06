@@ -41,6 +41,13 @@ Bias toward caution over speed when code, memory format, privacy, or user data i
 - Work toward verifiable success. For non-trivial tasks, identify how the change will be checked, then loop until the relevant test, command, or manual verification passes.
 - Keep every changed line traceable to the user's request or to verification needed for that request.
 
+## Prompt Design
+
+When rewording or extending prompts under `src/prompts/`, favor guiding principles over concrete examples. Do not encode narrow, overfit example catalogs that assume users only talk about a few specific topics or communicate in one particular format; nanomem must generalize across arbitrary subject matter and forms of communication, so prompts should teach the model how to reason rather than pattern-match a fixed domain.
+
+- Prefer general principles over example dumps. Load-bearing rules can stay, but avoid long topic-specific example lists that bias ingestion or retrieval toward a narrow domain and degrade handling of everything else.
+- Keep parallel prompt paths in sync. When you change a conversation prompt, apply the corresponding change to the document prompt (and vice versa); when you change retrieval, consider the matching change to adaptive retrieval. The same applies across any ingestion/deletion/retrieval variants that share intent.
+
 ## Project Structure & Module Organization
 
 This is a Node.js 20+ ESM package and CLI:
