@@ -65,7 +65,7 @@ describe('scoreBullet', () => {
 
     it('gives higher score to user_statement source', () => {
         const userScore = scoreBullet({ ...base, source: 'user_statement' }, []);
-        const inferenceScore = scoreBullet({ ...base, source: 'inference' }, []);
+        const inferenceScore = scoreBullet({ ...base, source: 'llm_infer' }, []);
         assert.ok(userScore > inferenceScore);
     });
 

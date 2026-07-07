@@ -14,13 +14,13 @@ Input is one memory file. Rewrite it into:
 # Memory: <Topic>
 
 ## Working memory (current context subject to change)
-- fact | topic=<topic> | tier=working | status=active | source=user_statement|assistant_summary|inference|system | confidence=SCORE | updated_at=YYYY-MM-DDTHH:MM | review_at=YYYY-MM-DD(optional) | expires_at=YYYY-MM-DD(optional)
+- fact | topic=<topic> | tier=working | status=active | source=user_statement|llm_infer|document | confidence=SCORE | updated_at=YYYY-MM-DDTHH:MM | review_at=YYYY-MM-DD(optional) | expires_at=YYYY-MM-DD(optional)
 
 ## Long-term memory (stable facts that are unlikely to change)
-- fact | topic=<topic> | tier=long_term | status=active | source=user_statement|assistant_summary|inference|system | confidence=SCORE | updated_at=YYYY-MM-DDTHH:MM | expires_at=YYYY-MM-DD(optional)
+- fact | topic=<topic> | tier=long_term | status=active | source=user_statement|llm_infer|document | confidence=SCORE | updated_at=YYYY-MM-DDTHH:MM | expires_at=YYYY-MM-DD(optional)
 
 ## History (no longer current)
-- fact | topic=<topic> | tier=history | status=superseded|expired|uncertain | source=user_statement|assistant_summary|inference|system | confidence=SCORE | updated_at=YYYY-MM-DDTHH:MM | expires_at=YYYY-MM-DD(optional)
+- fact | topic=<topic> | tier=history | status=superseded|expired|uncertain | source=user_statement|llm_infer|document | confidence=SCORE | updated_at=YYYY-MM-DDTHH:MM | expires_at=YYYY-MM-DD(optional)
 
 Rules:
 - Write facts in a timeless, archival format: use absolute dates (YYYY-MM-DD) rather than relative terms like "recently", "currently", "just", or "last week". A fact must be interpretable correctly even years after it was written.
@@ -28,7 +28,7 @@ Rules:
 - Merge semantic duplicates and keep the most recent/best phrasing.
 - Resolve contradictions: newer user statements beat older ones; user statements beat inferences; higher confidence beats lower.
 - Preserve existing numeric confidence values exactly when possible. SCORE is a number from 0.0 to 1.0. Do not collapse numeric scores into high/medium/low.
-- Do not promote a fact to confidence near 1.0 unless it is a direct, explicit user statement. Inferences, assistant summaries, plans, and habits should usually remain below 0.8 even after compaction.
+- Do not promote a fact to confidence near 1.0 unless it is a direct, explicit user statement. Inferences (llm_infer), plans, and habits should usually remain below 0.8 even after compaction.
 - Put stable facts in Long-Term: identity/background, durable preferences, recurring constraints, persistent health facts, long-running roles, durable relationships.
 - Put temporary or in-progress context in Working: active plans, current tasks, temporary situations, near-term goals.
 - Expired facts (expires_at in the past) go to History with status=expired.

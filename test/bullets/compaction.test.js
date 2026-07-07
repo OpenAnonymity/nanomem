@@ -69,7 +69,7 @@ describe('compactBullets', () => {
     });
 
     it('deduplicates bullets with identical normalized text, keeping the stronger one', () => {
-        const weaker = makeBullet({ text: 'Loves hiking', source: 'inference', confidence: 'low', updatedAt: '2024-01-01' });
+        const weaker = makeBullet({ text: 'Loves hiking', source: 'llm_infer', confidence: 'low', updatedAt: '2024-01-01' });
         const stronger = makeBullet({ text: 'Loves hiking', source: 'user_statement', confidence: 'high', updatedAt: '2024-06-01' });
         const result = compactBullets([weaker, stronger]);
         assert.equal(result.longTerm.length, 1);
@@ -78,7 +78,7 @@ describe('compactBullets', () => {
 
     it('deduplicates regardless of input order', () => {
         const a = makeBullet({ text: 'Loves hiking', source: 'user_statement', updatedAt: '2024-06-01' });
-        const b = makeBullet({ text: 'Loves hiking', source: 'inference', updatedAt: '2024-01-01' });
+        const b = makeBullet({ text: 'Loves hiking', source: 'llm_infer', updatedAt: '2024-01-01' });
         const result1 = compactBullets([a, b]);
         const result2 = compactBullets([b, a]);
         assert.equal(result1.longTerm[0].source, 'user_statement');

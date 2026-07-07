@@ -113,9 +113,8 @@ export function normalizeStatus(value, fallback = 'active') {
 export function normalizeSource(value, fallback = 'user_statement') {
     const source = String(value || '').trim().toLowerCase();
     if (['user_statement', 'user', 'explicit_user'].includes(source)) return 'user_statement';
-    if (['assistant_summary', 'assistant', 'summary'].includes(source)) return 'assistant_summary';
-    if (['inference', 'inferred'].includes(source)) return 'inference';
-    if (['system', 'system_note'].includes(source)) return 'system';
+    if (['llm_infer', 'llm_inference', 'inference', 'inferred', 'assistant_summary'].includes(source)) return 'llm_infer';
+    if (['document', 'doc'].includes(source)) return 'document';
     return fallback;
 }
 
@@ -141,8 +140,8 @@ export function normalizeConfidence(value, fallback = 0.7) {
  */
 export function defaultConfidenceForSource(source) {
     if (source === 'user_statement') return 1.0;
-    if (source === 'assistant_summary') return 0.7;
-    if (source === 'system') return 0.7;
+    if (source === 'document') return 0.9;
+    if (source === 'llm_infer') return 0.6;
     return 0.3;
 }
 

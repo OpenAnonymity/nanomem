@@ -34,7 +34,6 @@ export function scoreBullet(bullet, queryTerms = []) {
     if (status === 'uncertain') score -= 1;
     if (status === 'expired' || status === 'superseded' || tier === 'history') score -= 3;
     if (bullet?.source === 'user_statement') score += 2;
-    if (bullet?.source === 'inference') score -= 1;
     if (typeof bullet?.confidence === 'number' && bullet.confidence >= 0.8) score += 2;
     if (typeof bullet?.confidence === 'number' && bullet.confidence <= 0.3) score -= 2;
     return score;
