@@ -150,17 +150,17 @@ Memory is stored as markdown with structured metadata:
 # Memory: Work
 
 ## Working memory (current context subject to change)
-- Preparing for a product launch next month | topic=work | tier=working | status=active | source=user_statement | confidence=high | updated_at=2026-04-07 | review_at=2026-04-20
+- Preparing for a product launch next month | topic=work | tier=working | status=active | source=user_statement | confidence=0.8 | updated_at=2026-04-07 | review_at=2026-04-20
 
 ## Long-term memory (stable facts that are unlikely to change)
-- Leads the backend team at Acme | topic=work | tier=long_term | status=active | source=user_statement | confidence=high | updated_at=2026-04-07
+- Leads the backend team at Acme | topic=work | tier=long_term | status=active | source=user_statement | confidence=0.95 | updated_at=2026-04-07
 
 ## History (no longer current)
-- Previously lived in New York | topic=personal | tier=history | status=superseded | source=user_statement | confidence=high | updated_at=2024-06-01
-- Bee sting on hand, area red | topic=health | tier=history | status=expired | source=user_statement | confidence=high | updated_at=2026-01-09 | expires_at=2026-01-23
+- Previously lived in New York | topic=personal | tier=history | status=superseded | source=user_statement | confidence=0.6 | updated_at=2024-06-01
+- Bee sting on hand, area red | topic=health | tier=history | status=expired | source=user_statement | confidence=0.9 | updated_at=2026-01-09 | expires_at=2026-01-23
 ```
 
-That structure is what lets the system do more than retrieval: it can keep track of source, confidence, recency, temporary context, and historical state.
+That structure is what lets the system do more than retrieval: it can keep track of source, confidence, recency, temporary context, and historical state. `confidence` is a numeric score from `0.0` to `1.0` that the LLM sets at write time (higher means more reliably usable later); it decays when a fact is superseded but is preserved when a fact merely expires.
 
 History holds two kinds of facts, distinguished by `status`:
 
@@ -170,8 +170,8 @@ History holds two kinds of facts, distinguished by `status`:
 Time-bound facts carry an `expires_at` date. The LLM reasons about when each fact will stop being relevant and sets the date at write time — no fixed rules or categories. Once that date passes, the fact moves into history as `expired` during `compact` or on demand with `prune`, keeping its confidence intact (expiry is not a contradiction).
 
 ```md
-- Bee sting on hand, area still red as of 2026-01-09 | topic=health | tier=long_term | status=active | source=user_statement | confidence=high | updated_at=2026-01-09T16:06 | expires_at=2026-01-23
-- Visiting Portland next weekend to see Jake | topic=travel | tier=working | status=active | source=user_statement | confidence=high | updated_at=2026-01-09T16:06 | expires_at=2026-01-20
+- Bee sting on hand, area still red as of 2026-01-09 | topic=health | tier=long_term | status=active | source=user_statement | confidence=0.9 | updated_at=2026-01-09T16:06 | expires_at=2026-01-23
+- Visiting Portland next weekend to see Jake | topic=travel | tier=working | status=active | source=user_statement | confidence=0.7 | updated_at=2026-01-09T16:06 | expires_at=2026-01-20
 ```
 
 ## Using it in code
