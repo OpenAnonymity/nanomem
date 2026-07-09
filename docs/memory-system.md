@@ -74,6 +74,8 @@ Its job is to keep memory useful as it grows:
 - move stale or superseded facts into history
 - preserve older information without treating it as current
 
+History distinguishes two ways a fact leaves current memory. A fact that a newer, contradicting fact **supersedes** is dropped from answers. A fact that simply **expires** (its `expires_at` date passes without anything contradicting it) stays on record and remains answerable for recall, ranked below active facts rather than presented as the current state.
+
 This is what lets the system maintain memory over time instead of just accumulating more text.
 
 ## The Memory Model

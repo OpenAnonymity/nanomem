@@ -36,8 +36,8 @@ Retrieval is only one part of memory. `nanomem` is built for the maintenance lay
 - **User-owned memory.** Keep memory in markdown files you can inspect, edit, version, and move across tools.
 - **Evolving memory state.** Keep facts current as they change over time instead of treating memory as an append-only log.
 - **Compaction and cleanup.** Collapse repeated signals into stable knowledge and move stale memory into history.
-- **Automatic expiry.** Time-bound facts (a bee sting, a trip, a short-term plan) are tagged with an expiry date at write time and archived automatically when that date passes.
-- **Conflict-aware updates.** Resolve outdated or contradictory facts using recency, source, and confidence.
+- **Automatic expiry.** Time-bound facts (a bee sting, a trip, a short-term plan) are tagged with an expiry date at write time and moved into history when that date passes — where they stay on record and answerable for recall, marked `expired` rather than deleted.
+- **Conflict-aware updates.** Resolve outdated or contradictory facts using recency, source, and confidence. Facts that a newer fact replaces are marked `superseded` and dropped from current answers, distinct from `expired` facts that simply aged out but are still true.
 - **Import your existing history.** Start from ChatGPT exports, Claude exports, [OA Chat](https://chat.openanonymity.ai) exports, transcripts, message arrays, markdown notes, or whole markdown directories.
 - **Portable memory exchange.** Export full memory state as plain text, ZIP, or Open Memory Format (OMF), and merge OMF documents back in programmatically.
 - **Flexible storage.** Run on local files, IndexedDB, in-memory storage, or a custom backend.
@@ -157,11 +157,17 @@ Memory is stored as markdown with structured metadata:
 
 ## History (no longer current)
 - Previously lived in New York | topic=personal | tier=history | status=superseded | source=user_statement | confidence=high | updated_at=2024-06-01
+- Bee sting on hand, area red | topic=health | tier=history | status=expired | source=user_statement | confidence=high | updated_at=2026-01-09 | expires_at=2026-01-23
 ```
 
 That structure is what lets the system do more than retrieval: it can keep track of source, confidence, recency, temporary context, and historical state.
 
-Time-bound facts carry an `expires_at` date. The LLM reasons about when each fact will stop being relevant and sets the date at write time — no fixed rules or categories. Facts past their expiry date are archived automatically during `compact` or on demand with `prune`.
+History holds two kinds of facts, distinguished by `status`:
+
+- `superseded` — replaced by a newer, contradicting fact (e.g. an old address after a move). No longer true, so it is dropped from current answers.
+- `expired` — a time-bound fact whose date simply passed (e.g. a short-term plan). Nothing contradicted it, so it stays on record and remains answerable for recall ("what was my old deadline?"), ranked below active facts and never presented as the current state.
+
+Time-bound facts carry an `expires_at` date. The LLM reasons about when each fact will stop being relevant and sets the date at write time — no fixed rules or categories. Once that date passes, the fact moves into history as `expired` during `compact` or on demand with `prune`, keeping its confidence intact (expiry is not a contradiction).
 
 ```md
 - Bee sting on hand, area still red as of 2026-01-09 | topic=health | tier=long_term | status=active | source=user_statement | confidence=high | updated_at=2026-01-09T16:06 | expires_at=2026-01-23
