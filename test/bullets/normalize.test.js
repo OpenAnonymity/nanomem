@@ -109,21 +109,22 @@ describe('normalizeSource', () => {
         assert.equal(normalizeSource('user'), 'user_statement');
         assert.equal(normalizeSource('explicit_user'), 'user_statement');
     });
-    it('maps assistant variants', () => {
-        assert.equal(normalizeSource('assistant_summary'), 'assistant_summary');
-        assert.equal(normalizeSource('assistant'), 'assistant_summary');
-        assert.equal(normalizeSource('summary'), 'assistant_summary');
+    it('maps inference variants to llm_infer', () => {
+        assert.equal(normalizeSource('llm_infer'), 'llm_infer');
+        assert.equal(normalizeSource('llm_inference'), 'llm_infer');
+        assert.equal(normalizeSource('inference'), 'llm_infer');
+        assert.equal(normalizeSource('inferred'), 'llm_infer');
     });
-    it('maps inference variants', () => {
-        assert.equal(normalizeSource('inference'), 'inference');
-        assert.equal(normalizeSource('inferred'), 'inference');
+    it('folds legacy assistant_summary into llm_infer, not user_statement', () => {
+        assert.equal(normalizeSource('assistant_summary'), 'llm_infer');
     });
-    it('maps system variants', () => {
-        assert.equal(normalizeSource('system'), 'system');
-        assert.equal(normalizeSource('system_note'), 'system');
+    it('maps document variants', () => {
+        assert.equal(normalizeSource('document'), 'document');
+        assert.equal(normalizeSource('doc'), 'document');
     });
-    it('returns fallback for unknown', () => {
+    it('returns fallback for an absent source', () => {
         assert.equal(normalizeSource(''), 'user_statement');
+        assert.equal(normalizeSource(null), 'user_statement');
     });
 });
 
@@ -164,12 +165,13 @@ describe('defaultConfidenceForSource', () => {
     it('returns 1.0 for user_statement', () => {
         assert.equal(defaultConfidenceForSource('user_statement'), 1.0);
     });
-    it('returns 0.7 for assistant_summary and system', () => {
-        assert.equal(defaultConfidenceForSource('assistant_summary'), 0.7);
-        assert.equal(defaultConfidenceForSource('system'), 0.7);
+    it('returns 0.9 for document', () => {
+        assert.equal(defaultConfidenceForSource('document'), 0.9);
     });
-    it('returns 0.3 for inference and unknown', () => {
-        assert.equal(defaultConfidenceForSource('inference'), 0.3);
+    it('returns 0.6 for llm_infer', () => {
+        assert.equal(defaultConfidenceForSource('llm_infer'), 0.6);
+    });
+    it('returns 0.3 for unknown', () => {
         assert.equal(defaultConfidenceForSource('unknown'), 0.3);
     });
 });
@@ -316,7 +318,7 @@ describe('ensureBulletMetadata', () => {
             text: 'Debugging auth',
             tier: 'working',
             status: 'uncertain',
-            source: 'inference',
+            source: 'llm_infer',
             confidence: 'low',
             explicitTier: true,
             explicitStatus: true,
@@ -325,16 +327,16 @@ describe('ensureBulletMetadata', () => {
         });
         assert.equal(result.tier, 'working');
         assert.equal(result.status, 'uncertain');
-        assert.equal(result.source, 'inference');
+        assert.equal(result.source, 'llm_infer');
         assert.equal(result.confidence, 0.3);
     });
     it('applies option overrides', () => {
         const result = ensureBulletMetadata(
             { text: 'Some fact' },
-            { defaultTopic: 'health', defaultSource: 'assistant_summary', updatedAt: '2024-03-01' }
+            { defaultTopic: 'health', defaultSource: 'document', updatedAt: '2024-03-01' }
         );
         assert.equal(result.topic, 'health');
-        assert.equal(result.source, 'assistant_summary');
+        assert.equal(result.source, 'document');
         assert.equal(result.updatedAt, '2024-03-01');
     });
     it('infers working tier from text keywords', () => {

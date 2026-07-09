@@ -2,7 +2,7 @@
  * Bullet compaction — deduplication, tier assignment, strength-based ordering.
  *
  * Strength ordering uses source > confidence > recency:
- *   user_statement > assistant_summary > system > inference
+ *   user_statement > document > llm_infer
  *   high > medium > low
  *   newer > older
  */
@@ -119,7 +119,7 @@ function compareBulletStrength(a, b) {
     const aConf = normalizeConfidence(a?.confidence, defaultConfidenceForSource(aSource));
     const bConf = normalizeConfidence(b?.confidence, defaultConfidenceForSource(bSource));
 
-    const srcRank = { inference: 0, system: 1, assistant_summary: 2, user_statement: 3 };
+    const srcRank = { llm_infer: 1, document: 2, user_statement: 3 };
     const srcDiff = (srcRank[aSource] ?? 0) - (srcRank[bSource] ?? 0);
     if (srcDiff !== 0) return srcDiff;
 
