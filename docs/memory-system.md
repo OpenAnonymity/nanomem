@@ -39,40 +39,53 @@ The CLI selects these modes automatically in common cases, while still allowing 
 
 Ingestion is the write path.
 
-The system reads a conversation or document, looks at the current file tree, and decides whether to:
+The system runs ingestion as an agentic tool loop over a conversation or document. The ingestion agent sees the current file tree and can:
 
-- create a new memory file
-- append to an existing one
-- update a stale one
-- archive outdated information
-- delete memory that is no longer useful
+- call `read_file` before changing existing memory
+- call `create_new_file` when no existing file fits
+- call `append_memory` for genuinely new facts in an existing topic
+- call `update_bullets` to supersede stale or contradicted bullets
+- call `corroborate_bullet` when new input reconfirms an existing fact
 
-The goal is to turn raw input into reusable memory rather than keeping every interaction forever.
+The exact tool set depends on mode: `add` only writes new or corroborated facts, while default/update-style ingestion can supersede existing bullets when the prompt permits it.
+
+The tool executors normalize generated bullets, merge them into the markdown file, refresh the bullet index, and preserve history when facts are superseded. The goal is to turn raw input into reusable memory rather than keeping every interaction forever.
 
 ## Retrieval
 
 Retrieval is the read path.
 
-The system first uses the file tree to decide which memory files matter for a query. It then looks more closely at the facts inside those files and assembles relevant context.
+The system runs retrieval as an agentic tool loop over the memory filesystem. The agent sees the file tree and can:
+
+- inspect the file tree for likely paths
+- call `search_memory` for targeted keyword search
+- call `list_directory` for broad directory scans
+- call `read_file` for broader file-level context
+- finish with `assemble_context`, which returns synthesized context plus sufficiency metadata
+
+`search_memory` returns matching file paths and matching raw lines from each file. Because memory is stored as structured markdown bullets, those matches are often enough for targeted queries; `read_file` is used when surrounding file context is needed.
 
 This is intentionally more structured than plain keyword search or vector retrieval alone:
 
-- file-level selection narrows the search space
-- fact-level scoring surfaces the most useful memory
+- the visible file tree gives the agent a stable map of user-owned memory
+- backend keyword search can jump directly to relevant matching lines
+- selective file reads provide surrounding context only when needed
 - recent conversation context can help resolve references like “that” or “the same one”
 
-If the model-based retrieval path fails, the system can fall back to simpler search over stored files.
+If the model-based retrieval path fails, the system falls back to deterministic keyword search, loads the top matching files, and builds query-aware excerpts instead of dumping entire files. Adaptive fallback folds recent conversation into the search query so referential follow-ups can still resolve without network access.
 
 ## Compaction
 
 Compaction is the maintenance path.
 
-Its job is to keep memory useful as it grows:
+Unlike ingestion and retrieval, compaction is not an agentic tool loop. It walks stored files and applies a maintenance pipeline:
 
-- merge duplicates
-- keep current memory concise
-- move stale or superseded facts into history
-- preserve older information without treating it as current
+- deterministic compaction parses bullets, deduplicates, assigns tiers, and archives expired facts
+- semantic review asks the LLM to mark stale working-memory bullets as superseded
+- contradiction review asks the LLM to resolve active bullets that cannot both be current
+- legacy unstructured files can be rewritten into the canonical tiered format
+
+`prune`/`pruneExpired` is the deterministic no-LLM path that only archives facts whose `expires_at` date has passed.
 
 History distinguishes two ways a fact leaves current memory. A fact that a newer, contradicting fact **supersedes** is dropped from answers. A fact that simply **expires** (its `expires_at` date passes without anything contradicting it) stays on record and remains answerable for recall, ranked below active facts rather than presented as the current state.
 
@@ -96,10 +109,10 @@ This structure is what makes the system time-aware and conflict-aware.
 
 The system keeps two indexes:
 
-- a **persistent file tree** that helps the model navigate the memory filesystem
-- an **in-memory fact index** that helps retrieval score individual facts after files are selected
+- a **persistent file tree** that gives the model and tools a stable map of the memory filesystem
+- an **in-memory fact index** that supports scoring and excerpt selection at bullet granularity
 
-They exist because file selection and fact ranking are different problems at different levels of granularity.
+They exist because filesystem navigation, keyword recall, and fact ranking are different problems at different levels of granularity. The tree helps the retrieval agent choose where to look; backend search provides file-and-line recall; and the bullet index supports compact, query-aware snippets.
 
 ## Conflict Resolution
 
